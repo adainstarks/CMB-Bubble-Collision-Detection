@@ -1,0 +1,25 @@
+# Data files (large FITS maps, don't commit)
+data/*.fits
+data/*.fits.gz
+
+# Plots (regenerable)
+plots/*.png
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
