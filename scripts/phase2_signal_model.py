@@ -82,11 +82,20 @@ def make_angular_distance_grid(npix, reso_arcmin):
 
 
 def inject_signal_into_patch(patch, z0, zcrit, theta_crit_deg):
-    """Inject a bubble collision signal centered on a flat-sky patch."""
+    """
+    Inject a bubble collision signal centered on a flat-sky patch.
+    
+    Uses multiplicative injection per Feeney et al. (2011) Eq. 15:
+        δT = (1 + f(n̂)) * (T0 + δT_cmb) - T0
+    
+    William: Why I changed it: The signal modulates existing CMB fluctuations rather than
+    simply adding a template on top.
+    """
     theta_grid = make_angular_distance_grid(patch.shape[0], RESO_ARCMIN)
     theta_crit = np.radians(theta_crit_deg)
     signal = bubble_collision_signal(theta_grid, z0, zcrit, theta_crit)
-    return patch + signal, signal
+    injected = (1.0 + signal) * patch
+    return injected, signal
 
 
 def main():
