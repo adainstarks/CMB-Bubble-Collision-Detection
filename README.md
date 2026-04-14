@@ -27,7 +27,7 @@ $$\frac{\delta T}{T} = \left[ \frac{z_{\text{crit}} - z_0 \cos\theta_{\text{crit
 
 ### Phase 1: Data Foundation — ✅ Complete
 
-Downloaded the Planck 2018 SMICA cleaned CMB map, loaded and visualized HEALPix data, degraded to working resolution (Nside=256), applied the galactic mask, and extracted gnomonic (tangent-plane) projections as flat 256×256 patches.
+Downloaded the Planck 2018 SMICA cleaned CMB map, loaded and visualized HEALPix data, degraded to working resolution (Nside=256), applied the galactic mask, and extracted gnomonic (tangent-plane) projections as flat 256×256 patches at 13 arcmin/pixel.
 
 **Full-sky Planck 2018 SMICA CMB (Nside=2048, 50 million pixels):**
 
@@ -41,9 +41,9 @@ Downloaded the Planck 2018 SMICA cleaned CMB map, loaded and visualized HEALPix 
 
 ![Gnomonic patch near Cold Spot](plots/04_gnomonic_cold_spot.png)
 
-### Phase 2: Synthetic Data Generator — 🔬 In Progress
+### Phase 2: Synthetic Data Generator — ✅ V1 Complete
 
-Implemented the bubble collision signal model from Feeney et al. (2011) Eq. 1. The signal is a linear temperature modulation in cos(θ) confined to a disk of angular radius θ_crit, with an optional discontinuity at the causal boundary.
+Implemented the bubble collision signal model from Feeney et al. (2011) Eq. 1 and verified the multiplicative injection step against Feeney et al. (2011) Eq. 15. The generator now builds training data directly from real Planck SMICA sky patches, using random unmasked sky locations, centered synthetic injections, binary segmentation masks, and saved metadata for each sample.
 
 **Signal profile at three angular scales (5°, 10°, 25°):**
 
@@ -59,15 +59,27 @@ Top row: signal template in isolation. Bottom row: the same patch of real CMB sk
 
 ![Parameter space grid](plots/08_parameter_space_grid.png)
 
-Still to do in Phase 2:
+**Verified training-sample collage from the Phase 2 generator (1000-sample inspection run):**
+
+This preview was generated from the actual training pipeline after checking that the sky locations vary, the angular scales and amplitudes vary, the masks match the injected disks, and the extracted patches stay safely away from badly masked regions.
+
+![Phase 2 training sample collage](plots/09_training_samples.png)
+
+Phase 2 V1 delivered:
+- [x] Reused the Planck SMICA + galactic mask loading flow from Phase 1
+- [x] Built a valid coordinate pool from unmasked sky locations
+- [x] Generated balanced positive and negative 256×256 training patches
+- [x] Covered Feeney's 5°–25° angular range at 13 arcmin/pixel
+- [x] Saved patches, labels, binary masks, and injection parameters to HDF5
+- [x] Ran a 1000-sample visual verification pass and a 10000-sample production run locally
+
+Still to do after Phase 2 V1:
 - [ ] Generate CMB realizations using CAMB (or work with Planck noise maps)
-- [ ] Build an automated injection pipeline at random sky coordinates
-- [ ] Produce thousands of positive/negative training patch pairs
 - [ ] Validate injection statistics across parameter ranges
 
 ### Phase 3: U-Net Model — Upcoming
 
-Train a U-Net segmentation model with an EfficientNet encoder backbone. Input: 256×256 CMB patches covering ~40° field of view. Output: pixel-level probability maps indicating regions consistent with a bubble collision signature.
+Train a U-Net segmentation model with an EfficientNet encoder backbone. Input: 256×256 CMB patches covering ~51° field of view. Output: pixel-level probability maps indicating regions consistent with a bubble collision signature.
 
 ### Phase 4: Validation — Upcoming
 
@@ -80,7 +92,7 @@ Train a U-Net segmentation model with an EfficientNet encoder backbone. Input: 2
 
 ### Phase 5: Planck Inference — Upcoming
 
-Tile the full unmasked Planck sky with overlapping 40° patches. Run inference and stitch outputs into a full-sky probability map. Identify candidate regions above detection threshold. Cross-reference against known CMB anomalies (Cold Spot, hemispherical asymmetry). Validate candidates across independent Planck cleaning pipelines (SMICA, NILC, SEVEM, Commander).
+Tile the full unmasked Planck sky with overlapping ~51° patches. Run inference and stitch outputs into a full-sky probability map. Identify candidate regions above detection threshold. Cross-reference against known CMB anomalies (Cold Spot, hemispherical asymmetry). Validate candidates across independent Planck cleaning pipelines (SMICA, NILC, SEVEM, Commander).
 
 ### Phase 6: Paper and Release — Upcoming
 
@@ -98,6 +110,15 @@ python scripts/phase1_explore.py
 
 # Phase 2: Generate signal model visualizations
 python scripts/phase2_signal_model.py
+
+# Phase 2: Generate inspectable training patches from real SMICA sky regions
+python scripts/phase2_generate_training.py
+
+# First verification pass
+python scripts/phase2_generate_training.py --num-samples 1000 --pool-size 2000
+
+# Larger local training set
+python scripts/phase2_generate_training.py --num-samples 10000 --pool-size 5000
 ```
 
 ## Datasets

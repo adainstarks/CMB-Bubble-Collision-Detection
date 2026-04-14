@@ -36,8 +36,9 @@ DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 PLOT_DIR = os.path.join(PROJECT_ROOT, "plots")
 SMICA_FILE = os.path.join(DATA_DIR, "COM_CMB_IQU-smica_2048_R3.00_full.fits")
 
-RESO_ARCMIN = 10.0
+RESO_ARCMIN = 13.0
 PATCH_PIX = 256
+T_CMB_K = 2.7255
 
 
 def bubble_collision_signal(theta, z0, zcrit, theta_crit):
@@ -72,13 +73,16 @@ def make_angular_distance_grid(npix, reso_arcmin):
     """
     Build a 2D grid of angular distances (radians) from the patch center
     for a gnomonic (tangent-plane) projection.
+
+    healpy.gnomview uses tangent-plane coordinates, so the angular distance is
+    theta = arctan(r_plane) rather than the small-angle approximation theta ~= r.
     """
     center = (npix - 1) / 2.0
     iy, ix = np.mgrid[0:npix, 0:npix]
-    dx = (ix - center) * reso_arcmin  # arcminutes from center
-    dy = (iy - center) * reso_arcmin
-    r_arcmin = np.sqrt(dx**2 + dy**2)
-    return np.radians(r_arcmin / 60.0)
+    dx_rad = np.radians((ix - center) * reso_arcmin / 60.0)
+    dy_rad = np.radians((iy - center) * reso_arcmin / 60.0)
+    r_plane = np.sqrt(dx_rad**2 + dy_rad**2)
+    return np.arctan(r_plane)
 
 
 def inject_signal_into_patch(patch, z0, zcrit, theta_crit_deg):
@@ -87,14 +91,14 @@ def inject_signal_into_patch(patch, z0, zcrit, theta_crit_deg):
     
     Uses multiplicative injection per Feeney et al. (2011) Eq. 15:
         δT = (1 + f(n̂)) * (T0 + δT_cmb) - T0
-    
-    William: Why I changed it: The signal modulates existing CMB fluctuations rather than
-    simply adding a template on top.
+
+    The Planck SMICA patch is a temperature-anisotropy map, so we reconstruct the
+    full temperature as T0 + δT_cmb, apply the modulation, and subtract T0 again.
     """
     theta_grid = make_angular_distance_grid(patch.shape[0], RESO_ARCMIN)
     theta_crit = np.radians(theta_crit_deg)
     signal = bubble_collision_signal(theta_grid, z0, zcrit, theta_crit)
-    injected = (1.0 + signal) * patch
+    injected = (1.0 + signal) * (T_CMB_K + patch) - T_CMB_K
     return injected, signal
 
 

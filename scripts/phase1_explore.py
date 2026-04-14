@@ -13,6 +13,7 @@ import os
 import urllib.request
 import numpy as np
 import healpy as hp
+from astropy.io import fits
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -36,13 +37,33 @@ MASK_FILE = os.path.join(DATA_DIR, "COM_Mask_CMB-common-Mask-Int_2048_R3.00.fits
 
 def download_file(url, dest):
     if os.path.exists(dest):
-        size_mb = os.path.getsize(dest) / 1e6
-        print(f"  Already downloaded: {os.path.basename(dest)} ({size_mb:.1f} MB)")
-        return
+        try:
+            with fits.open(dest, memmap=False):
+                pass
+            size_mb = os.path.getsize(dest) / 1e6
+            print(f"  Already downloaded: {os.path.basename(dest)} ({size_mb:.1f} MB)")
+            return
+        except Exception:
+            print(f"  Existing file is incomplete or invalid, re-downloading: {os.path.basename(dest)}")
+            os.remove(dest)
+
+    temp_dest = dest + ".part"
+    if os.path.exists(temp_dest):
+        os.remove(temp_dest)
+
     print(f"  Downloading {os.path.basename(dest)}...")
     print(f"  URL: {url}")
     print(f"  This may take a while (large FITS files).")
-    urllib.request.urlretrieve(url, dest)
+    try:
+        urllib.request.urlretrieve(url, temp_dest)
+        with fits.open(temp_dest, memmap=False):
+            pass
+        os.replace(temp_dest, dest)
+    except Exception:
+        if os.path.exists(temp_dest):
+            os.remove(temp_dest)
+        raise
+
     size_mb = os.path.getsize(dest) / 1e6
     print(f"  Done: {size_mb:.1f} MB")
 
@@ -131,9 +152,9 @@ def main():
     theta = np.radians(90.0 - gal_lat_deg)
     phi = np.radians(gal_lon_deg)
 
-    reso_arcmin = 10.0  # resolution per pixel in arcminutes
+    reso_arcmin = 13.0  # resolution per pixel in arcminutes
     patch_size = 256    # 256 x 256 pixels
-    fov_deg = reso_arcmin * patch_size / 60.0  # ~42.7 degrees
+    fov_deg = reso_arcmin * patch_size / 60.0  # ~55.5 degrees
 
     print(f"  Center: (l={gal_lon_deg}, b={gal_lat_deg}) deg")
     print(f"  Patch:  {patch_size}x{patch_size} pixels, {reso_arcmin}'/pixel")

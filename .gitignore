@@ -1,6 +1,10 @@
 # Data files (large FITS maps, don't commit)
 data/*.fits
 data/*.fits.gz
+data/training*/
+
+# Local tool state
+.codex
 
 # Plots are committed to repo for README display
 
