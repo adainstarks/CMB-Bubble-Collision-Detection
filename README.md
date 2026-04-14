@@ -4,9 +4,9 @@ A deep learning pipeline for detecting bubble collision signatures in Cosmic Mic
 
 ## Background
 
-In 2011, Feeney, Johnson, Mortlock, and Peiris published the first observational search for bubble collision signatures in CMB data using classical Bayesian methods and blob detection on WMAP 7-year data. They found four candidate features but results were inconclusive due to sensitivity limitations. They explicitly called for the search to be repeated with Planck satellite data using more powerful computational tools.
+In 2011, Feeney, Johnson, Mortlock, and Peiris published the first observational search for bubble collision signatures in CMB data using classical Bayesian methods and blob detection on WMAP 7-year data. They found four candidate features, but the results were inconclusive due to sensitivity limitations. They explicitly called for the search to be repeated with Planck satellite data using more powerful computational tools.
 
-That follow-up using modern deep learning has never been done.
+The follow-up using modern deep learning remains largely unexplored.
 
 This project builds a U-Net segmentation model trained on simulated bubble collision signatures and applies it to Planck 2018 CMB data — replacing Feeney et al.'s multi-stage classical pipeline with a single trained model capable of full-sky screening in minutes rather than days.
 
@@ -51,7 +51,7 @@ Implemented the bubble collision signal model from Feeney et al. (2011) Eq. 1. T
 
 **Signal injected into a real Planck SMICA patch at increasing amplitudes:**
 
-Top row: signal template in isolation. Bottom row: the same patch of real CMB sky with the signal injected. At weak amplitude the signal is invisible — buried in CMB noise. At strong amplitude the circular disk is obvious. The U-Net must learn to detect signals in the transition zone.
+Top row: signal template in isolation. Bottom row: the same patch of real CMB sky with the signal injected. At weak amplitude, the signal is invisible — buried in CMB noise. At strong amplitude the circular disk is obvious. The U-Net must learn to detect signals in the transition zone.
 
 ![Signal injection demo](plots/07_signal_injection_demo.png)
 
@@ -61,7 +61,7 @@ Top row: signal template in isolation. Bottom row: the same patch of real CMB sk
 
 Still to do in Phase 2:
 - [ ] Generate CMB realizations using CAMB (or work with Planck noise maps)
-- [ ] Build automated injection pipeline at random sky coordinates
+- [ ] Build an automated injection pipeline at random sky coordinates
 - [ ] Produce thousands of positive/negative training patch pairs
 - [ ] Validate injection statistics across parameter ranges
 
