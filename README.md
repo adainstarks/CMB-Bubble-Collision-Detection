@@ -59,7 +59,7 @@ Top row: signal template in isolation. Bottom row: the same patch of real CMB sk
 
 ![Parameter space grid](plots/08_parameter_space_grid.png)
 
-**Verified training-sample collage from the Phase 2 generator (1000-sample inspection run):**
+**Training-sample collage from the current Phase 2 generator (1000-sample inspection run):**
 
 This preview was generated from the actual training pipeline after checking that the sky locations vary, the angular scales and amplitudes vary, the masks match the injected disks, and the extracted patches stay safely away from badly masked regions.
 
