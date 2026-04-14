@@ -2,8 +2,7 @@
 data/*.fits
 data/*.fits.gz
 
-# Plots (regenerable)
-plots/*.png
+# Plots are committed to repo for README display
 
 # Python
 __pycache__/

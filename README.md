@@ -8,7 +8,7 @@ In 2011, Feeney, Johnson, Mortlock, and Peiris published the first observational
 
 That follow-up using modern deep learning has never been done.
 
-This project builds a U-Net segmentation model trained on simulated bubble collision signatures and applies it to Planck 2018 CMB data — replacing Feeney et al.’s multi-stage classical pipeline with a single trained model capable of full-sky screening in minutes rather than days.
+This project builds a U-Net segmentation model trained on simulated bubble collision signatures and applies it to Planck 2018 CMB data — replacing Feeney et al.'s multi-stage classical pipeline with a single trained model capable of full-sky screening in minutes rather than days.
 
 ## What Is a Bubble Collision Signature?
 
@@ -19,31 +19,57 @@ Some theories of cosmic inflation predict our universe is one bubble in a larger
 - **θ_crit** — angular radius of the disk (searched range: 5°–25°)
 - **θ₀, φ₀** — sky coordinates of the disk center
 
-The signal model follows Feeney et al. (2011), Eq. 4–5 and Eq. 15.
+The signal model follows [Feeney et al. (2011), Eq. 1](https://arxiv.org/abs/1012.1995):
 
-## Project Status
+$$\frac{\delta T}{T} = \left[ \frac{z_{\text{crit}} - z_0 \cos\theta_{\text{crit}}}{1 - \cos\theta_{\text{crit}}} + \frac{z_0 - z_{\text{crit}}}{1 - \cos\theta_{\text{crit}}} \cos\theta \right] \Theta(\theta_{\text{crit}} - \theta)$$
 
-🔬 **Phase 1: Data Foundation** — *in progress*
+## Progress
 
-- [ ] Download Planck 2018 SMICA cleaned CMB map
-- [ ] Download galactic masks (KQ75 / Planck confidence masks)
-- [ ] Load and visualize HEALPix maps with healpy
-- [ ] Degrade to working resolution (Nside=256)
-- [ ] Apply galactic mask
-- [ ] Extract gnomonic (tangent plane) projections as 2D patches
-- [ ] Visualize patches and verify coordinate system
+### Phase 1: Data Foundation — ✅ Complete
 
-## Roadmap
+Downloaded the Planck 2018 SMICA cleaned CMB map, loaded and visualized HEALPix data, degraded to working resolution (Nside=256), applied the galactic mask, and extracted gnomonic (tangent-plane) projections as flat 256×256 patches.
 
-### Phase 2: Synthetic Data Generator
+**Full-sky Planck 2018 SMICA CMB (Nside=2048, 50 million pixels):**
 
-Build the training data pipeline following Feeney et al. (2011) simulation methodology. Generate CMB realizations using CAMB, inject synthetic bubble collision signatures at random sky locations with varying angular radii (5°–25°), amplitudes (10⁻⁶ to 10⁻⁴), and edge discontinuities. Produce thousands of positive (injection present) and negative (clean) patch pairs.
+![Planck 2018 SMICA full-sky CMB map](plots/01_smica_fullsky.png)
 
-### Phase 3: Model Training
+**With galactic mask applied (78% sky unmasked) at Nside=256:**
 
-Train a U-Net segmentation model with an EfficientNet encoder backbone. Input: 256×256 CMB patches covering ~40° field of view. Output: pixel-level probability maps indicating regions consistent with a bubble collision signature. Binary segmentation trained with dice loss / binary cross-entropy.
+![SMICA with galactic mask](plots/03_smica_masked.png)
 
-### Phase 4: Validation
+**Gnomonic (flat-sky) patch near the CMB Cold Spot — this is the input format for the U-Net:**
+
+![Gnomonic patch near Cold Spot](plots/04_gnomonic_cold_spot.png)
+
+### Phase 2: Synthetic Data Generator — 🔬 In Progress
+
+Implemented the bubble collision signal model from Feeney et al. (2011) Eq. 1. The signal is a linear temperature modulation in cos(θ) confined to a disk of angular radius θ_crit, with an optional discontinuity at the causal boundary.
+
+**Signal profile at three angular scales (5°, 10°, 25°):**
+
+![Bubble collision signal profiles](plots/06_signal_model_profiles.png)
+
+**Signal injected into a real Planck SMICA patch at increasing amplitudes:**
+
+Top row: signal template in isolation. Bottom row: the same patch of real CMB sky with the signal injected. At weak amplitude the signal is invisible — buried in CMB noise. At strong amplitude the circular disk is obvious. The U-Net must learn to detect signals in the transition zone.
+
+![Signal injection demo](plots/07_signal_injection_demo.png)
+
+**Parameter space sweep — z₀ (center amplitude) vs z_crit (edge discontinuity):**
+
+![Parameter space grid](plots/08_parameter_space_grid.png)
+
+Still to do in Phase 2:
+- [ ] Generate CMB realizations using CAMB (or work with Planck noise maps)
+- [ ] Build automated injection pipeline at random sky coordinates
+- [ ] Produce thousands of positive/negative training patch pairs
+- [ ] Validate injection statistics across parameter ranges
+
+### Phase 3: U-Net Model — Upcoming
+
+Train a U-Net segmentation model with an EfficientNet encoder backbone. Input: 256×256 CMB patches covering ~40° field of view. Output: pixel-level probability maps indicating regions consistent with a bubble collision signature.
+
+### Phase 4: Validation — Upcoming
 
 - Sensitivity curves at 5°, 10°, and 25° angular scales (detection rate vs. injection amplitude)
 - False positive rate on clean (no injection) patches
@@ -52,22 +78,36 @@ Train a U-Net segmentation model with an EfficientNet encoder backbone. Input: 2
 - GradCAM activation maps to verify model attention on correct spatial features
 - Direct comparison to Feeney et al. (2011) sensitivity benchmarks (Figures 11, 17)
 
-### Phase 5: Planck Inference
+### Phase 5: Planck Inference — Upcoming
 
 Tile the full unmasked Planck sky with overlapping 40° patches. Run inference and stitch outputs into a full-sky probability map. Identify candidate regions above detection threshold. Cross-reference against known CMB anomalies (Cold Spot, hemispherical asymmetry). Validate candidates across independent Planck cleaning pipelines (SMICA, NILC, SEVEM, Commander).
 
-### Phase 6: Paper and Release
+### Phase 6: Paper and Release — Upcoming
 
 Write up results. Release trained model weights, synthetic data generator, and inference pipeline as open-source tools for the CMB research community.
 
+## Quick Start
+
+```bash
+# Set up the environment
+conda env create -f environment.yml
+conda activate cmb
+
+# Phase 1: Download Planck data and generate exploration plots
+python scripts/phase1_explore.py
+
+# Phase 2: Generate signal model visualizations
+python scripts/phase2_signal_model.py
+```
+
 ## Datasets
 
-|Dataset           |Purpose                                       |Source                                            |
-|------------------|----------------------------------------------|--------------------------------------------------|
-|Planck 2018 SMICA |Primary inference target                      |[Planck Legacy Archive](https://pla.esac.esa.int/)|
-|CAMB simulations  |Synthetic CMB realizations for training       |Generated via [CAMB](https://camb.info/)          |
-|CMB-ML (ICCV 2025)|Pre-processed CMB data for ML                 |[CMB-ML](https://github.com/CMB-ML)               |
-|WMAP 7-year       |Additional validation / generalization testing|[LAMBDA](https://lambda.gsfc.nasa.gov/)           |
+| Dataset            | Purpose                                        | Source                                             |
+|--------------------|------------------------------------------------|----------------------------------------------------|
+| Planck 2018 SMICA  | Primary inference target                       | [Planck Legacy Archive](https://pla.esac.esa.int/) |
+| CAMB simulations   | Synthetic CMB realizations for training        | Generated via [CAMB](https://camb.info/)           |
+| CMB-ML (ICCV 2025) | Pre-processed CMB data for ML                  | [CMB-ML](https://github.com/CMB-ML)               |
+| WMAP 7-year        | Additional validation / generalization testing | [LAMBDA](https://lambda.gsfc.nasa.gov/)            |
 
 ## Tech Stack
 
@@ -96,6 +136,7 @@ This project is not a discovery tool. It is a triage tool. It screens the full C
 
 MIT
 
-## Author
+## Authors
+
 William Starks
 Gus Marcum
