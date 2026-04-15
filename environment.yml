@@ -11,3 +11,7 @@ dependencies:
   - matplotlib
   - astropy
   - camb
+  - pip
+  - pip:
+      - segmentation-models-pytorch
+      - timm

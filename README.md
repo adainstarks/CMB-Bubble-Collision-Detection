@@ -86,9 +86,9 @@ Current Phase 2 status:
 - [x] Ran a 1000-sample verification dataset locally
 - [x] Ran a 10000-sample production dataset locally
 
-### Phase 3: U-Net Model — Upcoming
+### Phase 3: U-Net Model — In Progress
 
-Train a U-Net segmentation model with an EfficientNet encoder backbone. Input: 256×256 CMB patches covering ~51° field of view. Output: pixel-level probability maps indicating regions consistent with a bubble collision signature.
+The Phase 3 training entrypoint is now in the repo as `scripts/phase3_train_unet.py`. It trains a U-Net with an EfficientNet encoder on the Phase 2 HDF5 dataset, uses a reproducible train/validation split, computes dataset normalization from the training subset, reweights BCE by the positive-pixel fraction, and saves checkpoints plus validation prediction previews for quick sanity checks.
 
 ### Phase 4: Validation — Upcoming
 
@@ -128,6 +128,18 @@ python scripts/phase2_generate_training.py --num-samples 1000 --pool-size 2000 -
 
 # Larger local training set
 python scripts/phase2_generate_training.py --num-samples 10000 --pool-size 5000 --num-cmb-realizations 192
+
+# Phase 3: inspect the training split and normalization without starting training
+python scripts/phase3_train_unet.py --dry-run
+
+# Phase 3: train the segmentation model on the 10k synthetic dataset
+python scripts/phase3_train_unet.py --epochs 30 --batch-size 16
+```
+
+For Phase 3 you still need a PyTorch install that matches your CUDA setup. A typical RTX 3090 setup is:
+
+```bash
+conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia
 ```
 
 ## Datasets

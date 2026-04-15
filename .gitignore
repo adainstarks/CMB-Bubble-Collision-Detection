@@ -2,6 +2,7 @@
 data/*.fits
 data/*.fits.gz
 data/training*/
+runs/
 
 # Local tool state
 .codex
