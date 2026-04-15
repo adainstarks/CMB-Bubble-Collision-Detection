@@ -66,7 +66,7 @@ Each column shows the target mask, the injected template, and the raw patch, wit
 Phase 2 changes made for scientific reasons:
 - [x] Replaced single-map SMICA training patches with many independent CAMB realizations
 - [x] Kept the Planck mask to choose clean sky coordinates
-- [x] Sampled $\theta_{\rm crit}$ from the $\sin(\theta_{\rm crit})$ a training prior motivated by Eq. 2, chosen for this Planck-era synthetic generator
+- [x] Sampled \theta_{\rm crit} from a training prior proportional to \sin(\theta_{\rm crit}), motivated by Eq.\ 2 and chosen for this Planck-era synthetic generator.
 - [x] Balanced the signs of $z_0$ and $z_{\rm crit}$ across all four sign combinations
 - [x] Added boundary smoothing as a heuristic robustness augmentation motivated by the paper’s discussion of possible sub-degree boundary smearing.
 - [x] Kept the target mask as the circular affected region on the sky
