@@ -47,25 +47,21 @@ Implemented the bubble collision signal model from Feeney et al. (2011) Eq. 1 an
 
 SMICA is still the inference target. The trained model will be run on the real Planck SMICA map. The Planck galactic mask is still used in Phase 2, but only to choose clean sky coordinates so the training patch geometry matches the final inference setup.
 
-**Signal profile at three angular scales (5°, 10°, 25°):**
+**Representative signal profiles used by the current generator:**
 
-![Bubble collision signal profiles](plots/06_signal_model_profiles.png)
+![Phase 2 signal profiles](plots/06_phase2_signal_profiles.png)
 
-**Signal injected into a real Planck SMICA patch at increasing amplitudes:**
+**Validation from the final 10000-sample Phase 2 dataset:**
 
-Top row: signal template in isolation. Bottom row: the same patch of real CMB sky with the signal injected. At weak amplitude, the signal is invisible — buried in CMB noise. At strong amplitude the circular disk is obvious. The U-Net must learn to detect signals in the transition zone.
+The final dataset follows the `sin(theta_crit)` size prior, covers the full `1e-6` to `1e-4` amplitude range for both `z0` and `z_crit`, applies edge smoothing from `0.3°` to `1.0°`, and balances all four sign quadrants.
 
-![Signal injection demo](plots/07_signal_injection_demo.png)
+![Phase 2 validation](plots/07_phase2_validation.png)
 
-**Parameter space sweep — z₀ (center amplitude) vs z_crit (edge discontinuity):**
+**Five representative Phase 2 examples from the final dataset:**
 
-![Parameter space grid](plots/08_parameter_space_grid.png)
+Each column shows the target mask, the injected template, and the raw patch, with concise sample parameters above. The examples include a blue disk, a red disk with a blue rim, a faint mixed-sign case, and two larger disks at different angular scales.
 
-**Phase 2 training examples from the final dataset:**
-
-Each column shows the target mask, the injected template, and the raw patch, with concise sample parameters above. The examples include a blue disk, a red disk with a blue rim, a faint mixed-sign case, and two larger disks at different angular scales. The full training set still spans weaker injections down to 10⁻⁶.
-
-<img src="plots/09_training_samples.png" alt="Phase 2 training examples" width="760">
+<img src="plots/08_phase2_examples.png" alt="Phase 2 training examples" width="760">
 
 Phase 2 changes made for scientific reasons:
 - [x] Replaced single-map SMICA training patches with many independent CAMB realizations
