@@ -8,7 +8,7 @@ In 2011, Feeney, Johnson, Mortlock, and Peiris published the first observational
 
 The follow-up using modern deep learning remains largely unexplored.
 
-This project builds a U-Net segmentation model trained on simulated bubble collision signatures and applies it to Planck 2018 CMB data — replacing Feeney et al.'s multi-stage classical pipeline with a single trained model capable of full-sky screening in minutes rather than days.
+This project builds a U-Net segmentation model trained on simulated bubble collision signatures and applies it to Planck 2018 CMB data — supplementing the classical pipeline with an ML screening stage.
 
 ## What Is a Bubble Collision Signature?
 
@@ -66,9 +66,9 @@ Each column shows the target mask, the injected template, and the raw patch, wit
 Phase 2 changes made for scientific reasons:
 - [x] Replaced single-map SMICA training patches with many independent CAMB realizations
 - [x] Kept the Planck mask to choose clean sky coordinates
-- [x] Sampled $\theta_{\rm crit}$ from the $\sin(\theta_{\rm crit})$ prior discussed around Feeney et al. (2011) Eq. 2
+- [x] Sampled $\theta_{\rm crit}$ from the $\sin(\theta_{\rm crit})$ a training prior motivated by Eq. 2, chosen for this Planck-era synthetic generator
 - [x] Balanced the signs of $z_0$ and $z_{\rm crit}$ across all four sign combinations
-- [x] Added boundary smoothing to every positive sample to reflect the sub-degree edge smearing discussed by Feeney et al. (2011)
+- [x] Added boundary smoothing as a heuristic robustness augmentation motivated by the paper’s discussion of possible sub-degree boundary smearing.
 - [x] Kept the target mask as the circular affected region on the sky
 - [x] Fixed the CAMB normalization so the simulations use raw $C_\ell$ when generating CMB skies
 - [x] Saved patches, labels, masks, parameters, and validation metadata to HDF5
@@ -81,7 +81,6 @@ Current Phase 2 status:
 - [x] Built an automated injection pipeline
 - [x] Balanced $z_0$ and $z_{\rm crit}$ across all four sign quadrants
 - [x] Applied edge smoothing in the range 0.3°–1.0° to every positive sample
-- [x] Sampled $\theta_{\rm crit}$ from the physical $\sin(\theta_{\rm crit})$ prior
 - [x] Randomized the positive signal center within each patch to break center-bias shortcut learning
 - [x] Completed basic dataset validation: parameter histograms, sign balance, NaN checks, and preview inspection
 - [x] Ran a 1000-sample verification dataset locally
