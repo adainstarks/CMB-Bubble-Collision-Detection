@@ -83,6 +83,12 @@ def parse_args():
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--preview-count", type=int, default=6)
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
+    parser.add_argument(
+        "--gpu-ids",
+        type=str,
+        default="",
+        help="Comma-separated CUDA device ids to use with DataParallel, e.g. `0,1`.",
+    )
     parser.add_argument("--max-train-samples", type=int, default=0)
     parser.add_argument("--max-val-samples", type=int, default=0)
     parser.add_argument("--grad-clip", type=float, default=0.0)
@@ -123,6 +129,11 @@ def validate_args(args):
         raise ValueError("--max-translate-pixels must be non-negative.")
     if args.min_positive_amplitude < 0.0:
         raise ValueError("--min-positive-amplitude must be non-negative.")
+    if args.gpu_ids.strip():
+        try:
+            parse_gpu_ids(args.gpu_ids)
+        except ValueError as exc:
+            raise ValueError("--gpu-ids must be a comma-separated list of non-negative integers.") from exc
 
 
 def require_ml_packages():
@@ -485,6 +496,65 @@ def resolve_device(device_arg):
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def parse_gpu_ids(gpu_ids_arg):
+    gpu_ids = []
+    for token in gpu_ids_arg.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        gpu_id = int(token)
+        if gpu_id < 0:
+            raise ValueError("GPU ids must be non-negative.")
+        gpu_ids.append(gpu_id)
+    return gpu_ids
+
+
+def select_data_parallel_device_ids(device, gpu_ids_arg):
+    if device.type != "cuda":
+        return []
+    if not gpu_ids_arg.strip():
+        return []
+
+    requested_ids = parse_gpu_ids(gpu_ids_arg)
+    visible_count = torch.cuda.device_count()
+    if visible_count <= 0:
+        raise RuntimeError("CUDA requested, but torch.cuda.device_count() returned zero.")
+    invalid_ids = [gpu_id for gpu_id in requested_ids if gpu_id >= visible_count]
+    if invalid_ids:
+        raise RuntimeError(
+            f"Requested GPU ids {invalid_ids}, but only {visible_count} CUDA device(s) are visible."
+        )
+    return requested_ids
+
+
+def wrap_model_for_data_parallel(model, device_ids):
+    if len(device_ids) <= 1:
+        return model
+    return nn.DataParallel(model, device_ids=device_ids)
+
+
+def model_state_dict_for_checkpoint(model):
+    if isinstance(model, nn.DataParallel):
+        return model.module.state_dict()
+    return model.state_dict()
+
+
+def load_model_state_dict(model, state_dict):
+    try:
+        model.load_state_dict(state_dict)
+        return
+    except RuntimeError:
+        pass
+
+    stripped = {}
+    for key, value in state_dict.items():
+        if key.startswith("module."):
+            stripped[key[len("module."):]] = value
+        else:
+            stripped[key] = value
+    model.load_state_dict(stripped)
+
+
 def build_model(args):
     encoder_weights = None if args.encoder_weights.lower() == "none" else args.encoder_weights
     return smp.Unet(
@@ -839,15 +909,22 @@ def main():
     print(f"  Train std:       {train_std:.6e}")
     print(f"  Positive pixels: {positive_fraction:.3%}")
     print(f"  BCE pos_weight:  {pos_weight:.3f}")
-    print(f"  Run dir:         {run_dir}")
 
     if args.dry_run:
+        print(f"  Run dir:         {run_dir}")
         print("\nDry run complete. Skipping model construction and training.")
         return
 
     require_ml_packages()
     device = resolve_device(args.device)
+    data_parallel_device_ids = select_data_parallel_device_ids(device, args.gpu_ids)
     use_amp = bool(not args.disable_amp and device.type == "cuda")
+
+    if data_parallel_device_ids:
+        print(f"  DataParallel:    enabled on GPUs {data_parallel_device_ids}")
+    elif device.type == "cuda":
+        print(f"  DataParallel:    disabled (visible CUDA devices: {torch.cuda.device_count()})")
+    print(f"  Run dir:         {run_dir}")
 
     train_dataset = H5BubbleDataset(
         h5_path=h5_path,
@@ -878,6 +955,7 @@ def main():
     val_loader = DataLoader(val_dataset, shuffle=False, **loader_kwargs)
 
     model = build_model(args).to(device)
+    model = wrap_model_for_data_parallel(model, data_parallel_device_ids)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -957,7 +1035,7 @@ def main():
 
         checkpoint = {
             "epoch": epoch,
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": model_state_dict_for_checkpoint(model),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),
             "scaler_state_dict": scaler.state_dict(),

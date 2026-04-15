@@ -439,7 +439,7 @@ def main():
     )
     model = p3.build_model(model_args).to(device)
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    p3.load_model_state_dict(model, checkpoint["model_state_dict"])
 
     thresholds = np.linspace(args.threshold_min, args.threshold_max, args.threshold_count, dtype=np.float64)
     metrics_per_threshold, previews = evaluate_thresholds(
