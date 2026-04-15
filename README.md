@@ -82,13 +82,45 @@ Current Phase 2 status:
 - [x] Balanced $z_0$ and $z_{\rm crit}$ across all four sign quadrants
 - [x] Applied edge smoothing in the range 0.3°–1.0° to every positive sample
 - [x] Sampled $\theta_{\rm crit}$ from the physical $\sin(\theta_{\rm crit})$ prior
+- [x] Randomized the positive signal center within each patch to break center-bias shortcut learning
 - [x] Completed basic dataset validation: parameter histograms, sign balance, NaN checks, and preview inspection
 - [x] Ran a 1000-sample verification dataset locally
 - [x] Ran a 10000-sample production dataset locally
 
-### Phase 3: U-Net Model — In Progress
+### Phase 3: U-Net Model — Initial Baseline Complete
 
-The Phase 3 training entrypoint is now in the repo as `scripts/phase3_train_unet.py`. It trains a U-Net with an EfficientNet encoder on the Phase 2 HDF5 dataset, uses a reproducible train/validation split, computes dataset normalization from the training subset, reweights BCE by the positive-pixel fraction, and saves checkpoints plus validation prediction previews for quick sanity checks.
+The Phase 3 training entrypoint is `scripts/phase3_train_unet.py`. It trains a U-Net with an EfficientNet encoder on the Phase 2 HDF5 dataset, uses a reproducible train/validation split, computes dataset normalization from the training subset, reweights BCE by the positive-pixel fraction, supports multi-GPU training, and saves checkpoints plus validation prediction previews.
+
+The first full baseline run used the off-center 10k synthetic dataset, filtered positives to `|z| >= 3e-5` for the initial high-SNR pass, and trained on a balanced 4544-patch candidate set (4090 train / 454 val) across 2× RTX 3090 GPUs.
+
+**Baseline synthetic-validation results from the finished 20-epoch run:**
+
+| Setting | Threshold | Precision | Recall | Image F1 | False Positive Rate | Positive Dice | Positive IoU |
+|---------|-----------|-----------|--------|----------|---------------------|---------------|--------------|
+| Final training configuration | 0.92 | 0.879 | 0.833 | 0.855 | 0.115 | 0.720 | 0.668 |
+| Best threshold from evaluator | 0.96 | 0.916 | 0.815 | 0.862 | 0.075 | 0.687 | 0.631 |
+
+These numbers are on the held-out synthetic validation split, not on real Planck data yet. The key milestone is that the model now trains stably on off-center injections and no longer collapses into the earlier centered-disk shortcut.
+
+**Training curves for the full 10k off-center baseline run:**
+
+![Phase 3 training curves](plots/09_phase3_training_curves.png)
+
+**Threshold sweep on the held-out synthetic validation split:**
+
+![Phase 3 threshold sweep](plots/10_phase3_threshold_sweep.png)
+
+**Positive validation examples at the evaluator-selected threshold (`0.96`):**
+
+Each row shows the raw patch, the target mask, the model probability map, and the thresholded prediction.
+
+<img src="plots/11_phase3_positive_preview.png" alt="Phase 3 positive validation preview" width="760">
+
+**Negative validation examples at the evaluator-selected threshold (`0.96`):**
+
+These rows are useful for checking whether the model is spuriously lighting up clean background patches.
+
+<img src="plots/12_phase3_negative_preview.png" alt="Phase 3 negative validation preview" width="760">
 
 ### Phase 4: Validation — Upcoming
 
@@ -132,8 +164,11 @@ python scripts/phase2_generate_training.py --num-samples 10000 --pool-size 5000 
 # Phase 3: inspect the training split and normalization without starting training
 python scripts/phase3_train_unet.py --dry-run
 
-# Phase 3: train the segmentation model on the 10k synthetic dataset
-python scripts/phase3_train_unet.py --epochs 30 --batch-size 16
+# Phase 3: train the segmentation model on the 10k off-center synthetic dataset
+python scripts/phase3_train_unet.py --data-h5 data/training_v3_10000/training_data.h5 --epochs 20 --batch-size 16 --threshold 0.92
+
+# Phase 3: evaluate a finished run and sweep thresholds on the validation split
+python scripts/phase3_evaluate_run.py --run-dir runs/phase3_unet/phase3_offcenter_10k_2gpu --checkpoint best --split val --num-workers 0
 ```
 
 For Phase 3 you still need a PyTorch install that matches your CUDA setup. A typical RTX 3090 setup is:
