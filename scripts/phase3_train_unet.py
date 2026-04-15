@@ -31,6 +31,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage import shift as ndi_shift
 
 try:
     import torch
@@ -74,6 +75,7 @@ def parse_args():
     parser.add_argument("--train-fraction", type=float, default=0.9)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--min-positive-amplitude", type=float, default=0.0)
     parser.add_argument("--encoder-name", type=str, default="efficientnet-b0")
     parser.add_argument("--encoder-weights", type=str, default="imagenet")
     parser.add_argument("--bce-weight", type=float, default=1.0)
@@ -84,6 +86,7 @@ def parse_args():
     parser.add_argument("--max-train-samples", type=int, default=0)
     parser.add_argument("--max-val-samples", type=int, default=0)
     parser.add_argument("--grad-clip", type=float, default=0.0)
+    parser.add_argument("--max-translate-pixels", type=int, default=48)
     parser.add_argument("--disable-amp", action="store_true")
     parser.add_argument("--disable-augment", action="store_true")
     parser.add_argument(
@@ -116,6 +119,10 @@ def validate_args(args):
         raise ValueError("--preview-count must be positive.")
     if args.max_train_samples < 0 or args.max_val_samples < 0:
         raise ValueError("--max-train-samples and --max-val-samples must be non-negative.")
+    if args.max_translate_pixels < 0:
+        raise ValueError("--max-translate-pixels must be non-negative.")
+    if args.min_positive_amplitude < 0.0:
+        raise ValueError("--min-positive-amplitude must be non-negative.")
 
 
 def require_ml_packages():
@@ -160,6 +167,13 @@ def load_dataset_summary(h5_path):
 def load_labels(h5_path):
     with h5py.File(h5_path, "r") as h5:
         return np.asarray(h5["labels"][:], dtype=np.uint8)
+
+
+def load_positive_signal_strength(h5_path):
+    with h5py.File(h5_path, "r") as h5:
+        z0 = np.asarray(h5["metadata"]["z0"][:], dtype=np.float32)
+        zcrit = np.asarray(h5["metadata"]["zcrit"][:], dtype=np.float32)
+    return np.maximum(np.abs(z0), np.abs(zcrit))
 
 
 def format_seconds(seconds):
@@ -223,11 +237,49 @@ def limit_indices(indices, labels, limit, rng):
     return limited
 
 
-def stratified_split(labels, train_fraction, seed, max_train_samples=0, max_val_samples=0):
-    rng = np.random.default_rng(seed)
+def select_candidate_indices(labels, signal_strength, seed, min_positive_amplitude):
     all_indices = np.arange(len(labels), dtype=np.int64)
-    pos = all_indices[labels == 1]
-    neg = all_indices[labels == 0]
+    if min_positive_amplitude <= 0.0:
+        return all_indices, {
+            "min_positive_amplitude": 0.0,
+            "retained_positive": int((labels == 1).sum()),
+            "retained_negative": int((labels == 0).sum()),
+            "candidate_samples": int(len(labels)),
+        }
+
+    rng = np.random.default_rng(seed)
+    positive_idx = all_indices[(labels == 1) & (signal_strength >= min_positive_amplitude)]
+    negative_idx = all_indices[labels == 0]
+
+    if len(positive_idx) == 0:
+        raise RuntimeError(
+            f"No positive samples remain after applying --min-positive-amplitude={min_positive_amplitude:.2e}."
+        )
+
+    rng.shuffle(positive_idx)
+    rng.shuffle(negative_idx)
+
+    kept_negatives = negative_idx[: len(positive_idx)]
+    candidate_indices = np.concatenate([positive_idx, kept_negatives])
+    rng.shuffle(candidate_indices)
+
+    return candidate_indices, {
+        "min_positive_amplitude": float(min_positive_amplitude),
+        "retained_positive": int(len(positive_idx)),
+        "retained_negative": int(len(kept_negatives)),
+        "candidate_samples": int(len(candidate_indices)),
+    }
+
+
+def stratified_split(labels, train_fraction, seed, max_train_samples=0, max_val_samples=0, candidate_indices=None):
+    rng = np.random.default_rng(seed)
+    if candidate_indices is None:
+        all_indices = np.arange(len(labels), dtype=np.int64)
+    else:
+        all_indices = np.asarray(candidate_indices, dtype=np.int64)
+    selected_labels = labels[all_indices]
+    pos = all_indices[selected_labels == 1]
+    neg = all_indices[selected_labels == 0]
 
     rng.shuffle(pos)
     rng.shuffle(neg)
@@ -321,14 +373,53 @@ def random_dihedral(patch, mask, rng):
     return patch.copy(), mask.copy()
 
 
+def translate_patch_and_mask(patch, mask, shift_y, shift_x):
+    """
+    Translate a training example so the network cannot solve the task by
+    memorizing that positive masks are always centered in the patch.
+
+    We reflect-pad the CMB patch to avoid introducing artificial blank borders,
+    while the binary target mask is shifted with zero fill.
+    """
+    if shift_x == 0 and shift_y == 0:
+        return patch, mask
+
+    patch_shifted = ndi_shift(
+        patch,
+        shift=(shift_y, shift_x),
+        order=1,
+        mode="reflect",
+        prefilter=False,
+    )
+    mask_shifted = ndi_shift(
+        mask,
+        shift=(shift_y, shift_x),
+        order=0,
+        mode="constant",
+        cval=0.0,
+        prefilter=False,
+    )
+    return patch_shifted.astype(np.float32), (mask_shifted > 0.5).astype(np.float32)
+
+
+def random_translate(patch, mask, rng, max_translate_pixels):
+    if max_translate_pixels <= 0:
+        return patch, mask
+
+    shift_y = int(rng.integers(-max_translate_pixels, max_translate_pixels + 1))
+    shift_x = int(rng.integers(-max_translate_pixels, max_translate_pixels + 1))
+    return translate_patch_and_mask(patch, mask, shift_y=shift_y, shift_x=shift_x)
+
+
 class H5BubbleDataset(Dataset):
-    def __init__(self, h5_path, indices, mean, std, augment=False, seed=42):
+    def __init__(self, h5_path, indices, mean, std, augment=False, seed=42, max_translate_pixels=0):
         self.h5_path = str(h5_path)
         self.indices = np.asarray(indices, dtype=np.int64)
         self.mean = float(mean)
         self.std = float(max(std, 1e-8))
         self.augment = bool(augment)
         self.seed = int(seed)
+        self.max_translate_pixels = int(max_translate_pixels)
         self._h5 = None
         self._rng = None
 
@@ -358,6 +449,12 @@ class H5BubbleDataset(Dataset):
         mask = np.asarray(h5["masks"][index], dtype=np.float32)
 
         if self.augment:
+            patch, mask = random_translate(
+                patch,
+                mask,
+                self._get_rng(),
+                max_translate_pixels=self.max_translate_pixels,
+            )
             patch, mask = random_dihedral(patch, mask, self._get_rng())
 
         patch = (patch - self.mean) / self.std
@@ -679,12 +776,20 @@ def main():
     run_dir = make_run_dir(args.output_root, args.run_name)
     summary = load_dataset_summary(h5_path)
     labels = load_labels(h5_path)
+    signal_strength = load_positive_signal_strength(h5_path)
+    candidate_indices, candidate_summary = select_candidate_indices(
+        labels,
+        signal_strength=signal_strength,
+        seed=args.seed,
+        min_positive_amplitude=args.min_positive_amplitude,
+    )
     train_idx, val_idx = stratified_split(
         labels,
         train_fraction=args.train_fraction,
         seed=args.seed,
         max_train_samples=args.max_train_samples,
         max_val_samples=args.max_val_samples,
+        candidate_indices=candidate_indices,
     )
 
     train_pos, train_neg = count_class_balance(labels, train_idx)
@@ -714,6 +819,7 @@ def main():
             "positive_pixel_fraction": positive_fraction,
             "bce_pos_weight": pos_weight,
         },
+        "candidate_selection": candidate_summary,
     }
 
     save_json(run_dir / "run_config.json", run_config)
@@ -723,6 +829,12 @@ def main():
     print(f"  HDF5:            {h5_path}")
     print(f"  Train samples:   {len(train_idx)} ({train_pos} pos / {train_neg} neg)")
     print(f"  Val samples:     {len(val_idx)} ({val_pos} pos / {val_neg} neg)")
+    if args.min_positive_amplitude > 0.0:
+        print(
+            f"  Candidate set:   {candidate_summary['candidate_samples']} "
+            f"({candidate_summary['retained_positive']} pos / {candidate_summary['retained_negative']} neg)"
+        )
+        print(f"  Min amplitude:   {args.min_positive_amplitude:.2e}")
     print(f"  Train mean:      {train_mean:.6e}")
     print(f"  Train std:       {train_std:.6e}")
     print(f"  Positive pixels: {positive_fraction:.3%}")
@@ -744,6 +856,7 @@ def main():
         std=train_std,
         augment=not args.disable_augment,
         seed=args.seed,
+        max_translate_pixels=args.max_translate_pixels,
     )
     val_dataset = H5BubbleDataset(
         h5_path=h5_path,
@@ -752,6 +865,7 @@ def main():
         std=train_std,
         augment=False,
         seed=args.seed + 1,
+        max_translate_pixels=0,
     )
 
     loader_kwargs = {

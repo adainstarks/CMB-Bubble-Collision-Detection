@@ -91,25 +91,62 @@ def bubble_collision_signal(theta, z0, zcrit, theta_crit, edge_sigma_deg=0.0):
     return modulation * window
 
 
-def make_angular_distance_grid(npix, reso_arcmin):
+def make_plane_coordinate_grids(npix, reso_arcmin):
     """
-    Build a 2D grid of angular distances (radians) from the patch center
-    for a gnomonic (tangent-plane) projection.
+    Return tangent-plane x/y coordinates for each patch pixel.
 
-    healpy.gnomview uses tangent-plane coordinates, so the angular distance is
-    theta = arctan(r_plane) rather than the small-angle approximation theta ~= r.
+    The coordinates are expressed in gnomonic-plane units, so a point at angle
+    alpha from the patch center along one axis sits at tan(alpha) on the plane.
     """
-    center = (npix - 1) / 2.0
+    patch_center = (npix - 1) / 2.0
     iy, ix = np.mgrid[0:npix, 0:npix]
-    dx_rad = np.radians((ix - center) * reso_arcmin / 60.0)
-    dy_rad = np.radians((iy - center) * reso_arcmin / 60.0)
-    r_plane = np.sqrt(dx_rad**2 + dy_rad**2)
-    return np.arctan(r_plane)
+    dx_angle_rad = np.radians((ix - patch_center) * reso_arcmin / 60.0)
+    dy_angle_rad = np.radians((iy - patch_center) * reso_arcmin / 60.0)
+    return np.tan(dx_angle_rad), np.tan(dy_angle_rad)
 
 
-def inject_signal_into_patch(patch, z0, zcrit, theta_crit_deg, edge_sigma_deg=0.0):
+def make_angular_distance_grid(npix, reso_arcmin, center_x_pix=None, center_y_pix=None):
     """
-    Inject a bubble collision signal centered on a flat-sky patch.
+    Build a 2D grid of angular distances (radians) from an arbitrary point in a
+    gnomonic (tangent-plane) patch.
+
+    When the signal center is not at the patch midpoint, we compute the angular
+    separation on the sphere by mapping both the bubble center and every pixel
+    back to 3D directions from the same tangent plane.
+    """
+    patch_center = (npix - 1) / 2.0
+    if center_x_pix is None:
+        center_x_pix = patch_center
+    if center_y_pix is None:
+        center_y_pix = patch_center
+
+    x_plane, y_plane = make_plane_coordinate_grids(npix, reso_arcmin)
+    center_dx_angle = np.radians((center_x_pix - patch_center) * reso_arcmin / 60.0)
+    center_dy_angle = np.radians((center_y_pix - patch_center) * reso_arcmin / 60.0)
+    center_x_plane = np.tan(center_dx_angle)
+    center_y_plane = np.tan(center_dy_angle)
+
+    pixel_vec = np.stack((x_plane, y_plane, np.ones_like(x_plane)), axis=0)
+    pixel_vec /= np.linalg.norm(pixel_vec, axis=0, keepdims=True)
+
+    center_vec = np.array([center_x_plane, center_y_plane, 1.0], dtype=np.float64)
+    center_vec /= np.linalg.norm(center_vec)
+
+    cos_theta = np.clip(np.sum(pixel_vec * center_vec[:, None, None], axis=0), -1.0, 1.0)
+    return np.arccos(cos_theta)
+
+
+def inject_signal_into_patch(
+    patch,
+    z0,
+    zcrit,
+    theta_crit_deg,
+    edge_sigma_deg=0.0,
+    center_x_pix=None,
+    center_y_pix=None,
+):
+    """
+    Inject a bubble collision signal into a flat-sky patch.
     
     Uses multiplicative injection per Feeney et al. (2011) Eq. 15:
         δT = (1 + f(n̂)) * (T0 + δT_cmb) - T0
@@ -117,7 +154,12 @@ def inject_signal_into_patch(patch, z0, zcrit, theta_crit_deg, edge_sigma_deg=0.
     The Planck SMICA patch is a temperature-anisotropy map, so we reconstruct the
     full temperature as T0 + δT_cmb, apply the modulation, and subtract T0 again.
     """
-    theta_grid = make_angular_distance_grid(patch.shape[0], RESO_ARCMIN)
+    theta_grid = make_angular_distance_grid(
+        patch.shape[0],
+        RESO_ARCMIN,
+        center_x_pix=center_x_pix,
+        center_y_pix=center_y_pix,
+    )
     theta_crit = np.radians(theta_crit_deg)
     signal = bubble_collision_signal(
         theta_grid,

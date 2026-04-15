@@ -1,5 +1,5 @@
 """
-Phase 2 V2: Generate training data for bubble-collision detection.
+Phase 2 V3: Generate training data for bubble-collision detection.
 
 The training set is built from CAMB realizations, not from the single real SMICA
 sky. This matters because the model should learn the bubble-collision pattern on
@@ -41,7 +41,7 @@ from phase2_signal_model import (
 )
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_OUTPUT_DIR = os.path.join(DATA_DIR, "training_v2")
+DEFAULT_OUTPUT_DIR = os.path.join(DATA_DIR, "training_v3")
 NSIDE_WORKING = 256
 MASK_THRESHOLD = 0.95
 
@@ -59,6 +59,7 @@ def parse_args():
     parser.add_argument("--num-cmb-realizations", type=int, default=192)
     parser.add_argument("--edge-sigma-min-deg", type=float, default=0.3)
     parser.add_argument("--edge-sigma-max-deg", type=float, default=1.0)
+    parser.add_argument("--signal-center-edge-margin-pix", type=float, default=16.0)
     return parser.parse_args()
 
 
@@ -76,6 +77,10 @@ def validate_smoothing_args(args):
         raise ValueError("--edge sigma bounds must be non-negative.")
     if args.edge_sigma_min_deg > args.edge_sigma_max_deg:
         raise ValueError("--edge-sigma-min-deg must be <= --edge-sigma-max-deg.")
+    if args.signal_center_edge_margin_pix < 0.0:
+        raise ValueError("--signal-center-edge-margin-pix must be non-negative.")
+    if args.signal_center_edge_margin_pix >= PATCH_PIX / 2.0:
+        raise ValueError("--signal-center-edge-margin-pix must be smaller than half the patch width.")
 
 
 def ensure_planck_inputs():
@@ -124,7 +129,7 @@ def generate_camb_realizations(num_realizations, rng):
         import camb
     except ImportError as exc:
         raise RuntimeError(
-            "CAMB is required for Phase 2 V2. Install it in the active environment "
+            "CAMB is required for Phase 2 V3. Install it in the active environment "
             "before running this script."
         ) from exc
 
@@ -268,9 +273,17 @@ def max_fully_contained_radius_deg():
     return float(np.degrees(np.arctan(axis_offset_rad)))
 
 
-def make_centered_disk_mask(theta_grid, theta_crit_deg):
+def make_disk_mask(theta_grid, theta_crit_deg):
     theta_crit_rad = np.radians(theta_crit_deg)
     return (theta_grid <= theta_crit_rad).astype(np.uint8)
+
+
+def sample_signal_center_pixels(rng, npix, edge_margin_pix):
+    low = float(edge_margin_pix)
+    high = float(npix - 1 - edge_margin_pix)
+    center_x_pix = rng.uniform(low, high)
+    center_y_pix = rng.uniform(low, high)
+    return center_x_pix, center_y_pix
 
 
 def make_preview_grid(indices, patches, labels, metadata, output_path):
@@ -290,7 +303,10 @@ def make_preview_grid(indices, patches, labels, metadata, output_path):
         glat = metadata["glat_deg"][idx]
         if labels[idx] == 1:
             theta_crit = metadata["theta_crit_deg"][idx]
+            dx_deg = metadata["signal_center_dx_deg"][idx]
+            dy_deg = metadata["signal_center_dy_deg"][idx]
             ax.set_title(f"{label}  lon={glon:.1f}, lat={glat:.1f}\nR={theta_crit:.1f} deg", fontsize=10)
+            ax.set_xlabel(f"dx={dx_deg:.1f} deg, dy={dy_deg:.1f} deg", fontsize=9)
         else:
             ax.set_title(f"{label}  lon={glon:.1f}, lat={glat:.1f}", fontsize=10)
         ax.set_xticks([])
@@ -309,7 +325,6 @@ def make_positive_preview(indices, patches, masks, metadata, output_path):
     if len(indices) == 0:
         return
 
-    theta_grid = make_angular_distance_grid(PATCH_PIX, RESO_ARCMIN)
     fig, axes = plt.subplots(len(indices), 3, figsize=(14, 4 * len(indices)))
     axes = np.atleast_2d(axes)
 
@@ -324,12 +339,20 @@ def make_positive_preview(indices, patches, masks, metadata, output_path):
             f"lon={metadata['glon_deg'][idx]:.1f}, lat={metadata['glat_deg'][idx]:.1f}\n"
             f"R={metadata['theta_crit_deg'][idx]:.1f} deg, "
             f"z0={metadata['z0'][idx]:.2e}, zcrit={metadata['zcrit'][idx]:.2e}, "
-            f"sigma={metadata['edge_sigma_deg'][idx]:.2f}",
+            f"sigma={metadata['edge_sigma_deg'][idx]:.2f}\n"
+            f"dx={metadata['signal_center_dx_deg'][idx]:.1f} deg, "
+            f"dy={metadata['signal_center_dy_deg'][idx]:.1f} deg",
             fontsize=10,
         )
         patch_ax.set_xticks([])
         patch_ax.set_yticks([])
 
+        theta_grid = make_angular_distance_grid(
+            PATCH_PIX,
+            RESO_ARCMIN,
+            center_x_pix=float(metadata["signal_center_x_pix"][idx]),
+            center_y_pix=float(metadata["signal_center_y_pix"][idx]),
+        )
         signal = bubble_collision_signal(
             theta_grid,
             float(metadata["z0"][idx]),
@@ -355,7 +378,7 @@ def make_positive_preview(indices, patches, masks, metadata, output_path):
 
 def make_validation_histograms(labels, metadata, output_path):
     pos = labels == 1
-    fig, axes = plt.subplots(2, 3, figsize=(15, 9))
+    fig, axes = plt.subplots(2, 4, figsize=(18, 9))
     axes = axes.ravel()
 
     axes[0].hist(metadata["glon_deg"], bins=30, color="#2563eb", alpha=0.85)
@@ -375,6 +398,12 @@ def make_validation_histograms(labels, metadata, output_path):
 
     axes[5].hist(metadata["edge_sigma_deg"][pos], bins=30, color="#16a34a", alpha=0.85)
     axes[5].set_title("Edge sigma (deg)")
+
+    axes[6].hist(metadata["signal_center_dx_deg"][pos], bins=30, color="#0f766e", alpha=0.85)
+    axes[6].set_title("Signal center dx (deg)")
+
+    axes[7].hist(metadata["signal_center_dy_deg"][pos], bins=30, color="#7c2d12", alpha=0.85)
+    axes[7].set_title("Signal center dy (deg)")
 
     for ax in axes:
         ax.grid(alpha=0.25)
@@ -446,7 +475,6 @@ def main():
     coord_pool = build_coordinate_pool(mask_256, args.pool_size, rng)
     cmb_realizations, camb_params = generate_camb_realizations(args.num_cmb_realizations, rng)
 
-    theta_grid = make_angular_distance_grid(PATCH_PIX, RESO_ARCMIN)
     contained_radius_deg = max_fully_contained_radius_deg()
     requested_max_radius_deg = 25.0
     if requested_max_radius_deg > contained_radius_deg:
@@ -454,8 +482,9 @@ def main():
             "\n=== Geometry warning ===\n"
             f"  The current patch geometry fully contains centered disks only up to about "
             f"{contained_radius_deg:.2f} deg.\n"
-            f"  Requested injections extend to {requested_max_radius_deg:.1f} deg, so the "
-            "largest disks will be clipped by the patch boundaries."
+            f"  Requested injections extend to {requested_max_radius_deg:.1f} deg.\n"
+            "  Positive injections are now randomized within the patch, so partial disks "
+            "near the patch boundaries are expected by design."
         )
 
     num_samples = args.num_samples
@@ -474,6 +503,10 @@ def main():
     z0 = np.full(num_samples, np.nan, dtype=np.float32)
     zcrit = np.full(num_samples, np.nan, dtype=np.float32)
     edge_sigma_deg = np.full(num_samples, np.nan, dtype=np.float32)
+    signal_center_x_pix = np.full(num_samples, np.nan, dtype=np.float32)
+    signal_center_y_pix = np.full(num_samples, np.nan, dtype=np.float32)
+    signal_center_dx_deg = np.full(num_samples, np.nan, dtype=np.float32)
+    signal_center_dy_deg = np.full(num_samples, np.nan, dtype=np.float32)
 
     positive_flags = np.zeros(num_samples, dtype=bool)
     positive_flags[:num_positive] = True
@@ -501,6 +534,14 @@ def main():
             z0_i = sign_z0_i * sample_log_uniform(rng, 1e-6, 1e-4)
             zcrit_i = sign_zcrit_i * sample_log_uniform(rng, 1e-6, 1e-4)
             edge_sigma_i = rng.uniform(args.edge_sigma_min_deg, args.edge_sigma_max_deg)
+            center_x_i, center_y_i = sample_signal_center_pixels(
+                rng,
+                PATCH_PIX,
+                edge_margin_pix=args.signal_center_edge_margin_pix,
+            )
+            center_pix = (PATCH_PIX - 1) / 2.0
+            center_dx_i = (center_x_i - center_pix) * RESO_ARCMIN / 60.0
+            center_dy_i = (center_y_i - center_pix) * RESO_ARCMIN / 60.0
 
             patch_i, _ = inject_signal_into_patch(
                 clean_patch,
@@ -508,8 +549,16 @@ def main():
                 zcrit_i,
                 theta_i,
                 edge_sigma_deg=edge_sigma_i,
+                center_x_pix=center_x_i,
+                center_y_pix=center_y_i,
             )
-            mask_i = make_centered_disk_mask(theta_grid, theta_i)
+            theta_grid_i = make_angular_distance_grid(
+                PATCH_PIX,
+                RESO_ARCMIN,
+                center_x_pix=center_x_i,
+                center_y_pix=center_y_i,
+            )
+            mask_i = make_disk_mask(theta_grid_i, theta_i)
 
             patches[idx] = np.asarray(patch_i, dtype=np.float32)
             labels[idx] = label
@@ -518,6 +567,10 @@ def main():
             z0[idx] = z0_i
             zcrit[idx] = zcrit_i
             edge_sigma_deg[idx] = edge_sigma_i
+            signal_center_x_pix[idx] = center_x_i
+            signal_center_y_pix[idx] = center_y_i
+            signal_center_dx_deg[idx] = center_dx_i
+            signal_center_dy_deg[idx] = center_dy_i
             positive_counter += 1
         else:
             patches[idx] = clean_patch
@@ -537,6 +590,10 @@ def main():
         "z0": z0,
         "zcrit": zcrit,
         "edge_sigma_deg": edge_sigma_deg,
+        "signal_center_x_pix": signal_center_x_pix,
+        "signal_center_y_pix": signal_center_y_pix,
+        "signal_center_dx_deg": signal_center_dx_deg,
+        "signal_center_dy_deg": signal_center_dy_deg,
         "is_positive": labels.astype(np.uint8),
     }
     summary = {
@@ -553,10 +610,12 @@ def main():
         "mask_threshold": float(MASK_THRESHOLD),
         "edge_sigma_min_deg": float(args.edge_sigma_min_deg),
         "edge_sigma_max_deg": float(args.edge_sigma_max_deg),
+        "signal_center_edge_margin_pix": float(args.signal_center_edge_margin_pix),
         "sky_fraction": float(sky_fraction),
         "theta_prior": "sin(theta_crit)",
         "z0_sign_sampling": "balanced",
         "zcrit_sign_sampling": "balanced",
+        "positive_injection_geometry": "randomized within patch",
         "camb_params": json.dumps(camb_params, sort_keys=True),
         "output_dir": os.path.abspath(args.output_dir),
         "dataset_path": os.path.abspath(os.path.join(args.output_dir, "training_data.h5")),
