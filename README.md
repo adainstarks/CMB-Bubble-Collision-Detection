@@ -86,7 +86,7 @@ The current generator is intentionally stricter than an early ML demo:
 
 ## Phase 3 Screening Results
 
-Phase 3 is now evaluated against classical baselines on the same audited splits. The most useful current ML branch is `v6_aux_only` for morphology, with `v5_consensus`, `score_avg`, and `matched_template` retained for operating-policy comparisons.
+Phase 3 is now evaluated against classical baselines on the same audited splits. The five learned/model-policy variants below were important investigative controls: they tested whether boundary-aware losses, consensus policies, auxiliary heads, and branch averaging produced materially different behavior. The current working path is narrower. We are focusing on the two-model pair `v6_aux_only + matched_template` because it keeps the best morphology-aligned ML branch while retaining an interpretable Feeney-template classical score, without carrying the calibration and maintenance burden of several near-tied learned branches.
 
 At matched synthetic FPR `0.08` on the independent stratified validation set:
 
@@ -152,18 +152,17 @@ The current detector can recover more contested positives by lowering the thresh
 
 **Figure 10.** Diagnostic real-SMICA injection examples. The failures are informative: small-radius or low-amplitude discs often produce diffuse probability maps just below threshold, while larger or stronger discs are recovered cleanly. This is consistent with an integrated-SNR limitation, not simple model blindness.
 
-## Deployment Recipe
+## Current Operating Direction
 
-Current Phase 3 should be used as a multi-score screening system.
+Current Phase 3 should be treated as a two-score screening system, not a five-model deployment stack.
 
-- Run `matched_template` as a classical reference and fallback.
-- Run `v5_consensus` as the default ML candidate score at threshold `0.99094790`.
-- Run `score_avg` as a conservative verifier/reranker at threshold `0.98226583`.
-- Run `v6_aux_only` for morphology and mask-quality audit.
-- Emit a verified candidate when `v5_consensus` fires and either `score_avg` or `matched_template` also fires.
-- Preserve all branch scores, thresholds, masks, estimated radius, sky metadata, and template-fit artifacts.
+- Run `v6_aux_only` as the current ML morphology and candidate-score branch.
+- Run `matched_template` as the classical Feeney-template reference, fallback, and independent ranking score.
+- Calibrate both thresholds on real-map null controls, not CAMB negatives alone.
+- Preserve the ML score, matched-template score, threshold decisions, mask, estimated radius, sky metadata, and template-fit artifacts in each candidate record.
+- Keep the older learned branches as documented ablation evidence and regression checks, not as the preferred operating stack.
 
-The composite verified stream is high precision but not high recall:
+The earlier multi-branch policies remain useful as investigative benchmarks. They showed that consensus-style verification can be very clean, but they did not justify the added complexity as the default deployment path:
 
 | policy | precision | recall | FPR | F1 |
 |---|---:|---:|---:|---:|
@@ -172,7 +171,7 @@ The composite verified stream is high precision but not high recall:
 | `matched_template_only` | `0.948` | `0.348` | `0.049` | `0.509` |
 | `normal_candidate` | `0.980` | `0.474` | `0.025` | `0.639` |
 
-On the `5000`-patch SMICA null-control set, `matched_template`, `v5_consensus`, `score_avg`, `normal_candidate`, and `all_candidates` each produced `0 / 5000` null candidates at their frozen thresholds.
+On the `5000`-patch SMICA null-control set, `matched_template`, `v5_consensus`, `score_avg`, `normal_candidate`, and `all_candidates` each produced `0 / 5000` null candidates at their frozen thresholds. That result is retained because it verifies the investigation, not because all five branches should be run by default.
 
 ## What Is Not Solved
 
@@ -185,7 +184,7 @@ On the `5000`-patch SMICA null-control set, `matched_template`, `v5_consensus`, 
 
 Current engineering targets:
 
-- Run full-sky Planck screening with map-calibrated thresholds and candidate clustering.
+- Run full-sky Planck screening with the `v6_aux_only + matched_template` pair, map-calibrated thresholds, and candidate clustering.
 - Calibrate thresholds separately for SMICA, NILC, SEVEM, and Commander.
 - Keep matched-template scores in every candidate record as a classical sanity check.
 - Add a scale-aware score or radius head only if it improves the weak small-radius cells without increasing real-map null burden.
