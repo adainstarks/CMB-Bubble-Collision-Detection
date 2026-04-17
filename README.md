@@ -156,9 +156,10 @@ The current detector can recover more contested positives by lowering the thresh
 
 Current Phase 3 should be treated as a two-score screening system, not a five-model deployment stack.
 
-- Run `v6_aux_only` as the current ML morphology and candidate-score branch.
+- Run `v6_aux_only` as the current ML morphology and candidate-score branch for contained positives.
+- Run `v7_mixed_ft` as the complementary ML branch for truncated / edge-crossing positives. See the 2026-04-17 portfolio-decision update below.
 - Run `matched_template` as the classical Feeney-template reference, fallback, and independent ranking score.
-- Calibrate both thresholds on real-map null controls, not CAMB negatives alone.
+- Calibrate all thresholds on real-map null controls, not CAMB negatives alone.
 - Preserve the ML score, matched-template score, threshold decisions, mask, estimated radius, sky metadata, and template-fit artifacts in each candidate record.
 - Keep the older learned branches as documented ablation evidence and regression checks, not as the preferred operating stack.
 
@@ -173,20 +174,43 @@ The earlier multi-branch policies remain useful as investigative benchmarks. The
 
 On the `5000`-patch SMICA null-control set, `matched_template`, `v5_consensus`, `score_avg`, `normal_candidate`, and `all_candidates` each produced `0 / 5000` null candidates at their frozen thresholds. That result is retained because it verifies the investigation, not because all five branches should be run by default.
 
+## 2026-04-17 Update: Mixed Geometry And The Portfolio Decision
+
+Recent work identified and corrected a physical-correctness limitation and produced a real-SMICA gate result that shifted the operating path to a two-model portfolio. Full detail in `PROJECT_HANDOFF.md` Section 21 and `work/v7_real_sky_gate.md`.
+
+Summary:
+
+- The Phase 2 positive generator previously produced only fully contained discs. Real full-sky patch tiling will observe clipped and edge-crossing bubbles. The generator and validation harness were extended to produce mixed and truncated geometries with explicit truth fields (`fully_contained`, `target_touches_edge`, `visible_target_fraction`, `signal_center_in_patch`).
+- A mixed-geometry stratified validation set (`validation_stratified_mixed_geometry_v1`) and a mixed-geometry training set (`training_v5_mixed_geometry`, 30% truncated) were built with the same provenance discipline as the contained v1 products.
+- Evaluating `v6_aux_only` on the mixed-geometry validation confirmed a center-framed shortcut: truncated recall collapsed relative to contained recall. The branch `v7_mixed_ft` was produced by fine-tuning `v6_aux_only` on `training_v5_mixed_geometry`. On the synthetic CAMB mixed-geometry benchmark, `v7_mixed_ft` Pareto-dominated `v6_aux_only`.
+- A dedicated real-SMICA validation gate then scored both branches on 500 SMICA backgrounds × 7 amplitudes × 5 θ × 4 sign-quadrants = 17500 positives per geometry, with thresholds calibrated on 5000 real-SMICA null patches at FPR 0.05, 0.08, 0.10.
+- On real SMICA the story reversed for contained geometry. At FPR 0.05 the contained recall was `v7_mixed_ft 0.286` vs `v6_aux_only 0.348`. At FPR 0.08 the gap narrowed to `0.357` vs `0.372`. The synthetic contained-geometry advantage did not survive the CAMB-to-SMICA domain shift.
+- On truncated and edge-crossing positives `v7_mixed_ft` won by the margins it was designed to win by: truncated recall `0.246` vs `0.205`, center-outside-patch `0.207` vs `0.163`, low-visibility `0.196` vs `0.145`.
+- The correct response is a two-model portfolio: `v6_aux_only` as the contained-geometry screener, `v7_mixed_ft` as the truncated-geometry screener, `matched_template` as the classical reference. Both ML branches run on every patch at Phase 5 tiling time; the authoritative score per candidate is routed by estimated bubble-center geometry.
+
+Negative and corrective findings worth citing:
+
+- D4 test-time augmentation on `v7_mixed_ft` delivered a marginal Dice improvement (+0.7 points) with recall flat. The theoretical √8 SNR argument for TTA does not apply to a model already trained with rotation and flip augmentation.
+- A naive multi-model average of `v7_mixed_ft` with contained-only siblings hurt mixed-geometry AUROC and truncated recall, because the siblings re-introduce the center-framed shortcut `v7_mixed_ft` was trained to remove.
+- The `phase3_scale_radius_head_w02` branch failed the external stratified gate. Post-mortem is recorded in `work/radius_head_post_mortem.md`. Attributed cause: cold-started auxiliary head at full weight, no warmup, permissive checkpoint metric.
+- A silent zero-key load in `scripts/phase3_train_unet.load_model_state_dict` under DataParallel was identified and fixed. Any prior fine-tunes that printed a "loaded" message with zero matched keys were silently training from random weights.
+
 ## What Is Not Solved
 
 - This is not yet a Feeney-style Bayesian detection framework.
 - It does not estimate a posterior over bubble-collision parameters.
 - It does not perform model selection against LambdaCDM.
 - It does not constrain the expected detectable collision count.
-- Weak-family recall remains the central blocker.
+- Weak-family recall remains the central blocker. At FPR 0.08 on real SMICA, none of our models exceed 0.10 recall at `A <= 5e-6`. The weak-amplitude bins are genuinely at or below the Planck SMICA noise floor; this is a physical limit, not an engineering gap.
 - Nside=512 is not justified by the current focused probe.
 
 Current engineering targets:
 
-- Run full-sky Planck screening with the `v6_aux_only + matched_template` pair, map-calibrated thresholds, and candidate clustering.
+- Run full-sky Planck screening with the `v6_aux_only + v7_mixed_ft + matched_template` portfolio, map-calibrated thresholds, and candidate clustering.
+- Route the authoritative ML score per candidate by estimated bubble-center geometry: `v6_aux_only` for contained and `v7_mixed_ft` for truncated / edge-crossing.
 - Calibrate thresholds separately for SMICA, NILC, SEVEM, and Commander.
 - Keep matched-template scores in every candidate record as a classical sanity check.
+- Run the next post-processing ablation pass (probability-mask Gaussian smoothing before mask-max, matched-filter rescoring on the mask, per-θ stratified thresholds, isotonic score calibration on real-SMICA nulls) before any further retraining.
 - Add a scale-aware score or radius head only if it improves the weak small-radius cells without increasing real-map null burden.
 - Feed candidate records into a classical template-fit or Bayesian follow-up stage.
 
