@@ -8,10 +8,11 @@ Primary current claim: Planck-era ML/classical candidate-screening front end for
 
 This repo is a research pipeline for candidate screening, not a completed discovery framework.
 
-Best current operational stack (revised 2026-04-17 after Batch 5 full-sky audit retracted the Batch 4 shipped lift):
+Best current operational stack (revised 2026-04-17 after Batch 5 full-sky audit retracted the Batch 4 shipped lift but confirmed PR #8):
 
-- **Primary deployment policy: UNCERTAIN, pending deployment-representative recalibration.** The Batch 4 shipped `learned_gbt` with 14 features lifted the gate-cell recall by +0.043 on clean-null calibration, but the Batch 5 full-sky tile audit showed this lift (a) does not survive deployment-representative tile calibration on any map except weakly NILC, (b) actively reverses by −0.045 on SEVEM and −0.036 on Commander. Cross-map mean delta is −0.015, stdev 0.027. See Section 27 and `work/batch5_fullsky_calibration_gap.md`. The 14-feature router is no longer recommended as primary.
-- **Falling back to the PR #8 baselines until recalibration finishes**: `v6_aux_only` at per-map-calibrated thresholds, with `learned_gbt` on 6 score features as an optional composite. Both are also subject to clean-null calibration bias (Section 27) — their real-sky-deployment recall has not yet been measured on a deployment-representative null pool. Do not quote the shipped FPR-0.08 recall numbers as deployment expectations until Step 2 finishes.
+- **Primary deployment policy: `learned_gbt --feature-set scores_only`** (the PR #8 6-feature GBT). Under deployment-representative tile calibration on all four Planck cleaned maps, it beats `v6_only` by a cross-map mean of **+0.036 recall** at FPR 0.08 (tied on SMICA/NILC; **+0.070 on SEVEM, +0.074 on Commander**). This matches the clean-null PR #8 claim of +0.031 and confirms the score-ensemble lever survives deployment calibration. Per-map null calibration is mandatory. See Section 27.
+- **Single-model fallback: `v6_aux_only` at per-map-calibrated thresholds**. Cross-map tile-recalibrated recall at FPR 0.08: SMICA 0.334, NILC 0.293, SEVEM 0.167, Commander 0.155. Closest to the 6-feature GBT on SMICA/NILC; noticeably weaker on noisier maps.
+- **Archived: `learned_gbt --feature-set all`** (the PR #9 14-feature GBT). The 4 truth-free geometry proxies (`mask_area_at_0.5`, `centroid_offset_px`, `compactness`, `edge_touching_fraction`) overfit the clean-null pool's mask-fraction distribution; deployment recall is worse than `gbt_6` on SEVEM (−0.045) and Commander (−0.036). Code infrastructure stays; the `--feature-set all` path remains for reproducibility of PR #9's numbers.
 - `v6_aux_only`: primary backbone ML screener; heavily weighted by the router (~44% feature importance). Also retained as a documented single-model fallback when a reviewer does not want a composite policy.
 - `v7_mixed_ft`: retained as an input to the learned router and as a Phase 5 specialist on truncated candidates. Not run as a separate parallel screener.
 - `matched_template`: classical Feeney-template reference, fallback, and independent score.
@@ -1262,27 +1263,35 @@ and monotonic.
 #9 (and the real-SMICA recalibration numbers in Sections 10-13) are
 underestimates of deployment FPR by 2-6x depending on map.
 
-### Finding 2: Batch 4 (14-feature GBT) lift retraction
+### Finding 2: full cross-map policy comparison under deployment calibration
 
-Under deployment-representative tile calibration (threshold set so
-exactly 8% of tile patches trigger per map), the Batch 4 PR #9 gate-cell
-delta `gbt_14 - gbt_6` on mixed geometry:
+Recalibrating all three policies (`v6_only`, `gbt_6`, `gbt_14`) per map
+using the Nside=8 tile as the null distribution (threshold set so
+exactly 8% of tile patches trigger), then re-applying to the cached
+17500-positive mixed gate set:
 
-| map | n tiles | rec6_tile | rec14_tile | delta | vs PR #9 shipped +0.043 |
-|---|---:|---:|---:|---:|---|
-| SMICA | 700 | 0.331 | 0.329 | **−0.001** | evaporates |
-| NILC | 700 | 0.292 | 0.315 | **+0.023** | survives weakly |
-| SEVEM | 700 | 0.237 | 0.192 | **−0.045** | reverses |
-| Commander | 700 | 0.230 | 0.193 | **−0.036** | reverses |
+| map | `v6_only` | `gbt_6` | `gbt_14` | `gbt_6 − v6` | `gbt_14 − v6` | `gbt_14 − gbt_6` |
+|---|---:|---:|---:|---:|---:|---:|
+| SMICA | 0.334 | 0.331 | 0.329 | −0.003 | −0.005 | −0.001 |
+| NILC | 0.293 | 0.292 | **0.315** | −0.001 | **+0.022** | **+0.023** |
+| SEVEM | 0.167 | **0.237** | 0.192 | **+0.070** | +0.025 | −0.045 |
+| Commander | 0.155 | **0.230** | 0.193 | **+0.074** | +0.038 | −0.036 |
+| **cross-map mean** | **0.237** | **0.273** | 0.257 | **+0.036** | +0.020 | −0.015 |
 
-Cross-map mean delta **−0.015**, stdev **0.027**. Stable across 4
-null-split seeds on SMICA (seed range: −0.034 to −0.001).
+**PR #8 (`gbt_6`) survives recalibration cleanly.** Cross-map mean lift
+over `v6_only` is **+0.036** (shipped clean-null claim was +0.031).
+The 6-feature router's v6/v7 score ensemble does exactly what PR #8
+said it would — it's tied with `v6_only` on clean maps (SMICA/NILC)
+and wins big on noisier maps (SEVEM/Commander).
 
-**The 14-feature GBT's apparent +0.043 advantage over the 6-feature
-GBT is an artifact of the clean-null calibration pool.** The
-`edge_touching_fraction` and `centroid_offset_px` features specifically
-learned statistics of the clean-pool mask-fraction distribution; in
-deployment they raise the threshold more than they raise recall.
+**PR #9 (`gbt_14`) does not survive recalibration.** Cross-map mean
+`gbt_14 − gbt_6` is **−0.015** (shipped clean-null claim was +0.043).
+The Batch 4 geometry features (`edge_touching_fraction`,
+`centroid_offset_px`, etc.) learned statistics specific to the
+clean-pool mask-fraction distribution. Under deployment-representative
+calibration they require higher thresholds that eat more recall than
+they gain — especially on SEVEM/Commander where mask-adjacent
+foreground residuals are stronger.
 
 ### Clustering side-result (Step 1 of the original session plan)
 
