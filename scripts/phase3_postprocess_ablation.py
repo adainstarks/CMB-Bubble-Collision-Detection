@@ -46,13 +46,16 @@ from phase3_real_sky_v7_gate import DEFAULT_V7_SPEC, DEFAULT_V6_SPEC
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NULL_H5 = PROJECT_ROOT / "data" / "training_v4" / "smica_null_controls_all.h5"
 
-SMOOTH_SIGMAS_PIX = (4.0, 8.0, 16.0)
+DEFAULT_SMOOTH_SIGMAS_PIX = (4.0, 8.0, 16.0)
 THETA_GRID_DEG = (5.0, 10.0, 15.0, 20.0, 25.0)
 RESO_ARCMIN = 13.0
 PATCH_PIX = 256
 FPR_TARGETS = (0.05, 0.08, 0.10)
 
 TRANSFORMS = ("baseline", "smooth_multi", "mf_on_mask")
+
+# Populated from CLI at main(); apply_transforms_batch reads from this module-level name.
+SMOOTH_SIGMAS_PIX = DEFAULT_SMOOTH_SIGMAS_PIX
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,12 @@ def parse_args():
     parser.add_argument("--model", type=str, action="append", default=[],
                         help="v6 or v7. Repeat for multiple. Default: both.")
     parser.add_argument("--reuse-scores", action="store_true")
+    parser.add_argument(
+        "--smooth-sigmas-pix",
+        type=str,
+        default=",".join(str(s) for s in DEFAULT_SMOOTH_SIGMAS_PIX),
+        help="Comma-separated Gaussian sigmas (pixels) for smooth_multi and base sigma for mf_on_mask (first entry).",
+    )
     return parser.parse_args()
 
 
@@ -348,7 +357,15 @@ def write_summary_markdown(path, reports):
 
 
 def main():
+    global SMOOTH_SIGMAS_PIX
     args = parse_args()
+    sigmas = tuple(float(s.strip()) for s in args.smooth_sigmas_pix.split(",") if s.strip())
+    if not sigmas:
+        raise SystemExit("--smooth-sigmas-pix must contain at least one positive value.")
+    if any(s <= 0 for s in sigmas):
+        raise SystemExit("--smooth-sigmas-pix values must be positive.")
+    SMOOTH_SIGMAS_PIX = sigmas
+    print(f"Using smoothing sigmas (pix): {SMOOTH_SIGMAS_PIX}", flush=True)
     gate_root = Path(args.gate_root).resolve()
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)

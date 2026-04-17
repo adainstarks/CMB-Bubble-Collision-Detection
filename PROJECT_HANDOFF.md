@@ -1,6 +1,6 @@
 # Project Handoff: CMB Bubble Collision Screening
 
-Last updated: 2026-04-17 (Batch 2 ablation added)
+Last updated: 2026-04-17 (Batch 2 sigma sweep + Batch 3 router added; deployment advice revised)
 Repo path: `/data/william/CMB-Collision-Bubbles`
 Primary current claim: Planck-era ML/classical candidate-screening front end for localized bubble-collision signatures; not a standalone cosmological detection or Feeney-style Bayesian evidence pipeline.
 
@@ -8,10 +8,10 @@ Primary current claim: Planck-era ML/classical candidate-screening front end for
 
 This repo is a research pipeline for candidate screening, not a completed discovery framework.
 
-Best current operational stack (portfolio model, per 2026-04-17 real-SMICA gate):
+Best current operational stack (revised 2026-04-17 after Batch 3 router evaluation):
 
-- `v6_aux_only` U-Net branch: contained-geometry / high-SNR ML screener.
-- `v7_mixed_ft` U-Net branch: truncated / edge-geometry ML screener.
+- `v6_aux_only` U-Net branch: **primary ML screener at FPR 0.08 on real SMICA**. Beats every portfolio policy at our deployment operating point.
+- `v7_mixed_ft` U-Net branch: retained as a documented specialist for Phase 5 post-scoring of already-detected truncated candidates. Not the primary screener. See Sections 21 and 22.
 - `matched_template`: classical Feeney-template reference, fallback, and independent score.
 - Thresholds must be calibrated on real-map null controls, not CAMB-only negatives.
 - The five-model stack was important for investigation but should not be treated as the default deployment path.
@@ -19,8 +19,8 @@ Best current operational stack (portfolio model, per 2026-04-17 real-SMICA gate)
 Current blocker:
 
 - Weak-family recall remains limited, especially low amplitude, small angular radius, weak/smoothed boundary cases.
-- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real-SMICA contained geometry at FPR 0.05-0.08; see Section 21.
-- Batch 2 post-processing (probability-mask smoothing, matched-filter rescoring on the mask, per-θ thresholds, isotonic calibration) is the next lever; see `work/v7_real_sky_gate.md` for the gate verdict and the full plan.
+- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real SMICA; see Sections 21-22.
+- Batch 2 post-processing ablation (`work/batch2_postprocess_ablation.md`) and Batch 3 geometry-router evaluation (`work/batch3_geometry_router.md`) both completed. Neither produced a net gain over `v6_aux_only` alone at FPR 0.08. The only remaining recall lever is a proper `v8` retrain with a matched-filter response map as a second input channel on mixed geometry.
 
 Do not proceed with:
 
@@ -894,29 +894,119 @@ Portfolio decision holds. Best `v7 + mf_on_mask` (0.325 at FPR 0.05 on
 contained) is still below `v6 baseline` (0.348). Post-processing alone does
 not close the gap.
 
-### Batch 3 candidate (not started)
+## 22. 2026-04-17 Batch 3 Portfolio Router: Negative Result
 
-The most useful artifact of Batch 2 is an un-retrained geometry-routing
-signal. `mf_on_mask - baseline` per candidate separates contained-disc-like
-masks from truncated / edge-crossing masks. Used as a router to pick the
-authoritative ML score per candidate, this should outperform running both
-models and OR-ing.
+Full report: `work/batch3_geometry_router.md`. Harness:
+`scripts/phase3_geometry_router.py`. Artifacts:
+`runs/phase3_unet/batch3_geometry_router_v1/`.
 
-Independent of the router, the only remaining recall lever that plausibly
-moves truncated recall another ~4-10pp is a proper `v8` retrain with a
-matched-filter response map as an input channel, with the training hygiene
-lessons from the radius-head post-mortem respected. Expected wall-clock 6-10
-hours on 2x3090. Not started.
+Six portfolio policies evaluated against the single-model baselines from
+Section 21, using the cached Batch 2 transform scores. None beat the best
+single model at FPR 0.08 on either geometry.
 
-What will NOT help at this point (so the next AI does not loop on these):
+Mixed geometry at deployment FPR 0.08:
 
-- Naive multi-model ensemble averaging. Documented negative in
+| policy | recall |
+|---|---:|
+| v6_only | **0.331** |
+| v7_only | 0.328 |
+| either_OR | 0.325 |
+| rank_max | 0.325 |
+| both_AND | 0.272 |
+| geometry_routed (best quantile) | 0.305 |
+
+Contained geometry at FPR 0.08:
+
+| policy | recall |
+|---|---:|
+| v6_only | **0.372** |
+| v7_only | 0.357 |
+| either_OR | 0.367 |
+| rank_max | 0.367 |
+
+Why the two-model ensemble does not help:
+
+- v6 and v7 share an EfficientNet encoder and overlapping training
+  distribution, so their false positives are highly correlated. `either_OR`
+  buys little independent signal.
+- To keep joint null FPR at 0.08, each model's threshold rises above its
+  single-model setting. The recall lost to tightening roughly cancels
+  recall gained from v7's truncated positives.
+
+Why the simple geometry router does not help:
+
+- The `v7_mf_on_mask - v7_baseline` signal correlates with both signal
+  strength and geometry, not cleanly with geometry. Strong truncated
+  positives get routed to v6 (which does not detect them). Weak contained
+  positives get routed to v7 (which scores them lower than v6 would).
+- Full route-quantile sweep in {0.25, 0.50, 0.70, 0.85, 0.95} did not find
+  a setting that beat best single model at any FPR target.
+
+Revised deployment advice from this result:
+
+- **Use `v6_aux_only` alone at real-SMICA threshold 0.873 (FPR 0.08) as
+  the primary screener.** This beats every portfolio policy at our target
+  operating point.
+- Retain `v7_mixed_ft` as a documented specialist for Phase 5 post-scoring
+  of already-detected truncated candidates. Do not run it as a parallel
+  primary screener.
+- `matched_template` role unchanged.
+
+This supersedes the "two-model portfolio" claim from Section 21.
+
+## 23. 2026-04-17 Batch 2 Ablation v2 Small-Sigma Sweep
+
+Full report: `work/batch2_postprocess_ablation.md` (extended). Artifacts:
+`runs/phase3_unet/batch2_postprocess_ablation_v2_smallsigma/`.
+
+Gaussian smoothing sigma sweep at (0.5, 1.0, 2.0) pixels, following up on
+the null result in the (4, 8, 16) sweep. Also null at every cell
+(delta <= 0.001 in recall).
+
+`mf_on_mask` with base sigma 0.5 gives identical numbers to sigma 4
+(v7 contained @ FPR 0.05: 0.326 vs 0.325). Matched-filter-on-mask captures
+mask shape coherence, not mask smoothness.
+
+This closes the Gaussian-smoothing branch of post-processing.
+
+## 24. What Does NOT Help (Running Negative-Result Registry)
+
+Closed off by direct measurement so the next AI does not loop on them:
+
+- Naive multi-model probability-mask averaging. Measured negative in
   `work/tta_ensemble_eval.md`.
-- D4 test-time augmentation. +0.7pp Dice, not the theoretical sqrt(8).
-  Also in `work/tta_ensemble_eval.md`.
-- Gaussian smoothing at sigmas >= 4 pixels on the probability mask. Null
-  result in the Batch 2 ablation.
-- Matched-filter-on-mask as a general screener replacement. Hurts v6 at
-  every setting.
-- Nside=512 retrain. Failed its focused probe gate; see
-  `docs/nside512_probe_decision.md`.
+- D4 test-time augmentation beyond +0.7pp Dice. Same doc. Theoretical
+  sqrt(8) argument does not apply to a CNN trained with rotation / flip
+  augmentation.
+- Gaussian smoothing on the probability mask at any practical sigma.
+  Measured null in Batch 2 v1 (sigma 4, 8, 16) and Batch 2 v2 (sigma
+  0.5, 1, 2).
+- Matched-filter-on-mask as a general screener replacement. Hurts
+  `v6_aux_only` at every setting; helps `v7_mixed_ft` only at FPR 0.05 on
+  contained. Useful as a measurement of "disc-like coherence", not a
+  recall lever.
+- Two-model OR / AND / rank_max ensembling at joint FPR 0.08. Measured
+  negative in `work/batch3_geometry_router.md`.
+- Heuristic geometry routing on the `v7_mf - v7_baseline` contrast.
+  Swept quantile, none win. Same doc.
+- Nside=512 retrain. Measured negative in `docs/nside512_probe_decision.md`.
+- Radius-head auxiliary branch at weight 0.2 cold-started. Measured
+  negative in `work/radius_head_post_mortem.md`. Retry requires warmup
+  + checkpoint metric hygiene + geometry-correct training data.
+
+## 25. What Remains on the Table (Open Recall Levers)
+
+Ordered by expected gain per unit compute:
+
+- **v8 retrain with matched-filter response channel, on
+  training_v5_mixed_geometry.** The only remaining training-signal lever.
+  Expected to lift truncated recall 4-10pp. Wall clock 6-10 hours on
+  2x3090. Requires training hygiene from
+  `work/radius_head_post_mortem.md`.
+- **Learned geometry classifier for portfolio routing.** Trained on the
+  mixed-geometry validation truth fields, used to gate which model scores
+  each patch. Out of scope for the post-processing ablation pass; treat as
+  a small dedicated training effort. Might recover the Section 21 portfolio
+  story if done properly.
+- **Isotonic score calibration on real-SMICA nulls.** Not a recall boost;
+  required for clean candidate-volume statistics in the paper.

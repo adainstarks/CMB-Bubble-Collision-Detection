@@ -141,10 +141,12 @@ contrast derived here.
 
 ## What might help, ordered by expected gain
 
-1. **Batch 3 geometry router** using `mf_on_mask - baseline`: likely +0.04
-   recall at controlled FPR, no retraining. Small implementation cost.
-2. **Small-sigma Gaussian (sigma 1-2 pix)**: quick follow-up smooth_multi
-   ablation. Cost: one script rerun.
+1. **Batch 3 geometry router** using `mf_on_mask - baseline`: EXECUTED, see
+   `work/batch3_geometry_router.md`. Simple heuristic routing did not beat
+   best single model at any FPR target. Learned-classifier geometry routing
+   is still on the table but out of scope for this pass.
+2. **Small-sigma Gaussian (sigma 0.5-2 pix)**: EXECUTED in ablation v2 below.
+   Confirmed null at all sigmas tried.
 3. **Isotonic score calibration on real-SMICA nulls**: threshold-selection
    robustness, not a recall boost. Required for clean candidate-volume
    reports.
@@ -152,3 +154,23 @@ contrast derived here.
    only proper training-signal lever left. Expected to move truncated
    recall 4-10pp with proper training hygiene (see
    `work/radius_head_post_mortem.md` for required hygiene).
+
+## Small-sigma follow-up (ablation v2)
+
+Sigmas swept: (0.5, 1.0, 2.0) pixels.
+
+Artifacts: `runs/phase3_unet/batch2_postprocess_ablation_v2_smallsigma/`.
+
+Result: still null. Delta vs baseline is <= 0.001 absolute in every
+(model, geometry, FPR) cell. Full table in the report there.
+
+This closes the loop on Gaussian smoothing as a post-processing lever at
+any practical sigma. The U-Net probability mask's dominant noise is not
+at any sub-disc spatial scale that Gaussian smoothing can suppress without
+also eroding signal.
+
+The `mf_on_mask` numbers are essentially identical across the two sigma
+settings (sigma=4 from ablation v1 vs sigma=0.5 from v2): v7 contained at
+FPR 0.05 is 0.325 vs 0.326. The matched-filter-on-mask transform is
+robust to the choice of base smoothing sigma, confirming that what it
+captures is mask *shape coherence*, not mask smoothing.
