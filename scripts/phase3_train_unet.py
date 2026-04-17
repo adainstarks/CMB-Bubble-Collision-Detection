@@ -1013,9 +1013,7 @@ def model_state_dict_for_checkpoint(model):
 
 
 def load_model_state_dict(model, state_dict, strict=True):
-    def maybe_filter_compatible(target_model, candidate_state):
-        if strict:
-            return candidate_state
+    def filtered(target_model, candidate_state):
         target_state = target_model.state_dict()
         return {
             key: value
@@ -1023,23 +1021,51 @@ def load_model_state_dict(model, state_dict, strict=True):
             if key in target_state and tuple(target_state[key].shape) == tuple(value.shape)
         }
 
-    try:
-        model.load_state_dict(maybe_filter_compatible(model, state_dict), strict=strict)
-        return
-    except RuntimeError:
-        pass
+    def candidates(state):
+        yield state
+        if isinstance(model, nn.DataParallel):
+            yield {
+                (key if key.startswith("module.") else f"module.{key}"): value
+                for key, value in state.items()
+            }
+        yield {
+            (key[len("module."):] if key.startswith("module.") else key): value
+            for key, value in state.items()
+        }
 
-    if isinstance(model, nn.DataParallel):
-        prefixed = {}
-        for key, value in state_dict.items():
-            prefixed[key if key.startswith("module.") else f"module.{key}"] = value
-        model.load_state_dict(maybe_filter_compatible(model, prefixed), strict=strict)
+    if strict:
+        last_error = None
+        for variant in candidates(state_dict):
+            try:
+                model.load_state_dict(variant, strict=True)
+                return
+            except RuntimeError as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
         return
 
-    stripped = {}
-    for key, value in state_dict.items():
-        stripped[key[len("module."):] if key.startswith("module.") else key] = value
-    model.load_state_dict(maybe_filter_compatible(model, stripped), strict=strict)
+    target_state = model.state_dict()
+    best_variant = None
+    best_count = -1
+    for variant in candidates(state_dict):
+        compatible = filtered(model, variant)
+        count = len(compatible)
+        if count > best_count:
+            best_count = count
+            best_variant = compatible
+    target_total = len(target_state)
+    if best_count == 0:
+        raise RuntimeError(
+            "load_model_state_dict (strict=False): no checkpoint keys matched any target "
+            f"parameters ({target_total} target keys). Refusing to silently load random weights."
+        )
+    print(
+        f"  Resume: matched {best_count}/{target_total} target parameters from checkpoint "
+        f"(strict=False, partial resume).",
+        flush=True,
+    )
+    model.load_state_dict(best_variant, strict=False)
 
 
 def build_model(args):
