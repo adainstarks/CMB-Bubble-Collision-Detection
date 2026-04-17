@@ -1,6 +1,6 @@
 # Project Handoff: CMB Bubble Collision Screening
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 Repo path: `/data/william/CMB-Collision-Bubbles`
 Primary current claim: Planck-era ML/classical candidate-screening front end for localized bubble-collision signatures; not a standalone cosmological detection or Feeney-style Bayesian evidence pipeline.
 
@@ -8,9 +8,10 @@ Primary current claim: Planck-era ML/classical candidate-screening front end for
 
 This repo is a research pipeline for candidate screening, not a completed discovery framework.
 
-Best current operational stack:
+Best current operational stack (portfolio model, per 2026-04-17 real-SMICA gate):
 
-- `v6_aux_only` U-Net branch: current ML morphology/candidate-score branch.
+- `v6_aux_only` U-Net branch: contained-geometry / high-SNR ML screener.
+- `v7_mixed_ft` U-Net branch: truncated / edge-geometry ML screener.
 - `matched_template`: classical Feeney-template reference, fallback, and independent score.
 - Thresholds must be calibrated on real-map null controls, not CAMB-only negatives.
 - The five-model stack was important for investigation but should not be treated as the default deployment path.
@@ -18,7 +19,8 @@ Best current operational stack:
 Current blocker:
 
 - Weak-family recall remains limited, especially low amplitude, small angular radius, weak/smoothed boundary cases.
-- Proper patch-edge/truncated positive geometry was just implemented locally and must be evaluated before new training.
+- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real-SMICA contained geometry at FPR 0.05-0.08; see Section 21.
+- Batch 2 post-processing (probability-mask smoothing, matched-filter rescoring on the mask, per-θ thresholds, isotonic calibration) is the next lever; see `work/v7_real_sky_gate.md` for the gate verdict and the full plan.
 
 Do not proceed with:
 
@@ -822,3 +824,68 @@ Current best reasoning:
 Non-negotiable scientific rule:
 
 Do not simplify the signal into easier blobs. Preserve Feeney Eq. 1, multiplicative injection, causal disc support, azimuthal symmetry, long-wavelength modulation, real-map null calibration, and explicit metadata sufficient for classical/Bayesian follow-up.
+
+## 21. 2026-04-17 Real-SMICA Validation Gate: v7_mixed_ft vs v6_aux_only
+
+Full report: `work/v7_real_sky_gate.md`. Gate harness: `scripts/phase3_real_sky_v7_gate.py`.
+
+Artifacts:
+
+- `runs/phase3_unet/real_sky_v7_gate_v1/contained/v7_vs_v6_contained_report.{md,json}`
+- `runs/phase3_unet/real_sky_v7_gate_v1/mixed/v7_vs_v6_mixed_report.{md,json}`
+
+Key numbers at real-SMICA-calibrated FPR 0.08, n_positive = 17500 per geometry:
+
+### Contained geometry
+
+| model | recall @ FPR 0.05 | recall @ FPR 0.08 | recall @ FPR 0.10 |
+|---|---:|---:|---:|
+| v7_mixed_ft | 0.286 | 0.357 | 0.386 |
+| v6_aux_only | 0.348 | 0.372 | 0.389 |
+
+v7 loses to v6 on real-SMICA contained geometry at FPR 0.05 by 6.2 points. The
+contained-geometry advantage v7 showed on synthetic CAMB backgrounds does not
+survive the foreground-residual domain shift.
+
+### Mixed geometry (30% truncated)
+
+| group | v7 recall | v6 recall | delta |
+|---|---:|---:|---:|
+| geometry_contained | 0.360 | 0.380 | -0.020 |
+| geometry_truncated | 0.246 | 0.205 | +0.041 |
+| center_outside_patch | 0.207 | 0.163 | +0.044 |
+| visible_fraction_low | 0.196 | 0.145 | +0.051 |
+
+v7 wins on every truncated / edge-crossing subgroup, as expected from its
+mixed-geometry fine-tune. v6 remains better on fully contained positives on
+real backgrounds.
+
+### Decision
+
+Use a two-model portfolio at Phase 5:
+
+1. v6_aux_only for contained positives.
+2. v7_mixed_ft for truncated / edge-crossing positives.
+3. Union of triggers at lowered per-model thresholds for candidate generation,
+   then route the authoritative score by estimated bubble-center geometry.
+
+This is the correct response to a documented domain-specific tradeoff, not a
+v7 retirement.
+
+### Next step: Batch 2
+
+Post-processing ablation applied to both v6 and v7:
+
+- Probability-mask Gaussian smoothing before taking max.
+- Matched-filter rescoring on the probability mask (not the raw patch).
+- Per-θ stratified thresholds matched to null FPR per radius bin.
+- Isotonic score calibration on the SMICA null score distribution.
+
+Ceiling targets at FPR 0.08 on the mixed-geometry gate:
+
+- v6 contained recall: 0.380 → 0.45-0.55.
+- v7 truncated recall: 0.246 → 0.33-0.40.
+
+If post-processing closes the contained gap (v7+smoothing matches v6 contained
+on real SMICA), the portfolio collapses to v7-only. Otherwise the portfolio
+persists into Phase 5.
