@@ -34,7 +34,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import torch
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import binary_erosion, gaussian_filter
 from scipy.signal import fftconvolve
 from scipy.stats import binomtest
 
@@ -53,6 +53,18 @@ PATCH_PIX = 256
 FPR_TARGETS = (0.05, 0.08, 0.10)
 
 TRANSFORMS = ("baseline", "smooth_multi", "mf_on_mask")
+
+# Batch 4: truth-free geometry proxies computed per patch from the frozen
+# probability mask. Stored alongside transform scores in the same cache npz
+# so the learned-router feature set can mix scalars and shape features.
+GEOMETRY_FEATURES = (
+    "mask_area_at_0.5",
+    "centroid_offset_px",
+    "compactness",
+    "edge_touching_fraction",
+)
+GEOMETRY_MASK_THRESHOLD = 0.5
+GEOMETRY_EDGE_DISTANCE_PIX = 4
 
 # Populated from CLI at main(); apply_transforms_batch reads from this module-level name.
 SMOOTH_SIGMAS_PIX = DEFAULT_SMOOTH_SIGMAS_PIX
@@ -130,23 +142,49 @@ def get_disc_kernels():
     return DISC_KERNELS
 
 
+def _edge_distance_grid(h, w):
+    y, x = np.mgrid[:h, :w]
+    return np.minimum(np.minimum(y, h - 1 - y), np.minimum(x, w - 1 - x))
+
+
+_EDGE_DIST_CACHE = None
+
+
+def _get_edge_dist(h, w):
+    global _EDGE_DIST_CACHE
+    if _EDGE_DIST_CACHE is None or _EDGE_DIST_CACHE.shape != (h, w):
+        _EDGE_DIST_CACHE = _edge_distance_grid(h, w)
+    return _EDGE_DIST_CACHE
+
+
 def apply_transforms_batch(masks_np):
     """
-    Apply all transforms to a batch of probability masks in numpy.
+    Apply all transforms + compute truth-free geometry proxies for a batch.
 
     Args:
         masks_np: (N, H, W) float32 in [0, 1]
 
     Returns:
-        dict mapping transform name -> (N,) float32 scores.
+        dict mapping feature name -> (N,) float32 scores/features. Keys include
+        both TRANSFORMS and GEOMETRY_FEATURES.
     """
-    out = {name: np.zeros(masks_np.shape[0], dtype=np.float32) for name in TRANSFORMS}
+    n = masks_np.shape[0]
+    h, w = masks_np.shape[1], masks_np.shape[2]
+    out = {name: np.zeros(n, dtype=np.float32) for name in TRANSFORMS}
+    for name in GEOMETRY_FEATURES:
+        out[name] = np.zeros(n, dtype=np.float32)
     kernels = get_disc_kernels()
+    edge_dist = _get_edge_dist(h, w)
+    near_edge = edge_dist <= GEOMETRY_EDGE_DISTANCE_PIX
+    y_grid, x_grid = np.mgrid[:h, :w].astype(np.float32)
+    cy_patch = (h - 1) / 2.0
+    cx_patch = (w - 1) / 2.0
+    total_pix = float(h * w)
     for i, mask in enumerate(masks_np):
         out["baseline"][i] = float(mask.max())
         smoothed_stack = [gaussian_filter(mask, sigma=s, mode="reflect") for s in SMOOTH_SIGMAS_PIX]
         out["smooth_multi"][i] = max(float(s.max()) for s in smoothed_stack)
-        # Match filter on the "middle-sigma" smoothed mask: single sigma per theta
+        # Match filter on the "base-sigma" smoothed mask: single sigma per theta
         # keeps cost O(T) rather than O(T*S). sigma_pix chosen scale-free.
         smoothed_for_mf = smoothed_stack[0]
         best_mf = -np.inf
@@ -154,6 +192,30 @@ def apply_transforms_batch(masks_np):
             response = fftconvolve(smoothed_for_mf, kernel[::-1, ::-1], mode="same")
             best_mf = max(best_mf, float(response.max()))
         out["mf_on_mask"][i] = best_mf
+
+        binary = mask >= GEOMETRY_MASK_THRESHOLD
+        area_pix = int(binary.sum())
+        out["mask_area_at_0.5"][i] = float(area_pix) / total_pix
+
+        total_w = float(mask.sum())
+        if total_w > 0.0:
+            cy = float((mask * y_grid).sum()) / total_w
+            cx = float((mask * x_grid).sum()) / total_w
+            out["centroid_offset_px"][i] = float(np.hypot(cy - cy_patch, cx - cx_patch))
+        else:
+            out["centroid_offset_px"][i] = 0.0
+
+        if area_pix > 0:
+            # Perimeter via 4-connected erosion; border_value=0 treats patch edge as outside
+            # so mask pixels against the patch boundary are counted as boundary pixels.
+            eroded = binary_erosion(binary, border_value=0)
+            perim = int(area_pix - int(eroded.sum()))
+            out["compactness"][i] = perim / float(np.sqrt(float(area_pix)))
+            edge_touch = int((binary & near_edge).sum())
+            out["edge_touching_fraction"][i] = edge_touch / float(area_pix)
+        else:
+            out["compactness"][i] = 0.0
+            out["edge_touching_fraction"][i] = 0.0
     return out
 
 
@@ -174,9 +236,10 @@ def score_model_with_masks(spec, h5_path, batch_size, device):
         max_translate_pixels=0,
         cache_data=True,
     )
-    print(f"  [{spec.name}] preload done in {_time.time() - t0:.1f}s; forward + transforms...", flush=True)
+    print(f"  [{spec.name}] preload done in {_time.time() - t0:.1f}s; forward + transforms + geometry features...", flush=True)
     loader = p3.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=device.type == "cuda")
-    score_cols = {name: np.zeros(n, dtype=np.float32) for name in TRANSFORMS}
+    feature_names = tuple(TRANSFORMS) + tuple(GEOMETRY_FEATURES)
+    score_cols = {name: np.zeros(n, dtype=np.float32) for name in feature_names}
     labels = np.zeros(n, dtype=np.uint8)
     offset = 0
     progress = p3.ProgressPrinter(len(loader), f"{spec.name}:{h5_path.name}")
@@ -187,7 +250,7 @@ def score_model_with_masks(spec, h5_path, batch_size, device):
             probs = torch.sigmoid(mask_logits).squeeze(1).float().cpu().numpy()
             bs = probs.shape[0]
             transformed = apply_transforms_batch(probs)
-            for name in TRANSFORMS:
+            for name in feature_names:
                 score_cols[name][offset:offset + bs] = transformed[name]
             labels[offset:offset + bs] = batch["label"].detach().cpu().numpy().astype(np.uint8)
             offset += bs
@@ -278,22 +341,38 @@ def run_model_geometry(spec, geometry, gate_root, null_h5, batch_size, device, c
     inj_cache = cache_dir / f"inj_{geometry}_{spec.name}_transforms.npz"
     null_cache = cache_dir / f"null_{spec.name}_transforms.npz"
 
-    if inj_cache.exists():
+    required_keys = set(TRANSFORMS) | set(GEOMETRY_FEATURES)
+
+    def cache_is_complete(path, need_labels):
+        if not path.exists():
+            return False
+        with np.load(path) as loaded:
+            keys = set(loaded.files)
+        missing = required_keys - keys
+        if need_labels and "labels" not in keys:
+            missing.add("labels")
+        return not missing
+
+    if cache_is_complete(inj_cache, need_labels=True):
         print(f"  [reuse] {inj_cache.name}", flush=True)
         with np.load(inj_cache) as loaded:
-            inj_scores = {k: loaded[k] for k in TRANSFORMS}
+            inj_scores = {k: loaded[k] for k in required_keys}
             inj_labels = np.asarray(loaded["labels"], dtype=np.uint8)
     else:
+        if inj_cache.exists():
+            print(f"  [rebuild] {inj_cache.name} missing new geometry features", flush=True)
         inj_scores, inj_labels = score_model_with_masks(spec, inj_h5, batch_size, device)
         np.savez_compressed(inj_cache, labels=inj_labels, **inj_scores)
 
-    if null_cache.exists():
+    if cache_is_complete(null_cache, need_labels=False):
         print(f"  [reuse] {null_cache.name}", flush=True)
         with np.load(null_cache) as loaded:
-            null_scores = {k: loaded[k] for k in TRANSFORMS}
+            null_scores = {k: loaded[k] for k in required_keys}
     else:
+        if null_cache.exists():
+            print(f"  [rebuild] {null_cache.name} missing new geometry features", flush=True)
         null_all, _ = score_model_with_masks(spec, null_h5, batch_size, device)
-        null_scores = {k: null_all[k] for k in TRANSFORMS}
+        null_scores = {k: null_all[k] for k in required_keys}
         np.savez_compressed(null_cache, **null_scores)
 
     _, _, _, _, _, truth = load_gate_strat(inj_h5)
