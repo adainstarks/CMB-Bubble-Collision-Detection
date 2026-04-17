@@ -9,7 +9,7 @@ The generator builds synthetic Planck-era patch observables from three pieces:
 This version makes three policy choices explicit:
     - the training size distribution is an Eq. 2-motivated design choice, not the later inference prior
     - train/validation splits are created from disjoint coordinate pools and disjoint CMB realizations
-    - the default geometry regime is fully contained signals; truncated signals must be requested explicitly
+    - the default geometry regime is fully contained signals; truncated/mixed signals must be requested explicitly
 """
 
 from __future__ import annotations
@@ -44,7 +44,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_OUTPUT_DIR = os.path.join(DATA_DIR, "training_v4")
 NSIDE_WORKING = 256
 MASK_THRESHOLD = 0.95
-GEOMETRY_MODES = ("contained", "truncated")
+GEOMETRY_MODES = ("contained", "truncated", "mixed")
+GEOMETRY_MODE_CODES = {"contained": 0, "truncated": 1}
 SPLIT_TRAIN = 0
 SPLIT_VAL = 1
 
@@ -65,6 +66,30 @@ def parse_args():
     parser.add_argument("--edge-sigma-min-deg", type=float, default=0.3)
     parser.add_argument("--edge-sigma-max-deg", type=float, default=1.0)
     parser.add_argument("--geometry-mode", type=str, default="contained", choices=GEOMETRY_MODES)
+    parser.add_argument(
+        "--truncated-positive-fraction",
+        type=float,
+        default=0.0,
+        help="Fraction of positive samples drawn from edge-crossing geometry when --geometry-mode=mixed.",
+    )
+    parser.add_argument(
+        "--truncated-visible-fraction-min",
+        type=float,
+        default=0.15,
+        help="Minimum visible fraction of the full causal disc for truncated positives.",
+    )
+    parser.add_argument(
+        "--truncated-visible-fraction-max",
+        type=float,
+        default=0.95,
+        help="Maximum visible fraction of the full causal disc for truncated positives.",
+    )
+    parser.add_argument(
+        "--truncated-max-center-draws",
+        type=int,
+        default=256,
+        help="Maximum rejection-sampling attempts when drawing a valid truncated positive.",
+    )
     parser.add_argument(
         "--signal-center-edge-margin-pix",
         type=float,
@@ -130,6 +155,16 @@ def validate_args(args):
         raise ValueError("--signal-center-edge-margin-pix must be non-negative.")
     if args.signal_center_edge_margin_pix >= PATCH_PIX / 2.0:
         raise ValueError("--signal-center-edge-margin-pix must be smaller than half the patch width.")
+    if not (0.0 <= args.truncated_positive_fraction <= 1.0):
+        raise ValueError("--truncated-positive-fraction must be between 0 and 1.")
+    if not (0.0 < args.truncated_visible_fraction_min <= 1.0):
+        raise ValueError("--truncated-visible-fraction-min must be in (0, 1].")
+    if not (0.0 < args.truncated_visible_fraction_max <= 1.0):
+        raise ValueError("--truncated-visible-fraction-max must be in (0, 1].")
+    if args.truncated_visible_fraction_min > args.truncated_visible_fraction_max:
+        raise ValueError("--truncated-visible-fraction-min must be <= --truncated-visible-fraction-max.")
+    if args.truncated_max_center_draws <= 0:
+        raise ValueError("--truncated-max-center-draws must be positive.")
     if args.contained_margin_deg < 0.0:
         raise ValueError("--contained-margin-deg must be non-negative.")
     if args.beam_fwhm_arcmin < 0.0:
@@ -334,6 +369,45 @@ def target_touches_patch_edge(mask):
     return bool(mask[0, :].any() or mask[-1, :].any() or mask[:, 0].any() or mask[:, -1].any())
 
 
+def estimate_full_disc_pixel_count(npix, reso_arcmin, theta_crit_deg):
+    theta_grid = make_angular_distance_grid(
+        npix,
+        reso_arcmin,
+        center_x_pix=patch_center_pixel(npix),
+        center_y_pix=patch_center_pixel(npix),
+    )
+    return int(make_disk_mask(theta_grid, theta_crit_deg).sum())
+
+
+def target_edge_contact_count(mask):
+    mask = np.asarray(mask, dtype=bool)
+    if mask.size == 0:
+        return 0
+    edge = np.zeros_like(mask, dtype=bool)
+    edge[0, :] = True
+    edge[-1, :] = True
+    edge[:, 0] = True
+    edge[:, -1] = True
+    return int(np.count_nonzero(mask & edge))
+
+
+def approximate_disc_edge_margin_pix(center_x_pix, center_y_pix, theta_crit_deg, npix=PATCH_PIX):
+    radius_pix = float(theta_crit_deg) * 60.0 / RESO_ARCMIN
+    nearest_patch_edge_pix = min(
+        float(center_x_pix),
+        float(center_y_pix),
+        float(npix - 1) - float(center_x_pix),
+        float(npix - 1) - float(center_y_pix),
+    )
+    return float(nearest_patch_edge_pix - radius_pix)
+
+
+def sample_actual_geometry_mode(rng, geometry_mode, truncated_positive_fraction):
+    if geometry_mode == "mixed":
+        return "truncated" if rng.random() < float(truncated_positive_fraction) else "contained"
+    return geometry_mode
+
+
 def sample_signal_center_pixels(
     rng,
     npix,
@@ -358,6 +432,112 @@ def sample_signal_center_pixels(
     center_x_pix = rng.uniform(low, high)
     center_y_pix = rng.uniform(low, high)
     return center_x_pix, center_y_pix
+
+
+def sample_truncated_signal_center_pixels(rng, npix, theta_crit_deg, edge_margin_pix):
+    radius_pix = float(theta_crit_deg) * 60.0 / RESO_ARCMIN
+    low = -radius_pix + float(edge_margin_pix)
+    high = float(npix - 1) + radius_pix - float(edge_margin_pix)
+    if low > high:
+        raise RuntimeError("Truncated geometry center sampling is infeasible for the current target radius.")
+    return float(rng.uniform(low, high)), float(rng.uniform(low, high))
+
+
+def sample_signal_geometry(
+    rng,
+    npix,
+    theta_crit_deg,
+    geometry_mode,
+    edge_margin_pix,
+    contained_margin_deg,
+    truncated_visible_fraction_min,
+    truncated_visible_fraction_max,
+    truncated_max_center_draws,
+):
+    full_disc_pixels = max(1, estimate_full_disc_pixel_count(npix, RESO_ARCMIN, theta_crit_deg))
+
+    if geometry_mode == "contained":
+        center_x_pix, center_y_pix = sample_signal_center_pixels(
+            rng=rng,
+            npix=npix,
+            theta_crit_deg=theta_crit_deg,
+            geometry_mode="contained",
+            edge_margin_pix=edge_margin_pix,
+            contained_margin_deg=contained_margin_deg,
+        )
+        theta_grid = make_angular_distance_grid(
+            npix,
+            RESO_ARCMIN,
+            center_x_pix=center_x_pix,
+            center_y_pix=center_y_pix,
+        )
+        mask = make_disk_mask(theta_grid, theta_crit_deg)
+        touches_edge = target_touches_patch_edge(mask)
+        if touches_edge:
+            raise RuntimeError("Contained geometry produced a target that touches the patch edge.")
+        visible_pixels = int(mask.sum())
+        return {
+            "center_x_pix": float(center_x_pix),
+            "center_y_pix": float(center_y_pix),
+            "theta_grid": theta_grid,
+            "mask": mask,
+            "visible_target_fraction": float(min(1.0, visible_pixels / full_disc_pixels)),
+            "visible_target_pixels": visible_pixels,
+            "full_disc_pixels_est": int(full_disc_pixels),
+            "target_touches_edge": 0,
+            "fully_contained": 1,
+            "target_edge_contact_pixels": 0,
+            "disc_edge_margin_pix": approximate_disc_edge_margin_pix(center_x_pix, center_y_pix, theta_crit_deg, npix=npix),
+            "signal_center_in_patch": 1,
+        }
+
+    last_visible_fraction = 0.0
+    for _ in range(int(truncated_max_center_draws)):
+        center_x_pix, center_y_pix = sample_truncated_signal_center_pixels(
+            rng,
+            npix=npix,
+            theta_crit_deg=theta_crit_deg,
+            edge_margin_pix=edge_margin_pix,
+        )
+        theta_grid = make_angular_distance_grid(
+            npix,
+            RESO_ARCMIN,
+            center_x_pix=center_x_pix,
+            center_y_pix=center_y_pix,
+        )
+        mask = make_disk_mask(theta_grid, theta_crit_deg)
+        visible_pixels = int(mask.sum())
+        if visible_pixels <= 0:
+            continue
+        touches_edge = target_touches_patch_edge(mask)
+        visible_fraction = float(min(1.0, visible_pixels / full_disc_pixels))
+        last_visible_fraction = visible_fraction
+        if not touches_edge:
+            continue
+        if not (truncated_visible_fraction_min <= visible_fraction <= truncated_visible_fraction_max):
+            continue
+        center_in_patch = 0 <= center_x_pix <= npix - 1 and 0 <= center_y_pix <= npix - 1
+        return {
+            "center_x_pix": float(center_x_pix),
+            "center_y_pix": float(center_y_pix),
+            "theta_grid": theta_grid,
+            "mask": mask,
+            "visible_target_fraction": visible_fraction,
+            "visible_target_pixels": visible_pixels,
+            "full_disc_pixels_est": int(full_disc_pixels),
+            "target_touches_edge": 1,
+            "fully_contained": 0,
+            "target_edge_contact_pixels": target_edge_contact_count(mask),
+            "disc_edge_margin_pix": approximate_disc_edge_margin_pix(center_x_pix, center_y_pix, theta_crit_deg, npix=npix),
+            "signal_center_in_patch": int(center_in_patch),
+        }
+
+    raise RuntimeError(
+        "Could not draw a valid truncated signal center after "
+        f"{truncated_max_center_draws} attempts for theta_crit={theta_crit_deg:.3f} deg. "
+        f"Last visible fraction was {last_visible_fraction:.3f}. "
+        "Loosen --truncated-visible-fraction-* or increase --truncated-max-center-draws."
+    )
 
 
 def fwhm_arcmin_to_sigma_pixels(fwhm_arcmin):
@@ -457,6 +637,7 @@ def make_positive_preview(indices, patches, masks, metadata, truth, output_path)
         patch_ax = axes[row, 0]
         signal_ax = axes[row, 1]
         mask_ax = axes[row, 2]
+        visible_fraction = float(truth["visible_target_fraction"][idx]) if "visible_target_fraction" in truth else 1.0
 
         patch_ax.imshow(patches[idx], cmap="RdBu_r", origin="lower")
         patch_ax.set_title(
@@ -467,7 +648,8 @@ def make_positive_preview(indices, patches, masks, metadata, truth, output_path)
             f"z0={truth['z0'][idx]:.2e}, zcrit={truth['zcrit'][idx]:.2e}, "
             f"sigma={truth['edge_sigma_deg'][idx]:.2f}\n"
             f"dx={truth['signal_center_dx_deg'][idx]:.1f} deg, "
-            f"dy={truth['signal_center_dy_deg'][idx]:.1f} deg",
+            f"dy={truth['signal_center_dy_deg'][idx]:.1f} deg, "
+            f"visible={visible_fraction:.2f}",
             fontsize=10,
         )
         patch_ax.set_xticks([])
@@ -532,9 +714,13 @@ def make_validation_histograms(labels, metadata, truth, output_path):
     axes[8].hist(truth["signal_center_dy_deg"][pos], bins=30, color="#1d4ed8", alpha=0.85)
     axes[8].set_title("Signal center dy (deg)")
 
-    axes[9].hist(truth["target_touches_edge"][pos], bins=np.array([-0.5, 0.5, 1.5]), color="#111827", alpha=0.85)
-    axes[9].set_title("Target touches edge")
-    axes[9].set_xticks([0, 1])
+    if "visible_target_fraction" in truth:
+        axes[9].hist(truth["visible_target_fraction"][pos], bins=30, color="#111827", alpha=0.85)
+        axes[9].set_title("Visible target fraction")
+    else:
+        axes[9].hist(truth["target_touches_edge"][pos], bins=np.array([-0.5, 0.5, 1.5]), color="#111827", alpha=0.85)
+        axes[9].set_title("Target touches edge")
+        axes[9].set_xticks([0, 1])
 
     for ax in axes:
         ax.grid(alpha=0.25)
@@ -687,6 +873,12 @@ def main():
         "geometry_mode_code": np.zeros(num_samples, dtype=np.uint8),
         "fully_contained": np.zeros(num_samples, dtype=np.uint8),
         "target_touches_edge": np.zeros(num_samples, dtype=np.uint8),
+        "visible_target_fraction": np.zeros(num_samples, dtype=np.float32),
+        "visible_target_pixels": np.zeros(num_samples, dtype=np.int32),
+        "full_disc_pixels_est": np.zeros(num_samples, dtype=np.int32),
+        "target_edge_contact_pixels": np.zeros(num_samples, dtype=np.int32),
+        "disc_edge_margin_pix": np.zeros(num_samples, dtype=np.float32),
+        "signal_center_in_patch": np.zeros(num_samples, dtype=np.uint8),
     }
 
     train_idx = np.arange(train_samples, dtype=np.int64)
@@ -750,14 +942,24 @@ def main():
                 z0_i = sign_z0_i * sample_log_uniform(split_rng, 1e-6, 1e-4)
                 zcrit_i = sign_zcrit_i * sample_log_uniform(split_rng, 1e-6, 1e-4)
                 edge_sigma_i = split_rng.uniform(args.edge_sigma_min_deg, args.edge_sigma_max_deg)
-                center_x_i, center_y_i = sample_signal_center_pixels(
+                actual_geometry_mode = sample_actual_geometry_mode(
+                    split_rng,
+                    args.geometry_mode,
+                    args.truncated_positive_fraction,
+                )
+                geometry_i = sample_signal_geometry(
                     rng=split_rng,
                     npix=PATCH_PIX,
                     theta_crit_deg=theta_i,
-                    geometry_mode=args.geometry_mode,
+                    geometry_mode=actual_geometry_mode,
                     edge_margin_pix=args.signal_center_edge_margin_pix,
                     contained_margin_deg=args.contained_margin_deg,
+                    truncated_visible_fraction_min=args.truncated_visible_fraction_min,
+                    truncated_visible_fraction_max=args.truncated_visible_fraction_max,
+                    truncated_max_center_draws=args.truncated_max_center_draws,
                 )
+                center_x_i = geometry_i["center_x_pix"]
+                center_y_i = geometry_i["center_y_pix"]
                 center_pix = patch_center_pixel(PATCH_PIX)
                 center_dx_i = (center_x_i - center_pix) * RESO_ARCMIN / 60.0
                 center_dy_i = (center_y_i - center_pix) * RESO_ARCMIN / 60.0
@@ -771,17 +973,9 @@ def main():
                     center_x_pix=center_x_i,
                     center_y_pix=center_y_i,
                 )
-                theta_grid_i = make_angular_distance_grid(
-                    PATCH_PIX,
-                    RESO_ARCMIN,
-                    center_x_pix=center_x_i,
-                    center_y_pix=center_y_i,
-                )
-                mask_i = make_disk_mask(theta_grid_i, theta_i)
-                touches_edge = target_touches_patch_edge(mask_i)
-                fully_contained = int(not touches_edge)
-                if args.geometry_mode == "contained" and touches_edge:
-                    raise RuntimeError("Contained geometry produced a target that touches the patch edge.")
+                mask_i = geometry_i["mask"]
+                touches_edge = int(geometry_i["target_touches_edge"])
+                fully_contained = int(geometry_i["fully_contained"])
 
                 observed_patch = apply_observing_model_to_patch(
                     injected_patch,
@@ -799,6 +993,7 @@ def main():
                     f"{edge_sigma_i:.6f}",
                     f"{center_x_i:.6f}",
                     f"{center_y_i:.6f}",
+                    actual_geometry_mode,
                 )
 
                 patches[sample_idx] = observed_patch
@@ -814,9 +1009,15 @@ def main():
                 truth["signal_center_y_pix"][sample_idx] = center_y_i
                 truth["signal_center_dx_deg"][sample_idx] = center_dx_i
                 truth["signal_center_dy_deg"][sample_idx] = center_dy_i
-                truth["geometry_mode_code"][sample_idx] = 0 if args.geometry_mode == "contained" else 1
+                truth["geometry_mode_code"][sample_idx] = GEOMETRY_MODE_CODES[actual_geometry_mode]
                 truth["fully_contained"][sample_idx] = fully_contained
                 truth["target_touches_edge"][sample_idx] = int(touches_edge)
+                truth["visible_target_fraction"][sample_idx] = geometry_i["visible_target_fraction"]
+                truth["visible_target_pixels"][sample_idx] = geometry_i["visible_target_pixels"]
+                truth["full_disc_pixels_est"][sample_idx] = geometry_i["full_disc_pixels_est"]
+                truth["target_edge_contact_pixels"][sample_idx] = geometry_i["target_edge_contact_pixels"]
+                truth["disc_edge_margin_pix"][sample_idx] = geometry_i["disc_edge_margin_pix"]
+                truth["signal_center_in_patch"][sample_idx] = geometry_i["signal_center_in_patch"]
                 positive_counter += 1
             else:
                 observed_patch = apply_observing_model_to_patch(
@@ -862,6 +1063,14 @@ def main():
         "edge_sigma_min_deg": float(args.edge_sigma_min_deg),
         "edge_sigma_max_deg": float(args.edge_sigma_max_deg),
         "geometry_mode": args.geometry_mode,
+        "truncated_positive_fraction_requested": float(args.truncated_positive_fraction),
+        "truncated_visible_fraction_min": float(args.truncated_visible_fraction_min),
+        "truncated_visible_fraction_max": float(args.truncated_visible_fraction_max),
+        "truncated_max_center_draws": int(args.truncated_max_center_draws),
+        "num_positive_fully_contained": int(truth["fully_contained"][labels == 1].sum()),
+        "num_positive_touching_edge": int(truth["target_touches_edge"][labels == 1].sum()),
+        "mean_positive_visible_target_fraction": float(np.mean(truth["visible_target_fraction"][labels == 1])),
+        "min_positive_visible_target_fraction": float(np.min(truth["visible_target_fraction"][labels == 1])),
         "contained_margin_deg": float(args.contained_margin_deg),
         "signal_center_edge_margin_pix": float(args.signal_center_edge_margin_pix),
         "sky_fraction": float(sky_fraction),
@@ -900,6 +1109,11 @@ def main():
     print(
         f"  Positive targets touching edge: "
         f"{int(truth['target_touches_edge'][labels == 1].sum())} / {int(labels.sum())}"
+    )
+    print(
+        f"  Positive visible fraction: "
+        f"mean={float(np.mean(truth['visible_target_fraction'][labels == 1])):.3f}, "
+        f"min={float(np.min(truth['visible_target_fraction'][labels == 1])):.3f}"
     )
 
     h5_path = save_outputs(

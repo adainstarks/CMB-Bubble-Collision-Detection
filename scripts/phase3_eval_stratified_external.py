@@ -160,6 +160,9 @@ def score_from_outputs(mask_logits, image_logits, score_kind):
 
 def collect_scores(spec, data_h5, indices, args, device):
     model, run_config, checkpoint_path, checkpoint_label = build_model_from_run(spec.run_dir, spec.checkpoint, device)
+    model_args = p3.model_args_from_run_config(run_config)
+    radius_bin_edges = p3.parse_radius_bin_edges(getattr(model_args, "radius_bin_edges_deg", "5,10,15,20,25"))
+    radius_bin_count = p3.radius_bin_count_from_edges(radius_bin_edges) if getattr(model_args, "radius_head_weight", 0.0) > 0.0 else 0
     loader = make_loader(data_h5, indices, run_config, args, device)
     scores = np.zeros(len(indices), dtype=np.float32)
     mask_scores = np.zeros(len(indices), dtype=np.float32)
@@ -170,7 +173,12 @@ def collect_scores(spec, data_h5, indices, args, device):
     with torch.no_grad():
         for batch_idx, batch in enumerate(loader, start=1):
             images = batch["image"].to(device, non_blocking=True)
-            mask_logits, image_logits = p3.unpack_model_output(model(images))
+            mask_logits, aux_logits = p3.unpack_model_output(model(images))
+            image_logits, _ = p3.split_aux_logits(
+                aux_logits,
+                use_image_aux=getattr(model_args, "aux_head_weight", 0.0) > 0.0,
+                radius_bin_count=radius_bin_count,
+            )
             batch_scores, batch_mask_scores = score_from_outputs(mask_logits, image_logits, spec.score_kind)
             batch_size = int(images.shape[0])
             scores[offset : offset + batch_size] = batch_scores
@@ -278,6 +286,15 @@ def load_stratification(data_h5, n):
         out["zcrit_abs"] = np.abs(np.asarray(truth["zcrit"][:n], dtype=np.float64))
         out["theta_crit_deg"] = np.asarray(truth["theta_crit_deg"][:n], dtype=np.float64)
         out["edge_sigma_deg"] = np.asarray(truth["edge_sigma_deg"][:n], dtype=np.float64)
+        for key in (
+            "geometry_mode_code",
+            "fully_contained",
+            "target_touches_edge",
+            "visible_target_fraction",
+            "signal_center_in_patch",
+        ):
+            if key in truth:
+                out[key] = np.asarray(truth[key][:n])
         if "stratification" in h5:
             for key in h5["stratification"].keys():
                 out[key] = np.asarray(h5["stratification"][key][:n])
@@ -303,6 +320,19 @@ def group_masks(strat):
     add_bin_groups("zcrit_abs_bin", "zcrit_abs_bin")
     add_bin_groups("theta_bin", "theta_bin")
     add_bin_groups("edge_sigma_bin", "edge_sigma_bin")
+    if "fully_contained" in strat:
+        fully_contained = np.asarray(strat["fully_contained"], dtype=bool)
+        groups["geometry_contained"] = positive & fully_contained
+        groups["geometry_truncated"] = positive & ~fully_contained
+    if "signal_center_in_patch" in strat:
+        center_in_patch = np.asarray(strat["signal_center_in_patch"], dtype=bool)
+        groups["center_inside_patch"] = positive & center_in_patch
+        groups["center_outside_patch"] = positive & ~center_in_patch
+    if "visible_target_fraction" in strat:
+        visible = np.asarray(strat["visible_target_fraction"], dtype=np.float64)
+        groups["visible_fraction_low"] = positive & (visible > 0.0) & (visible < 0.35)
+        groups["visible_fraction_mid"] = positive & (visible >= 0.35) & (visible < 0.70)
+        groups["visible_fraction_high"] = positive & (visible >= 0.70)
     if all(key in strat for key in ("z0_amp_bin", "zcrit_abs_bin", "theta_bin")):
         groups["weak_family_union"] = positive & (
             (strat["z0_amp_bin"] == 0) | (strat["zcrit_abs_bin"] == 0) | (strat["theta_bin"] == 0)
@@ -389,16 +419,22 @@ def write_markdown(output_path, report):
     lines.append(f"Dataset: `{report['data_h5']}`")
     lines.append(f"Matched FPR: `{report['matched_fpr']}`")
     lines.append("")
-    lines.append("| model | AUROC | AUPRC | threshold | precision | recall | FPR | F1 | weak recall | Dice+ |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append(
+        "| model | AUROC | AUPRC | threshold | precision | recall | FPR | F1 | "
+        "weak recall | contained recall | truncated recall | Dice+ |"
+    )
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for row in report["models"]:
         weak = row["groups"].get("weak_family_union", {})
         all_pos = row["groups"].get("all_positive", {})
+        contained = row["groups"].get("geometry_contained", {})
+        truncated = row["groups"].get("geometry_truncated", {})
         lines.append(
             "| {name} | {auroc:.3f} [{auroc_lo:.3f},{auroc_hi:.3f}] | "
             "{auprc:.3f} [{auprc_lo:.3f},{auprc_hi:.3f}] | {threshold:.6f} | "
             "{precision:.3f} | {recall:.3f} | {fpr:.3f} | {f1:.3f} | "
             "{weak_recall:.3f} [{weak_lo:.3f},{weak_hi:.3f}] | "
+            "{contained_recall:.3f} | {truncated_recall:.3f} | "
             "{dice:.3f} [{dice_lo:.3f},{dice_hi:.3f}] |".format(
                 name=row["name"],
                 auroc=row["auroc"],
@@ -415,6 +451,8 @@ def write_markdown(output_path, report):
                 weak_recall=weak.get("recall", float("nan")),
                 weak_lo=weak.get("recall_ci95", [float("nan"), float("nan")])[0],
                 weak_hi=weak.get("recall_ci95", [float("nan"), float("nan")])[1],
+                contained_recall=contained.get("recall", float("nan")),
+                truncated_recall=truncated.get("recall", float("nan")),
                 dice=all_pos.get("dice_mean", float("nan")),
                 dice_lo=all_pos.get("dice_ci95", [float("nan"), float("nan")])[0],
                 dice_hi=all_pos.get("dice_ci95", [float("nan"), float("nan")])[1],

@@ -37,6 +37,12 @@ TRUTH_FIELD_NAMES = {
     "geometry_mode_code",
     "fully_contained",
     "target_touches_edge",
+    "visible_target_fraction",
+    "visible_target_pixels",
+    "full_disc_pixels_est",
+    "target_edge_contact_pixels",
+    "disc_edge_margin_pix",
+    "signal_center_in_patch",
 }
 
 REQUIRED_ROOT_DATASETS = ("patches", "labels", "masks")
@@ -325,6 +331,34 @@ def audit_truth_and_masks(h5, audit):
             truth_touches = np.asarray(truth_group["target_touches_edge"][:], dtype=bool)
             audit.require(np.array_equal(truth_touches, target_touches), "truth/target_touches_edge disagrees with masks")
 
+        if "visible_target_fraction" in truth_group:
+            visible_fraction = np.asarray(truth_group["visible_target_fraction"][:], dtype=np.float64)
+            positive_visible = visible_fraction[labels == 1]
+            negative_visible = visible_fraction[labels == 0]
+            audit.require(
+                bool(np.all(np.isfinite(positive_visible))),
+                "truth/visible_target_fraction has non-finite positive entries",
+            )
+            audit.require(
+                bool(np.all((0.0 < positive_visible) & (positive_visible <= 1.05))),
+                "positive truth/visible_target_fraction values must be in (0, 1]",
+            )
+            if negative_visible.size:
+                audit.require(
+                    bool(np.all(negative_visible == 0.0)),
+                    "negative truth/visible_target_fraction values must be zero",
+                )
+            audit.add_metric("positive_visible_target_fraction_mean", float(np.mean(positive_visible)))
+            audit.add_metric("positive_visible_target_fraction_min", float(np.min(positive_visible)))
+            audit.add_metric("positive_visible_target_fraction_max", float(np.max(positive_visible)))
+
+        if "fully_contained" in truth_group:
+            fully_contained = np.asarray(truth_group["fully_contained"][:], dtype=bool)
+            audit.require(
+                bool(np.all(fully_contained[labels == 1] == ~target_touches[labels == 1])),
+                "truth/fully_contained disagrees with target edge contact for positives",
+            )
+
         summary = get_summary_attrs(h5)
         geometry_mode = str(summary.get("geometry_mode", ""))
         audit.add_metric("geometry_mode", geometry_mode)
@@ -332,6 +366,11 @@ def audit_truth_and_masks(h5, audit):
             audit.require(
                 int(target_touches[labels == 1].sum()) == 0,
                 "contained geometry has positive targets touching patch edge",
+            )
+        if geometry_mode == "truncated":
+            audit.require(
+                int(target_touches[labels == 1].sum()) == int(labels.sum()),
+                "truncated geometry has positive targets that do not touch patch edge",
             )
 
 

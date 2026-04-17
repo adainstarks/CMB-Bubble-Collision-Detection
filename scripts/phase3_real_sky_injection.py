@@ -43,15 +43,16 @@ import phase3_train_unet as p3
 from phase2_extract_smica_null_controls import PLANCK_CLEANED_MAPS, ensure_map_input
 from phase2_generate_stratified_validation import filter_excluded_coordinates, load_exclusion_vectors
 from phase2_generate_training import (
+    GEOMETRY_MODE_CODES,
+    GEOMETRY_MODES,
     MASK_THRESHOLD,
     NSIDE_WORKING,
     build_coordinate_pool,
     fwhm_arcmin_to_sigma_pixels,
     load_mask,
-    make_disk_mask,
     project_patch,
-    sample_signal_center_pixels,
-    target_touches_patch_edge,
+    sample_actual_geometry_mode,
+    sample_signal_geometry,
 )
 from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, T_CMB_K, bubble_collision_signal
 from phase3_ensemble_evaluate import DEFAULT_MODELS, load_model, parse_model_spec
@@ -60,7 +61,7 @@ from phase3_sensitivity_curve import (
     make_feeney_template_kernel,
     score_matched_template_patch,
 )
-from phase_dataset_utils import make_angular_distance_grid, patch_center_pixel, stable_group_id
+from phase_dataset_utils import patch_center_pixel, stable_group_id
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +99,17 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=20260419)
     parser.add_argument("--amplitude-grid", type=str, default=",".join(f"{x:g}" for x in DEFAULT_AMPLITUDE_GRID))
     parser.add_argument("--theta-grid-deg", type=str, default=",".join(f"{x:g}" for x in DEFAULT_THETA_GRID_DEG))
+    parser.add_argument("--geometry-mode", type=str, default="contained", choices=GEOMETRY_MODES)
+    parser.add_argument(
+        "--truncated-positive-fraction",
+        type=float,
+        default=0.0,
+        help="Fraction of positives drawn from edge-crossing geometry when --geometry-mode=mixed.",
+    )
+    parser.add_argument("--truncated-visible-fraction-min", type=float, default=0.15)
+    parser.add_argument("--truncated-visible-fraction-max", type=float, default=0.95)
+    parser.add_argument("--truncated-max-center-draws", type=int, default=256)
+    parser.add_argument("--signal-center-edge-margin-pix", type=float, default=0.0)
     parser.add_argument("--contained-margin-deg", type=float, default=0.5)
     parser.add_argument("--edge-sigma-deg", type=float, default=0.0)
     parser.add_argument(
@@ -142,6 +154,18 @@ def validate_args(args):
         raise ValueError("--theta-grid-deg values must be positive.")
     if args.contained_margin_deg < 0.0:
         raise ValueError("--contained-margin-deg must be non-negative.")
+    if args.signal_center_edge_margin_pix < 0.0:
+        raise ValueError("--signal-center-edge-margin-pix must be non-negative.")
+    if not (0.0 <= args.truncated_positive_fraction <= 1.0):
+        raise ValueError("--truncated-positive-fraction must be between 0 and 1.")
+    if not (0.0 < args.truncated_visible_fraction_min <= 1.0):
+        raise ValueError("--truncated-visible-fraction-min must be in (0, 1].")
+    if not (0.0 < args.truncated_visible_fraction_max <= 1.0):
+        raise ValueError("--truncated-visible-fraction-max must be in (0, 1].")
+    if args.truncated_visible_fraction_min > args.truncated_visible_fraction_max:
+        raise ValueError("--truncated-visible-fraction-min must be <= --truncated-visible-fraction-max.")
+    if args.truncated_max_center_draws <= 0:
+        raise ValueError("--truncated-max-center-draws must be positive.")
     if args.edge_sigma_deg < 0.0:
         raise ValueError("--edge-sigma-deg must be non-negative.")
     if args.signal_beam_fwhm_arcmin < 0.0:
@@ -269,8 +293,15 @@ def generate_dataset(args, h5_path):
         "signal_center_y_pix": np.full(num_samples, patch_center_pixel(PATCH_PIX), dtype=np.float32),
         "signal_center_dx_deg": np.zeros(num_samples, dtype=np.float32),
         "signal_center_dy_deg": np.zeros(num_samples, dtype=np.float32),
+        "geometry_mode_code": np.zeros(num_samples, dtype=np.uint8),
         "fully_contained": np.zeros(num_samples, dtype=np.uint8),
         "target_touches_edge": np.zeros(num_samples, dtype=np.uint8),
+        "visible_target_fraction": np.zeros(num_samples, dtype=np.float32),
+        "visible_target_pixels": np.zeros(num_samples, dtype=np.int32),
+        "full_disc_pixels_est": np.zeros(num_samples, dtype=np.int32),
+        "target_edge_contact_pixels": np.zeros(num_samples, dtype=np.int32),
+        "disc_edge_margin_pix": np.zeros(num_samples, dtype=np.float32),
+        "signal_center_in_patch": np.zeros(num_samples, dtype=np.uint8),
     }
     strat = {
         "amplitude_idx": np.full(num_samples, -1, dtype=np.int16),
@@ -307,30 +338,54 @@ def generate_dataset(args, h5_path):
         sample_idx = num_neg
         sign_table = np.asarray(SIGN_QUADRANTS, dtype=np.float32)
         for theta_i, theta_deg in enumerate(args.theta_grid_deg):
-            # Reuse one contained geometry draw per real background across all
+            # Reuse one geometry draw per real background across all
             # amplitudes for this radius. This preserves the geometry
             # distribution while avoiding seven redundant angular-grid builds.
             center_x = np.empty(args.num_backgrounds, dtype=np.float32)
             center_y = np.empty(args.num_backgrounds, dtype=np.float32)
             theta_grids = np.empty((args.num_backgrounds, PATCH_PIX, PATCH_PIX), dtype=np.float32)
             target_masks = np.empty((args.num_backgrounds, PATCH_PIX, PATCH_PIX), dtype=np.uint8)
+            geometry_codes = np.zeros(args.num_backgrounds, dtype=np.uint8)
+            fully_contained = np.zeros(args.num_backgrounds, dtype=np.uint8)
             touches_edge = np.zeros(args.num_backgrounds, dtype=np.uint8)
+            visible_target_fraction = np.zeros(args.num_backgrounds, dtype=np.float32)
+            visible_target_pixels = np.zeros(args.num_backgrounds, dtype=np.int32)
+            full_disc_pixels_est = np.zeros(args.num_backgrounds, dtype=np.int32)
+            target_edge_contact_pixels = np.zeros(args.num_backgrounds, dtype=np.int32)
+            disc_edge_margin_pix = np.zeros(args.num_backgrounds, dtype=np.float32)
+            signal_center_in_patch = np.zeros(args.num_backgrounds, dtype=np.uint8)
             for bg_idx in range(args.num_backgrounds):
-                cx, cy = sample_signal_center_pixels(
+                actual_geometry_mode = sample_actual_geometry_mode(
                     rng,
-                    PATCH_PIX,
-                    theta_deg,
-                    geometry_mode="contained",
-                    edge_margin_pix=0.0,
-                    contained_margin_deg=args.contained_margin_deg,
+                    args.geometry_mode,
+                    args.truncated_positive_fraction,
                 )
-                theta_grid = make_angular_distance_grid(PATCH_PIX, RESO_ARCMIN, center_x_pix=cx, center_y_pix=cy).astype(np.float32)
-                target_mask = make_disk_mask(theta_grid, theta_deg)
+                geometry_i = sample_signal_geometry(
+                    rng=rng,
+                    npix=PATCH_PIX,
+                    theta_crit_deg=theta_deg,
+                    geometry_mode=actual_geometry_mode,
+                    edge_margin_pix=args.signal_center_edge_margin_pix,
+                    contained_margin_deg=args.contained_margin_deg,
+                    truncated_visible_fraction_min=args.truncated_visible_fraction_min,
+                    truncated_visible_fraction_max=args.truncated_visible_fraction_max,
+                    truncated_max_center_draws=args.truncated_max_center_draws,
+                )
+                cx = geometry_i["center_x_pix"]
+                cy = geometry_i["center_y_pix"]
                 center_x[bg_idx] = float(cx)
                 center_y[bg_idx] = float(cy)
-                theta_grids[bg_idx] = theta_grid
-                target_masks[bg_idx] = target_mask
-                touches_edge[bg_idx] = int(target_touches_patch_edge(target_mask))
+                theta_grids[bg_idx] = geometry_i["theta_grid"].astype(np.float32)
+                target_masks[bg_idx] = geometry_i["mask"]
+                geometry_codes[bg_idx] = GEOMETRY_MODE_CODES[actual_geometry_mode]
+                fully_contained[bg_idx] = geometry_i["fully_contained"]
+                touches_edge[bg_idx] = geometry_i["target_touches_edge"]
+                visible_target_fraction[bg_idx] = geometry_i["visible_target_fraction"]
+                visible_target_pixels[bg_idx] = geometry_i["visible_target_pixels"]
+                full_disc_pixels_est[bg_idx] = geometry_i["full_disc_pixels_est"]
+                target_edge_contact_pixels[bg_idx] = geometry_i["target_edge_contact_pixels"]
+                disc_edge_margin_pix[bg_idx] = geometry_i["disc_edge_margin_pix"]
+                signal_center_in_patch[bg_idx] = geometry_i["signal_center_in_patch"]
 
             for amp_i, amp in enumerate(args.amplitude_grid):
                 quadrants = np.tile(np.arange(len(SIGN_QUADRANTS), dtype=np.int16), args.num_backgrounds // len(SIGN_QUADRANTS))
@@ -385,8 +440,15 @@ def generate_dataset(args, h5_path):
                 truth["signal_center_y_pix"][row_slice] = center_y
                 truth["signal_center_dx_deg"][row_slice] = (center_x - center_pix) * RESO_ARCMIN / 60.0
                 truth["signal_center_dy_deg"][row_slice] = (center_y - center_pix) * RESO_ARCMIN / 60.0
-                truth["fully_contained"][row_slice] = 1
+                truth["geometry_mode_code"][row_slice] = geometry_codes
+                truth["fully_contained"][row_slice] = fully_contained
                 truth["target_touches_edge"][row_slice] = touches_edge
+                truth["visible_target_fraction"][row_slice] = visible_target_fraction
+                truth["visible_target_pixels"][row_slice] = visible_target_pixels
+                truth["full_disc_pixels_est"][row_slice] = full_disc_pixels_est
+                truth["target_edge_contact_pixels"][row_slice] = target_edge_contact_pixels
+                truth["disc_edge_margin_pix"][row_slice] = disc_edge_margin_pix
+                truth["signal_center_in_patch"][row_slice] = signal_center_in_patch
                 strat["amplitude_idx"][row_slice] = amp_i
                 strat["theta_idx"][row_slice] = theta_i
                 strat["sign_quadrant"][row_slice] = quadrants
@@ -413,6 +475,16 @@ def generate_dataset(args, h5_path):
             "num_negative": int(num_neg),
             "amplitude_grid": json.dumps(tuple(float(x) for x in args.amplitude_grid)),
             "theta_grid_deg": json.dumps(tuple(float(x) for x in args.theta_grid_deg)),
+            "geometry_mode": args.geometry_mode,
+            "truncated_positive_fraction_requested": float(args.truncated_positive_fraction),
+            "truncated_visible_fraction_min": float(args.truncated_visible_fraction_min),
+            "truncated_visible_fraction_max": float(args.truncated_visible_fraction_max),
+            "truncated_max_center_draws": int(args.truncated_max_center_draws),
+            "signal_center_edge_margin_pix": float(args.signal_center_edge_margin_pix),
+            "num_positive_fully_contained": int(truth["fully_contained"][num_neg:].sum()),
+            "num_positive_touching_edge": int(truth["target_touches_edge"][num_neg:].sum()),
+            "mean_positive_visible_target_fraction": float(np.mean(truth["visible_target_fraction"][num_neg:])),
+            "min_positive_visible_target_fraction": float(np.min(truth["visible_target_fraction"][num_neg:])),
             "edge_sigma_deg": float(args.edge_sigma_deg),
             "signal_beam_fwhm_arcmin": float(args.signal_beam_fwhm_arcmin),
             "background_beam_note": "real cleaned-map background is not re-smoothed; beam is applied only to injected signal delta",

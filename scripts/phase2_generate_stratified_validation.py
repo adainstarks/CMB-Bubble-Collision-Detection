@@ -25,6 +25,8 @@ import healpy as hp
 import numpy as np
 
 from phase2_generate_training import (
+    GEOMETRY_MODE_CODES,
+    GEOMETRY_MODES,
     MASK_THRESHOLD,
     NSIDE_WORKING,
     SPLIT_VAL,
@@ -33,15 +35,14 @@ from phase2_generate_training import (
     build_coordinate_pool,
     generate_camb_realizations,
     load_mask,
-    make_disk_mask,
     project_patch,
+    sample_actual_geometry_mode,
     sample_log_uniform,
-    sample_signal_center_pixels,
+    sample_signal_geometry,
     split_index_pool,
-    target_touches_patch_edge,
 )
 from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, inject_signal_into_patch
-from phase_dataset_utils import make_angular_distance_grid, patch_center_pixel, stable_group_id
+from phase_dataset_utils import patch_center_pixel, stable_group_id
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -81,7 +82,27 @@ def parse_args():
     parser.add_argument("--split-seed", type=int, default=271828)
     parser.add_argument("--pool-size", type=int, default=9000)
     parser.add_argument("--num-cmb-realizations", type=int, default=256)
-    parser.add_argument("--geometry-mode", type=str, default="contained", choices=["contained"])
+    parser.add_argument("--geometry-mode", type=str, default="contained", choices=GEOMETRY_MODES)
+    parser.add_argument(
+        "--truncated-positive-fraction",
+        type=float,
+        default=0.0,
+        help="Fraction of positives drawn from edge-crossing geometry when --geometry-mode=mixed.",
+    )
+    parser.add_argument(
+        "--truncated-visible-fraction-min",
+        type=float,
+        default=0.15,
+        help="Minimum visible fraction of the full causal disc for truncated positives.",
+    )
+    parser.add_argument(
+        "--truncated-visible-fraction-max",
+        type=float,
+        default=0.95,
+        help="Maximum visible fraction of the full causal disc for truncated positives.",
+    )
+    parser.add_argument("--truncated-max-center-draws", type=int, default=256)
+    parser.add_argument("--signal-center-edge-margin-pix", type=float, default=0.0)
     parser.add_argument("--contained-margin-deg", type=float, default=0.5)
     parser.add_argument("--beam-fwhm-arcmin", type=float, default=15.0)
     parser.add_argument("--noise-sigma-uk-arcmin", type=float, default=30.0)
@@ -112,6 +133,18 @@ def validate_args(args):
         raise ValueError("--num-cmb-realizations must be at least 2.")
     if args.contained_margin_deg < 0.0:
         raise ValueError("--contained-margin-deg must be non-negative.")
+    if args.signal_center_edge_margin_pix < 0.0:
+        raise ValueError("--signal-center-edge-margin-pix must be non-negative.")
+    if not (0.0 <= args.truncated_positive_fraction <= 1.0):
+        raise ValueError("--truncated-positive-fraction must be between 0 and 1.")
+    if not (0.0 < args.truncated_visible_fraction_min <= 1.0):
+        raise ValueError("--truncated-visible-fraction-min must be in (0, 1].")
+    if not (0.0 < args.truncated_visible_fraction_max <= 1.0):
+        raise ValueError("--truncated-visible-fraction-max must be in (0, 1].")
+    if args.truncated_visible_fraction_min > args.truncated_visible_fraction_max:
+        raise ValueError("--truncated-visible-fraction-min must be <= --truncated-visible-fraction-max.")
+    if args.truncated_max_center_draws <= 0:
+        raise ValueError("--truncated-max-center-draws must be positive.")
     if args.exclude_radius_deg < 0.0:
         raise ValueError("--exclude-radius-deg must be non-negative.")
 
@@ -215,6 +248,12 @@ def allocate_arrays(num_samples):
         "geometry_mode_code": np.zeros(num_samples, dtype=np.uint8),
         "fully_contained": np.zeros(num_samples, dtype=np.uint8),
         "target_touches_edge": np.zeros(num_samples, dtype=np.uint8),
+        "visible_target_fraction": np.zeros(num_samples, dtype=np.float32),
+        "visible_target_pixels": np.zeros(num_samples, dtype=np.int32),
+        "full_disc_pixels_est": np.zeros(num_samples, dtype=np.int32),
+        "target_edge_contact_pixels": np.zeros(num_samples, dtype=np.int32),
+        "disc_edge_margin_pix": np.zeros(num_samples, dtype=np.float32),
+        "signal_center_in_patch": np.zeros(num_samples, dtype=np.uint8),
     }
     stratification = {
         "positive_cell_id": np.full(num_samples, -1, dtype=np.int32),
@@ -288,6 +327,7 @@ def main():
     print(f"  Positive samples:    {num_positive}")
     print(f"  Negative samples:    {num_negative}")
     print(f"  Total samples:       {args.num_samples}")
+    print(f"  Geometry mode:       {args.geometry_mode}")
 
     patches, labels, masks, metadata, truth, stratification = allocate_arrays(args.num_samples)
     sign_pairs = build_balanced_sign_pairs(num_positive, rng)
@@ -308,14 +348,24 @@ def main():
             z0_i = float(sign_z0_i) * sample_log_uniform_in_bin(rng, z0_bin[1], z0_bin[2])
             zcrit_i = float(sign_zcrit_i) * sample_log_uniform_in_bin(rng, zcrit_bin[1], zcrit_bin[2])
             edge_sigma_i = sample_uniform_in_bin(rng, edge_bin[1], edge_bin[2])
-            center_x_i, center_y_i = sample_signal_center_pixels(
+            actual_geometry_mode = sample_actual_geometry_mode(
+                rng,
+                args.geometry_mode,
+                args.truncated_positive_fraction,
+            )
+            geometry_i = sample_signal_geometry(
                 rng=rng,
                 npix=PATCH_PIX,
                 theta_crit_deg=theta_i,
-                geometry_mode=args.geometry_mode,
-                edge_margin_pix=0.0,
+                geometry_mode=actual_geometry_mode,
+                edge_margin_pix=args.signal_center_edge_margin_pix,
                 contained_margin_deg=args.contained_margin_deg,
+                truncated_visible_fraction_min=args.truncated_visible_fraction_min,
+                truncated_visible_fraction_max=args.truncated_visible_fraction_max,
+                truncated_max_center_draws=args.truncated_max_center_draws,
             )
+            center_x_i = geometry_i["center_x_pix"]
+            center_y_i = geometry_i["center_y_pix"]
             center_dx_i = (center_x_i - center_pix) * RESO_ARCMIN / 60.0
             center_dy_i = (center_y_i - center_pix) * RESO_ARCMIN / 60.0
 
@@ -328,11 +378,7 @@ def main():
                 center_x_pix=center_x_i,
                 center_y_pix=center_y_i,
             )
-            theta_grid_i = make_angular_distance_grid(PATCH_PIX, RESO_ARCMIN, center_x_pix=center_x_i, center_y_pix=center_y_i)
-            mask_i = make_disk_mask(theta_grid_i, theta_i)
-            touches_edge = target_touches_patch_edge(mask_i)
-            if touches_edge:
-                raise RuntimeError("Contained stratified validation target touched the patch edge.")
+            mask_i = geometry_i["mask"]
             observed_patch = apply_observing_model_to_patch(
                 injected_patch,
                 rng=rng,
@@ -351,6 +397,7 @@ def main():
                 f"{edge_sigma_i:.6f}",
                 f"{center_x_i:.6f}",
                 f"{center_y_i:.6f}",
+                actual_geometry_mode,
             )
 
             patches[sample_idx] = observed_patch
@@ -373,7 +420,15 @@ def main():
             truth["signal_center_y_pix"][sample_idx] = center_y_i
             truth["signal_center_dx_deg"][sample_idx] = center_dx_i
             truth["signal_center_dy_deg"][sample_idx] = center_dy_i
-            truth["fully_contained"][sample_idx] = 1
+            truth["geometry_mode_code"][sample_idx] = GEOMETRY_MODE_CODES[actual_geometry_mode]
+            truth["fully_contained"][sample_idx] = geometry_i["fully_contained"]
+            truth["target_touches_edge"][sample_idx] = geometry_i["target_touches_edge"]
+            truth["visible_target_fraction"][sample_idx] = geometry_i["visible_target_fraction"]
+            truth["visible_target_pixels"][sample_idx] = geometry_i["visible_target_pixels"]
+            truth["full_disc_pixels_est"][sample_idx] = geometry_i["full_disc_pixels_est"]
+            truth["target_edge_contact_pixels"][sample_idx] = geometry_i["target_edge_contact_pixels"]
+            truth["disc_edge_margin_pix"][sample_idx] = geometry_i["disc_edge_margin_pix"]
+            truth["signal_center_in_patch"][sample_idx] = geometry_i["signal_center_in_patch"]
             stratification["positive_cell_id"][sample_idx] = cell_id
             stratification["z0_amp_bin"][sample_idx] = z0_idx
             stratification["zcrit_abs_bin"][sample_idx] = zcrit_idx
@@ -442,6 +497,15 @@ def main():
         "mask_threshold": float(MASK_THRESHOLD),
         "sky_fraction": float(sky_fraction),
         "geometry_mode": args.geometry_mode,
+        "truncated_positive_fraction_requested": float(args.truncated_positive_fraction),
+        "truncated_visible_fraction_min": float(args.truncated_visible_fraction_min),
+        "truncated_visible_fraction_max": float(args.truncated_visible_fraction_max),
+        "truncated_max_center_draws": int(args.truncated_max_center_draws),
+        "signal_center_edge_margin_pix": float(args.signal_center_edge_margin_pix),
+        "num_positive_fully_contained": int(truth["fully_contained"][labels == 1].sum()),
+        "num_positive_touching_edge": int(truth["target_touches_edge"][labels == 1].sum()),
+        "mean_positive_visible_target_fraction": float(np.mean(truth["visible_target_fraction"][labels == 1])),
+        "min_positive_visible_target_fraction": float(np.min(truth["visible_target_fraction"][labels == 1])),
         "contained_margin_deg": float(args.contained_margin_deg),
         "beam_fwhm_arcmin": float(args.beam_fwhm_arcmin),
         "noise_sigma_uk_arcmin": float(args.noise_sigma_uk_arcmin),
