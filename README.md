@@ -186,7 +186,8 @@ Summary:
 - A dedicated real-SMICA validation gate then scored both branches on 500 SMICA backgrounds × 7 amplitudes × 5 θ × 4 sign-quadrants = 17500 positives per geometry, with thresholds calibrated on 5000 real-SMICA null patches at FPR 0.05, 0.08, 0.10.
 - On real SMICA the story reversed for contained geometry. At FPR 0.05 the contained recall was `v7_mixed_ft 0.286` vs `v6_aux_only 0.348`. At FPR 0.08 the gap narrowed to `0.357` vs `0.372`. The synthetic contained-geometry advantage did not survive the CAMB-to-SMICA domain shift.
 - On truncated and edge-crossing positives `v7_mixed_ft` won by the margins it was designed to win by: truncated recall `0.246` vs `0.205`, center-outside-patch `0.207` vs `0.163`, low-visibility `0.196` vs `0.145`.
-- The initial response was a two-model portfolio routed by geometry. Subsequent Batch 3 evaluation (`work/batch3_geometry_router.md`) showed that simple portfolio policies (OR, AND, rank-max, heuristic geometry router) all underperform `v6_only` at our deployment FPR of 0.08 because v6 and v7 false positives are strongly correlated. A 200-tree gradient-boosted classifier on six frozen-mask features (v6 / v7 baseline, v6 / v7 mf_on_mask, v6 / v7 smooth_multi) does beat `v6_only` by +3.1 to +4.5 points recall in every (geometry, FPR target) cell we measured, with cross-geometry training and a disjoint null train/eval split. See `PROJECT_HANDOFF.md` Section 22 for the full numbers and feature importances. The current primary deployment policy is the learned GBT router; `v6_aux_only` remains a clean single-model fallback; `v7_mixed_ft` and `matched_template` remain complementary signals.
+- The initial response was a two-model portfolio routed by geometry. Subsequent Batch 3 evaluation (`work/batch3_geometry_router.md`) showed that simple portfolio policies (OR, AND, rank-max, heuristic geometry router) all underperform `v6_only` at our deployment FPR of 0.08 because v6 and v7 false positives are strongly correlated. A 200-tree gradient-boosted classifier on six frozen-mask features (v6 / v7 baseline, v6 / v7 mf_on_mask, v6 / v7 smooth_multi) does beat `v6_only` by +3.1 to +4.5 points recall in every (geometry, FPR target) cell we measured, with cross-geometry training and a disjoint null train/eval split.
+- Batch 4 (`work/batch4_router_features.md`) extended the router feature set with 4 truth-free geometry proxies per model (`mask_area_at_0.5`, `centroid_offset_px`, `compactness`, `edge_touching_fraction`), taking the GBT from 6 to 14 features. The 14-feature router beats the 6-feature router by +2.9 to +4.6 points recall at every (geometry, FPR) cell and beats `v6_only` by +4.0 to +9.1 points. Gains are largest on truncated / edge-crossing positives (+0.060 on `geometry_truncated`, +0.058 on `center_outside_patch`, +0.056 on `visible_fraction_low` at FPR 0.08); centroid offset and edge-touching fraction carry the most new signal. See `PROJECT_HANDOFF.md` Sections 22 and 26 for the full numbers and feature importances. The current primary deployment policy is the 14-feature learned GBT router; `v6_aux_only` remains a clean single-model fallback; `v7_mixed_ft` and `matched_template` remain complementary signals; the 6-feature GBT remains available via `--feature-set scores_only` as the published PR #8 baseline.
 
 Negative and corrective findings worth citing:
 
@@ -206,12 +207,11 @@ Negative and corrective findings worth citing:
 
 Current engineering targets:
 
-- Run full-sky Planck screening with the learned GBT router (`PROJECT_HANDOFF.md` Section 22) as the primary composite score, with `v6_aux_only` as a single-model fallback and `matched_template` as the classical reference.
+- Run full-sky Planck screening with the 14-feature learned GBT router (`PROJECT_HANDOFF.md` Sections 22 and 26) as the primary composite score, with `v6_aux_only` as a single-model fallback and `matched_template` as the classical reference.
 - Calibrate thresholds separately for SMICA, NILC, SEVEM, and Commander.
 - Keep matched-template scores in every candidate record as a classical sanity check.
 - Add isotonic score calibration on real-SMICA nulls for clean candidate-volume statistics in the paper.
-- Expand the learned-router feature set with truth-free geometry proxies (mask area, centroid offset, compactness) as a cheap follow-up.
-- `v8` retrain with a matched-filter response map as a second input channel on mixed geometry is the only remaining training-signal lever; expected +4-10pp truncated recall on top of the router gain.
+- `v8` retrain with a matched-filter response map as a second input channel on mixed geometry is the only remaining training-signal lever; expected +4-10pp truncated recall on top of the Batch 4 router gain.
 - Feed candidate records into a classical template-fit or Bayesian follow-up stage.
 
 ## Quick Start

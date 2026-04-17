@@ -39,7 +39,51 @@ DEFAULT_GATE_ROOT = PROJECT_ROOT / "runs" / "phase3_unet" / "real_sky_v7_gate_v1
 FPR_TARGETS = (0.05, 0.08, 0.10)
 POLICIES = ("v6_only", "v7_only", "either_OR", "both_AND", "rank_max", "geometry_routed", "learned_logistic", "learned_gbt")
 
-FEATURE_NAMES = ("v6_baseline", "v7_baseline", "v6_mf_on_mask", "v7_mf_on_mask", "v6_smooth_multi", "v7_smooth_multi")
+# Batch 3 / PR #8 feature set: 6 scalar score features from the frozen
+# v6_aux_only and v7_mixed_ft probability masks.
+SCORE_FEATURE_NAMES = (
+    "v6_baseline", "v7_baseline",
+    "v6_mf_on_mask", "v7_mf_on_mask",
+    "v6_smooth_multi", "v7_smooth_multi",
+)
+# Batch 4 addition: 4 truth-free geometry proxies per model.
+# Order mirrors SCORE_FEATURE_NAMES so v6 features are grouped together in
+# feature importances. Each model contributes: area, centroid offset, compactness,
+# edge-touching fraction.
+GEOMETRY_FEATURE_NAMES = (
+    "v6_mask_area", "v7_mask_area",
+    "v6_centroid_offset", "v7_centroid_offset",
+    "v6_compactness", "v7_compactness",
+    "v6_edge_touching", "v7_edge_touching",
+)
+ALL_FEATURE_NAMES = SCORE_FEATURE_NAMES + GEOMETRY_FEATURE_NAMES
+
+FEATURE_SETS = {
+    "scores_only": SCORE_FEATURE_NAMES,
+    "all": ALL_FEATURE_NAMES,
+}
+
+# Cache-key source for each feature name: which column in the transform cache
+# (plus geometry feature cache) to stack. Value is (model_key, cache_column).
+FEATURE_SOURCES = {
+    "v6_baseline": ("v6", "baseline"),
+    "v7_baseline": ("v7", "baseline"),
+    "v6_mf_on_mask": ("v6", "mf_on_mask"),
+    "v7_mf_on_mask": ("v7", "mf_on_mask"),
+    "v6_smooth_multi": ("v6", "smooth_multi"),
+    "v7_smooth_multi": ("v7", "smooth_multi"),
+    "v6_mask_area": ("v6", "mask_area_at_0.5"),
+    "v7_mask_area": ("v7", "mask_area_at_0.5"),
+    "v6_centroid_offset": ("v6", "centroid_offset_px"),
+    "v7_centroid_offset": ("v7", "centroid_offset_px"),
+    "v6_compactness": ("v6", "compactness"),
+    "v7_compactness": ("v7", "compactness"),
+    "v6_edge_touching": ("v6", "edge_touching_fraction"),
+    "v7_edge_touching": ("v7", "edge_touching_fraction"),
+}
+
+# Kept as an alias for any external imports that referenced the old constant.
+FEATURE_NAMES = SCORE_FEATURE_NAMES
 
 
 def parse_args():
@@ -61,6 +105,17 @@ def parse_args():
         help="How to train the learned router. cross: fit on the other geometry; in_sample: fit and eval on same data (optimistic upper bound); kfold: 5-fold within the eval geometry.",
     )
     parser.add_argument("--learned-seed", type=int, default=20260417)
+    parser.add_argument(
+        "--feature-set",
+        type=str,
+        default="scores_only",
+        choices=tuple(FEATURE_SETS.keys()),
+        help=(
+            "Feature set for learned_logistic / learned_gbt: "
+            "`scores_only` = the original 6 score features from PR #8; "
+            "`all` = 6 scores + 8 truth-free geometry proxies (Batch 4)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -220,16 +275,24 @@ def run_rank_max_policy(name, v6_inj, v6_null, v7_inj, v7_null, labels, truth, f
     return rows
 
 
-def stack_features(v6_npz, v7_npz):
-    """Stack per-patch features from transform caches into an (N, 6) matrix."""
-    return np.stack([
-        np.asarray(v6_npz["baseline"], dtype=np.float64),
-        np.asarray(v7_npz["baseline"], dtype=np.float64),
-        np.asarray(v6_npz["mf_on_mask"], dtype=np.float64),
-        np.asarray(v7_npz["mf_on_mask"], dtype=np.float64),
-        np.asarray(v6_npz["smooth_multi"], dtype=np.float64),
-        np.asarray(v7_npz["smooth_multi"], dtype=np.float64),
-    ], axis=1)
+def stack_features(v6_npz, v7_npz, feature_names):
+    """Stack per-patch features from cache npzs into an (N, len(feature_names)) matrix.
+
+    Each name in `feature_names` is resolved through FEATURE_SOURCES to a
+    (model_key, cache_column) pair. Raises KeyError with a clear message if a
+    required cache column is missing (cache needs regenerating).
+    """
+    columns = []
+    for name in feature_names:
+        model_key, col = FEATURE_SOURCES[name]
+        npz = v6_npz if model_key == "v6" else v7_npz
+        if col not in npz:
+            raise KeyError(
+                f"cache missing column '{col}' for feature '{name}' (model {model_key}); "
+                f"rerun scripts/phase3_postprocess_ablation.py to regenerate transform caches"
+            )
+        columns.append(np.asarray(npz[col], dtype=np.float64))
+    return np.stack(columns, axis=1)
 
 
 def run_learned_policy(name, model_cls, X_train_pos, X_train_null, X_eval_inj, X_eval_null, labels, truth, fpr_targets, fit_kwargs=None, scale=True):
@@ -327,7 +390,7 @@ def run_geometry_routed_policy(name, v6_inj, v6_null, v7_inj, v7_null,
     return rows
 
 
-def load_geometry_bundle(geometry, batch2_dir, gate_root):
+def load_geometry_bundle(geometry, batch2_dir, gate_root, feature_names):
     cache_dir = batch2_dir / "score_cache"
     v6_inj_npz = load_transform_npz(cache_dir / f"inj_{geometry}_v6_aux_only_transforms.npz")
     v7_inj_npz = load_transform_npz(cache_dir / f"inj_{geometry}_v7_mixed_ft_transforms.npz")
@@ -340,8 +403,8 @@ def load_geometry_bundle(geometry, batch2_dir, gate_root):
     truth = load_truth(inj_h5)
     assert np.array_equal(labels, truth["labels"])
 
-    X_inj = stack_features(v6_inj_npz, v7_inj_npz)
-    X_null = stack_features(v6_null_npz, v7_null_npz)
+    X_inj = stack_features(v6_inj_npz, v7_inj_npz, feature_names)
+    X_null = stack_features(v6_null_npz, v7_null_npz, feature_names)
 
     return {
         "geometry": geometry,
@@ -358,7 +421,7 @@ def load_geometry_bundle(geometry, batch2_dir, gate_root):
     }
 
 
-def run_for_geometry(bundle, cross_bundle, route_quantile, learned_fit_on, learned_seed):
+def run_for_geometry(bundle, cross_bundle, route_quantile, learned_fit_on, learned_seed, feature_names):
     geometry = bundle["geometry"]
     labels = bundle["labels"]
     truth = bundle["truth"]
@@ -412,7 +475,7 @@ def run_for_geometry(bundle, cross_bundle, route_quantile, learned_fit_on, learn
     else:
         raise NotImplementedError(f"learned_fit_on={learned_fit_on} not supported here")
 
-    print(f"  Learned router training: {train_descr}, features: {list(FEATURE_NAMES)}", flush=True)
+    print(f"  Learned router training: {train_descr}, features ({len(feature_names)}): {list(feature_names)}", flush=True)
     print(f"  Null split: train {X_null_train.shape[0]}, eval {X_null_eval.shape[0]} (disjoint, seed {learned_seed})", flush=True)
 
     logistic_rows, _ = run_learned_policy(
@@ -439,7 +502,7 @@ def run_for_geometry(bundle, cross_bundle, route_quantile, learned_fit_on, learn
     results["policies"]["learned_gbt"] = gbt_rows
 
     results["learned_feature_importances"] = {
-        "features": list(FEATURE_NAMES),
+        "features": list(feature_names),
         "gbt_importances": gbt_model.feature_importances_.tolist(),
     }
 
@@ -497,18 +560,31 @@ def main():
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    bundles = {g: load_geometry_bundle(g, batch2_dir, gate_root) for g in ("contained", "mixed")}
+    feature_names = FEATURE_SETS[args.feature_set]
+    print(f"Feature set: {args.feature_set} ({len(feature_names)} features)", flush=True)
+
+    bundles = {g: load_geometry_bundle(g, batch2_dir, gate_root, feature_names) for g in ("contained", "mixed")}
     reports = []
     for geometry, bundle in bundles.items():
         print(f"\n=== {geometry} ===", flush=True)
         cross_geometry = "mixed" if geometry == "contained" else "contained"
         cross_bundle = bundles[cross_geometry] if args.learned_fit_on == "cross" else None
-        report = run_for_geometry(bundle, cross_bundle, args.route_quantile, args.learned_fit_on, args.learned_seed)
+        report = run_for_geometry(
+            bundle, cross_bundle,
+            args.route_quantile, args.learned_fit_on, args.learned_seed,
+            feature_names,
+        )
         reports.append(report)
 
-    json_path = output_dir / "batch3_router_report.json"
-    json_path.write_text(json.dumps({"reports": reports, "route_quantile": args.route_quantile}, indent=2), encoding="utf-8")
-    md_path = output_dir / "batch3_router_report.md"
+    tag = f"_{args.feature_set}" if args.feature_set != "scores_only" else ""
+    json_path = output_dir / f"batch3_router_report{tag}.json"
+    json_path.write_text(json.dumps({
+        "reports": reports,
+        "route_quantile": args.route_quantile,
+        "feature_set": args.feature_set,
+        "feature_names": list(feature_names),
+    }, indent=2), encoding="utf-8")
+    md_path = output_dir / f"batch3_router_report{tag}.md"
     write_markdown(md_path, reports, args.route_quantile)
     print(f"\n=== Saved ===\n  JSON: {json_path}\n  MD:   {md_path}", flush=True)
 

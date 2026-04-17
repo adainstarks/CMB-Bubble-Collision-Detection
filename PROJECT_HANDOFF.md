@@ -1,6 +1,6 @@
 # Project Handoff: CMB Bubble Collision Screening
 
-Last updated: 2026-04-17 (Batch 3 learned router: first positive result, deployment advice revised twice)
+Last updated: 2026-04-17 (Batch 4 router feature expansion: +3-4pp recall over PR #8 GBT)
 Repo path: `/data/william/CMB-Collision-Bubbles`
 Primary current claim: Planck-era ML/classical candidate-screening front end for localized bubble-collision signatures; not a standalone cosmological detection or Feeney-style Bayesian evidence pipeline.
 
@@ -8,9 +8,9 @@ Primary current claim: Planck-era ML/classical candidate-screening front end for
 
 This repo is a research pipeline for candidate screening, not a completed discovery framework.
 
-Best current operational stack (revised 2026-04-17 after Batch 3 learned router succeeded):
+Best current operational stack (revised 2026-04-17 after Batch 4 router feature expansion shipped on top of Batch 3):
 
-- **Primary deployment policy: `learned_gbt` router** on 6 features derived from the frozen `v6_aux_only` and `v7_mixed_ft` probability masks (baseline, smooth_multi, mf_on_mask x both models). Beats `v6_only` by +3.1 to +4.5 points recall at every (geometry, FPR target) cell, cross-geometry trained and with a disjoint null train/eval split. See Section 22.
+- **Primary deployment policy: `learned_gbt` router on 14 features** — the 6 scalar score features from PR #8 plus 4 truth-free geometry proxies per model (`mask_area_at_0.5`, `centroid_offset_px`, `compactness`, `edge_touching_fraction`). Beats the 6-feature GBT by +2.9 to +4.6 points recall at every (geometry, FPR target) cell, and beats `v6_only` by +4.0 to +9.1 points. Gains are largest on truncated / edge-crossing positives (+0.060 on `geometry_truncated`, +0.058 on `center_outside_patch`, +0.056 on `visible_fraction_low` at FPR 0.08). See Section 26. The 6-feature variant remains available via `--feature-set scores_only` for published-baseline comparators.
 - `v6_aux_only`: primary backbone ML screener; heavily weighted by the router (~44% feature importance). Also retained as a documented single-model fallback when a reviewer does not want a composite policy.
 - `v7_mixed_ft`: retained as an input to the learned router and as a Phase 5 specialist on truncated candidates. Not run as a separate parallel screener.
 - `matched_template`: classical Feeney-template reference, fallback, and independent score.
@@ -19,11 +19,12 @@ Best current operational stack (revised 2026-04-17 after Batch 3 learned router 
 
 Current blocker:
 
-- Weak-family recall at low amplitude (A <= 5e-6) is still near the Planck SMICA noise floor even after the Batch 3 router gain. This is physical, not engineering.
-- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real SMICA in isolation. The learned router recovers the portfolio via a classifier on the six frozen-mask features.
+- Weak-family recall at low amplitude (A <= 5e-6) is still near the Planck SMICA noise floor even after the Batch 3/4 router gains. This is physical, not engineering.
+- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real SMICA in isolation. The learned router recovers the portfolio via a classifier on fourteen frozen-mask features.
 - Batch 2 post-processing ablation (`work/batch2_postprocess_ablation.md`) confirmed Gaussian smoothing is null and matched-filter-on-mask is a geometry specialist, not a general replacement.
 - Batch 3 simple ensemble / heuristic-router policies all underperformed `v6_only` at FPR 0.08; only the learned GBT classifier beats the single-model baseline. See `work/batch3_geometry_router.md`.
-- Remaining untouched training-signal lever: `v8` retrain with matched-filter response map as a second input channel on mixed geometry. Expected additional +4-10pp truncated recall. Not yet started.
+- Batch 4 router feature expansion (`work/batch4_router_features.md`) confirmed that truth-free mask-geometry proxies add genuinely complementary signal to the score-only GBT. Centroid offset and edge-touching fraction are the most informative new features. Shipped as the default router.
+- Remaining untouched training-signal lever: `v8` retrain with matched-filter response map as a second input channel on mixed geometry. Expected additional +4-10pp truncated recall on top of the Batch 4 router. Not yet started.
 
 Do not proceed with:
 
@@ -1081,11 +1082,122 @@ Ordered by expected gain per unit compute:
 - **v8 retrain with matched-filter response channel, on
   training_v5_mixed_geometry.** The only remaining training-signal lever.
   Expected to lift truncated recall a further 4-10pp on top of the
-  learned-router gain from Section 22. Wall clock 6-10 hours on 2x3090.
-  Requires training hygiene from `work/radius_head_post_mortem.md`.
-- **Expand the learned-router feature set** with truth-free geometry
-  proxies (mask area, centroid offset, mask compactness, edge-touching
-  fraction). Cheap to implement. Likely worth another 1-3pp recall on
-  truncated positives.
+  Batch 4 learned-router gain. Wall clock 6-10 hours on 2x3090. Requires
+  training hygiene from `work/radius_head_post_mortem.md`. Must run a
+  1-epoch 500-sample smoke test first.
 - **Isotonic score calibration on real-SMICA nulls.** Not a recall boost;
   required for clean candidate-volume statistics in the paper.
+- **Expand the learned-router feature set further.** Batch 4 added 4
+  geometry proxies per model. Additional candidates for a Batch 5: a
+  matched-filter response channel evaluated as a router feature (rather
+  than a model input channel), second-moment / eccentricity of the mask,
+  and per-model image-level aux-head score. Each is cheap to implement
+  and the router architecture already scales to arbitrary feature counts.
+
+## Closed recall levers (completed)
+
+- **Expand the learned-router feature set with 4 truth-free geometry
+  proxies per model.** Executed in Batch 4, measured positive: +0.043
+  mixed recall at FPR 0.08 over the PR #8 GBT, robust across 4 null-split
+  seeds (min +0.021). See `work/batch4_router_features.md` and Section 26.
+
+## 26. 2026-04-17 Batch 4 Router Feature Expansion
+
+Full report: `work/batch4_router_features.md`. Harness:
+`scripts/phase3_postprocess_ablation.py` (extended) +
+`scripts/phase3_geometry_router.py` (new `--feature-set` flag).
+Artifacts: `runs/phase3_unet/batch4_router_features_v1/`.
+
+Added 4 truth-free geometry proxies per model (8 new features total)
+to the PR #8 learned-GBT router. Same architecture (200 trees, depth 3,
+LR 0.05), same honest-eval protocol (cross-geometry positive training,
+2500/2500 disjoint null split at seed 20260417), same deployment FPR
+targets.
+
+New per-patch features, computed from `P = sigmoid(mask_logits)`:
+
+- `mask_area_at_0.5`: fraction of pixels with `P >= 0.5`.
+- `centroid_offset_px`: Euclidean distance from probability-weighted
+  centroid to patch center.
+- `compactness`: perimeter / sqrt(area) on the thresholded binary mask.
+- `edge_touching_fraction`: fraction of mask-at-0.5 pixels within
+  <= 4 px of the patch boundary.
+
+### Gate result
+
+Pre-registered gate: 14-feature GBT must beat 6-feature GBT by
+>= +0.010 recall on mixed geometry at FPR 0.08. Gate **passed**:
+
+| geometry | FPR | `gbt_6` | `gbt_14` | delta | gate |
+|---|---:|---:|---:|---:|---|
+| contained | 0.05 | 0.359 | **0.388** | **+0.029** | pass |
+| contained | 0.08 | 0.403 | **0.434** | **+0.031** | pass |
+| contained | 0.10 | 0.431 | **0.466** | **+0.035** | pass |
+| mixed | 0.05 | 0.322 | **0.352** | **+0.030** | pass |
+| mixed | 0.08 | 0.365 | **0.408** | **+0.043** | **PASS (registered gate)** |
+| mixed | 0.10 | 0.392 | **0.438** | **+0.046** | pass |
+
+Every cell improves. Deltas consistent in sign and magnitude.
+
+### Per-geometry-group lift at mixed / FPR 0.08
+
+The geometry proxies do exactly what the hypothesis said they would:
+the biggest gains land on the groups where the probability mask has
+the most spatial non-triviality and where the 6 scalar scores lose the
+most information.
+
+| group | n | `gbt_6` | `gbt_14` | delta |
+|---|---:|---:|---:|---:|
+| geometry_truncated | 4914 | 0.253 | **0.313** | **+0.060** |
+| center_outside_patch | 2625 | 0.207 | **0.265** | **+0.058** |
+| visible_fraction_low | 1708 | 0.191 | **0.246** | **+0.056** |
+| visible_fraction_mid | 2100 | 0.281 | **0.340** | +0.059 |
+| geometry_contained | 12586 | 0.409 | **0.445** | +0.036 |
+
+### Seed sensitivity
+
+Four independent null-split seeds, same 14-feature config, mixed
+recall at FPR 0.08:
+
+| seed | `gbt_6` | `gbt_14` | delta |
+|---:|---:|---:|---:|
+| 20260417 (default) | 0.365 | 0.408 | +0.043 |
+| 111 | 0.370 | 0.403 | +0.034 |
+| 222 | 0.349 | 0.370 | +0.021 |
+| 333 | 0.382 | 0.411 | +0.028 |
+
+Mean delta +0.032, min +0.021, max +0.043, stdev 0.009. Every seed
+clears the +0.010 gate. The worst seed gives 2.1x the required delta,
+so the result is not an artifact of one null split.
+
+### Feature importances
+
+Default seed, mixed-geometry GBT. New features sum to ~37% of total
+importance:
+
+- v6_baseline 0.327 (primary score, same as PR #8).
+- v7_mf_on_mask 0.089, v6_smooth_multi 0.074 (PR #8 carryover).
+- **v7_centroid_offset 0.067**, **v6_centroid_offset 0.066** (new).
+- **v7_edge_touching 0.061**, **v7_mask_area 0.056**, **v6_mask_area
+  0.046** (new).
+- v7_smooth_multi 0.051, v6_mf_on_mask 0.049, v7_baseline 0.036
+  (PR #8 carryover).
+- **v6_compactness 0.033**, **v7_compactness 0.031**, **v6_edge_touching
+  0.013** (new, weaker but still non-zero).
+
+Centroid offset (both models) and v7 edge_touching are the most
+informative new features. Compactness is the weakest new feature.
+
+`learned_logistic` still underperforms `learned_gbt` on the 14
+features (+0.013 vs +0.043 on the gate cell), confirming the optimal
+boundary is non-linear across the expanded feature set.
+
+### Revised deployment advice (current)
+
+- **Primary policy: `learned_gbt` with `--feature-set all` (14
+  features).** Same GBT architecture as PR #8.
+- **Fallback: `v6_aux_only` at real-SMICA threshold 0.873 (FPR 0.08).**
+- **6-feature `learned_gbt` remains available via `--feature-set
+  scores_only`** as the published PR #8 baseline for apples-to-apples
+  comparators.
+- Roles of `v7_mixed_ft` and `matched_template` unchanged.
