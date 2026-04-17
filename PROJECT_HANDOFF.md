@@ -1,6 +1,6 @@
 # Project Handoff: CMB Bubble Collision Screening
 
-Last updated: 2026-04-17
+Last updated: 2026-04-17 (Batch 2 ablation added)
 Repo path: `/data/william/CMB-Collision-Bubbles`
 Primary current claim: Planck-era ML/classical candidate-screening front end for localized bubble-collision signatures; not a standalone cosmological detection or Feeney-style Bayesian evidence pipeline.
 
@@ -872,20 +872,51 @@ Use a two-model portfolio at Phase 5:
 This is the correct response to a documented domain-specific tradeoff, not a
 v7 retirement.
 
-### Next step: Batch 2
+### Next step: Batch 2 — completed
 
-Post-processing ablation applied to both v6 and v7:
+See `work/batch2_postprocess_ablation.md` for the full ablation.
 
-- Probability-mask Gaussian smoothing before taking max.
-- Matched-filter rescoring on the probability mask (not the raw patch).
-- Per-θ stratified thresholds matched to null FPR per radius bin.
-- Isotonic score calibration on the SMICA null score distribution.
+- Harness: `scripts/phase3_postprocess_ablation.py`.
+- Artifacts: `runs/phase3_unet/batch2_postprocess_ablation_v1/`.
 
-Ceiling targets at FPR 0.08 on the mixed-geometry gate:
+Two transforms evaluated on frozen v6 / v7 probability masks against the
+same real-SMICA gate data:
 
-- v6 contained recall: 0.380 → 0.45-0.55.
-- v7 truncated recall: 0.246 → 0.33-0.40.
+- `smooth_multi` (Gaussian at sigma in {4, 8, 16} pix, max over sigmas):
+  null result. The U-Net mask is already smooth at that scale.
+- `mf_on_mask` (matched-filter rescoring with positive-disc kernels on the
+  smoothed mask): positive for `v7_mixed_ft` specifically, at tight FPR,
+  specifically on contained geometry (+0.039 recall @ FPR 0.05). Hurts
+  `v6_aux_only` at every setting. Also hurts `v7_mixed_ft` on truncated /
+  edge-crossing positives.
 
-If post-processing closes the contained gap (v7+smoothing matches v6 contained
-on real SMICA), the portfolio collapses to v7-only. Otherwise the portfolio
-persists into Phase 5.
+Portfolio decision holds. Best `v7 + mf_on_mask` (0.325 at FPR 0.05 on
+contained) is still below `v6 baseline` (0.348). Post-processing alone does
+not close the gap.
+
+### Batch 3 candidate (not started)
+
+The most useful artifact of Batch 2 is an un-retrained geometry-routing
+signal. `mf_on_mask - baseline` per candidate separates contained-disc-like
+masks from truncated / edge-crossing masks. Used as a router to pick the
+authoritative ML score per candidate, this should outperform running both
+models and OR-ing.
+
+Independent of the router, the only remaining recall lever that plausibly
+moves truncated recall another ~4-10pp is a proper `v8` retrain with a
+matched-filter response map as an input channel, with the training hygiene
+lessons from the radius-head post-mortem respected. Expected wall-clock 6-10
+hours on 2x3090. Not started.
+
+What will NOT help at this point (so the next AI does not loop on these):
+
+- Naive multi-model ensemble averaging. Documented negative in
+  `work/tta_ensemble_eval.md`.
+- D4 test-time augmentation. +0.7pp Dice, not the theoretical sqrt(8).
+  Also in `work/tta_ensemble_eval.md`.
+- Gaussian smoothing at sigmas >= 4 pixels on the probability mask. Null
+  result in the Batch 2 ablation.
+- Matched-filter-on-mask as a general screener replacement. Hurts v6 at
+  every setting.
+- Nside=512 retrain. Failed its focused probe gate; see
+  `docs/nside512_probe_decision.md`.
