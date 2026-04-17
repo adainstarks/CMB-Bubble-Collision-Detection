@@ -115,6 +115,24 @@ def parse_args():
     )
     parser.add_argument("--aux-head-dropout", type=float, default=0.2)
     parser.add_argument(
+        "--radius-head-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Optional auxiliary radius-bin classification loss for positive samples. "
+            "This supervises theta_crit as a physical scale cue; negatives use ignore_index."
+        ),
+    )
+    parser.add_argument(
+        "--radius-bin-edges-deg",
+        type=str,
+        default="5,10,15,20,25",
+        help=(
+            "Comma-separated theta_crit bin edges used when --radius-head-weight > 0. "
+            "The default creates bins [5,10), [10,15), [15,20), [20,25]."
+        ),
+    )
+    parser.add_argument(
         "--boundary-weight",
         type=float,
         default=0.0,
@@ -243,6 +261,11 @@ def validate_args(args):
         raise ValueError("--boundary-width-pixels must be non-negative.")
     if args.aux_head_weight < 0.0:
         raise ValueError("--aux-head-weight must be non-negative.")
+    if args.radius_head_weight < 0.0:
+        raise ValueError("--radius-head-weight must be non-negative.")
+    radius_edges = parse_radius_bin_edges(args.radius_bin_edges_deg)
+    if args.radius_head_weight > 0.0 and len(radius_edges) < 3:
+        raise ValueError("--radius-bin-edges-deg must define at least two radius bins.")
     if not (0.0 <= args.aux_head_dropout < 1.0):
         raise ValueError("--aux-head-dropout must be in [0, 1).")
     if args.hard_positive_weight < 1.0:
@@ -320,6 +343,31 @@ def parse_extra_channel_datasets(value):
     return out
 
 
+def parse_radius_bin_edges(value):
+    if isinstance(value, (list, tuple, np.ndarray)):
+        edges = [float(x) for x in value]
+    else:
+        edges = [float(token.strip()) for token in str(value).split(",") if token.strip()]
+    if len(edges) < 2:
+        raise ValueError("--radius-bin-edges-deg must contain at least two values.")
+    if any(not np.isfinite(edge) for edge in edges):
+        raise ValueError("--radius-bin-edges-deg contains a non-finite edge.")
+    if any(edges[idx] >= edges[idx + 1] for idx in range(len(edges) - 1)):
+        raise ValueError("--radius-bin-edges-deg must be strictly increasing.")
+    return tuple(edges)
+
+
+def radius_bin_count_from_edges(edges):
+    return max(len(edges) - 1, 0)
+
+
+def theta_to_radius_bin(theta_crit_deg, radius_bin_edges):
+    edges = np.asarray(radius_bin_edges, dtype=np.float32)
+    inner_edges = edges[1:-1]
+    bin_idx = int(np.searchsorted(inner_edges, float(theta_crit_deg), side="right"))
+    return int(np.clip(bin_idx, 0, radius_bin_count_from_edges(edges) - 1))
+
+
 def input_channel_count_from_args(args):
     explicit = getattr(args, "input_channels", None)
     if explicit is not None:
@@ -354,6 +402,8 @@ def model_args_from_run_config(run_config):
         encoder_weights=train_args["encoder_weights"],
         aux_head_weight=float(train_args.get("aux_head_weight", 0.0) or 0.0),
         aux_head_dropout=float(train_args.get("aux_head_dropout", 0.0) or 0.0),
+        radius_head_weight=float(train_args.get("radius_head_weight", 0.0) or 0.0),
+        radius_bin_edges_deg=train_args.get("radius_bin_edges_deg", "5,10,15,20,25"),
         input_channels=input_config["input_channels"],
         extra_channel_dataset=input_config["extra_channel_datasets"],
     )
@@ -779,10 +829,12 @@ class H5BubbleDataset(Dataset):
         extra_channel_datasets=None,
         channel_means=None,
         channel_stds=None,
+        radius_bin_edges=None,
     ):
         self.h5_path = str(h5_path)
         self.indices = np.asarray(indices, dtype=np.int64)
         self.extra_channel_datasets = parse_extra_channel_datasets(extra_channel_datasets)
+        self.radius_bin_edges = None if radius_bin_edges is None else parse_radius_bin_edges(radius_bin_edges)
         self.num_channels = 1 + len(self.extra_channel_datasets)
         if channel_means is None:
             channel_means = [float(mean)] + [0.0] * len(self.extra_channel_datasets)
@@ -807,11 +859,14 @@ class H5BubbleDataset(Dataset):
         self._extra_channels = None
         self._masks = None
         self._labels = None
+        self._theta_crit = None
         if self.cache_data:
             with h5py.File(self.h5_path, "r") as h5:
                 for dataset_path in self.extra_channel_datasets:
                     if not h5_dataset_exists(h5, dataset_path):
                         raise KeyError(f"Extra input channel dataset not found in {self.h5_path}: {dataset_path}")
+                if self.radius_bin_edges is not None and "truth/theta_crit_deg" not in h5:
+                    raise KeyError(f"Radius-bin supervision requires truth/theta_crit_deg in {self.h5_path}.")
                 self._patches = read_h5_rows(h5["patches"], self.indices).astype(np.float32, copy=False)
                 self._extra_channels = [
                     read_h5_rows(h5[dataset_path], self.indices).astype(np.float32, copy=False)
@@ -819,6 +874,8 @@ class H5BubbleDataset(Dataset):
                 ]
                 self._masks = read_h5_rows(h5["masks"], self.indices).astype(np.float32, copy=False)
                 self._labels = read_h5_rows(h5["labels"], self.indices).astype(np.float32, copy=False)
+                if self.radius_bin_edges is not None:
+                    self._theta_crit = read_h5_rows(h5["truth/theta_crit_deg"], self.indices).astype(np.float32, copy=False)
 
     def __len__(self):
         return len(self.indices)
@@ -848,11 +905,14 @@ class H5BubbleDataset(Dataset):
             ]
             mask = np.asarray(self._masks[item], dtype=np.float32)
             label = float(self._labels[item])
+            theta_crit = None if self._theta_crit is None else float(self._theta_crit[item])
         else:
             h5 = self._get_h5()
             for dataset_path in self.extra_channel_datasets:
                 if not h5_dataset_exists(h5, dataset_path):
                     raise KeyError(f"Extra input channel dataset not found in {self.h5_path}: {dataset_path}")
+            if self.radius_bin_edges is not None and "truth/theta_crit_deg" not in h5:
+                raise KeyError(f"Radius-bin supervision requires truth/theta_crit_deg in {self.h5_path}.")
             patch = np.asarray(h5["patches"][index], dtype=np.float32)
             extra_channels = [
                 np.asarray(h5[dataset_path][index], dtype=np.float32)
@@ -860,6 +920,7 @@ class H5BubbleDataset(Dataset):
             ]
             mask = np.asarray(h5["masks"][index], dtype=np.float32)
             label = float(h5["labels"][index])
+            theta_crit = None if self.radius_bin_edges is None else float(h5["truth/theta_crit_deg"][index])
 
         if extra_channels:
             patch = np.stack([patch, *extra_channels], axis=0).astype(np.float32, copy=False)
@@ -878,10 +939,15 @@ class H5BubbleDataset(Dataset):
         patch = (patch - self.channel_means[:, None, None]) / self.channel_stds[:, None, None]
         mask = mask[None, :, :]
 
+        radius_bin = -100
+        if self.radius_bin_edges is not None and label >= 0.5:
+            radius_bin = theta_to_radius_bin(theta_crit, self.radius_bin_edges)
+
         return {
             "image": torch.from_numpy(patch),
             "mask": torch.from_numpy(mask),
             "label": torch.tensor(label, dtype=torch.float32),
+            "radius_bin": torch.tensor(radius_bin, dtype=torch.long),
             "index": index,
         }
 
@@ -947,8 +1013,18 @@ def model_state_dict_for_checkpoint(model):
 
 
 def load_model_state_dict(model, state_dict, strict=True):
+    def maybe_filter_compatible(target_model, candidate_state):
+        if strict:
+            return candidate_state
+        target_state = target_model.state_dict()
+        return {
+            key: value
+            for key, value in candidate_state.items()
+            if key in target_state and tuple(target_state[key].shape) == tuple(value.shape)
+        }
+
     try:
-        model.load_state_dict(state_dict, strict=strict)
+        model.load_state_dict(maybe_filter_compatible(model, state_dict), strict=strict)
         return
     except RuntimeError:
         pass
@@ -957,25 +1033,28 @@ def load_model_state_dict(model, state_dict, strict=True):
         prefixed = {}
         for key, value in state_dict.items():
             prefixed[key if key.startswith("module.") else f"module.{key}"] = value
-        model.load_state_dict(prefixed, strict=strict)
+        model.load_state_dict(maybe_filter_compatible(model, prefixed), strict=strict)
         return
 
     stripped = {}
     for key, value in state_dict.items():
         stripped[key[len("module."):] if key.startswith("module.") else key] = value
-    model.load_state_dict(stripped, strict=strict)
+    model.load_state_dict(maybe_filter_compatible(model, stripped), strict=strict)
 
 
 def build_model(args):
     encoder_weights = None if args.encoder_weights.lower() == "none" else args.encoder_weights
     input_channels = input_channel_count_from_args(args)
+    radius_bin_edges = parse_radius_bin_edges(getattr(args, "radius_bin_edges_deg", "5,10,15,20,25"))
+    radius_bin_count = radius_bin_count_from_edges(radius_bin_edges) if getattr(args, "radius_head_weight", 0.0) > 0.0 else 0
+    image_aux_count = 1 if getattr(args, "aux_head_weight", 0.0) > 0.0 else 0
     aux_params = None
-    if getattr(args, "aux_head_weight", 0.0) > 0.0:
+    if image_aux_count + radius_bin_count > 0:
         aux_params = {
             "pooling": "avg",
             "dropout": float(args.aux_head_dropout),
             "activation": None,
-            "classes": 1,
+            "classes": image_aux_count + radius_bin_count,
         }
     return smp.Unet(
         encoder_name=args.encoder_name,
@@ -990,9 +1069,25 @@ def build_model(args):
 def unpack_model_output(output):
     if isinstance(output, (tuple, list)):
         mask_logits = output[0]
-        image_logits = output[1] if len(output) > 1 else None
-        return mask_logits, image_logits
+        aux_logits = output[1] if len(output) > 1 else None
+        return mask_logits, aux_logits
     return output, None
+
+
+def split_aux_logits(aux_logits, use_image_aux, radius_bin_count):
+    image_logits = None
+    radius_logits = None
+    if aux_logits is None:
+        return image_logits, radius_logits
+    if aux_logits.ndim == 1:
+        aux_logits = aux_logits.reshape(-1, 1)
+    offset = 0
+    if use_image_aux:
+        image_logits = aux_logits[:, 0]
+        offset = 1
+    if radius_bin_count > 0:
+        radius_logits = aux_logits[:, offset : offset + radius_bin_count]
+    return image_logits, radius_logits
 
 
 def dice_loss_from_logits(logits, targets):
@@ -1076,6 +1171,9 @@ def make_metric_accumulator():
         "hard_dice_pos_sum": 0.0,
         "iou_sum": 0.0,
         "iou_pos_sum": 0.0,
+        "radius_loss_sum": 0.0,
+        "radius_correct": 0,
+        "radius_count": 0,
         "num_samples": 0,
         "num_positive_samples": 0,
         "image_tp": 0,
@@ -1105,6 +1203,10 @@ def update_metric_accumulator(acc, batch_size, loss_value, bce_value, dice_loss_
     acc["image_fp"] += metrics["image_fp"]
     acc["image_fn"] += metrics["image_fn"]
     acc["image_tn"] += metrics["image_tn"]
+    if "radius_loss" in metrics:
+        acc["radius_loss_sum"] += float(metrics["radius_loss"]) * batch_size
+        acc["radius_correct"] += int(metrics.get("radius_correct", 0))
+        acc["radius_count"] += int(metrics.get("radius_count", 0))
 
 
 def build_hard_positive_sample_weights(h5_path, train_idx, error_mining_json, hard_positive_weight):
@@ -1160,10 +1262,14 @@ def finalize_metrics(acc):
     specificity = acc["image_tn"] / max(acc["image_tn"] + acc["image_fp"], 1)
     false_positive_rate = acc["image_fp"] / max(acc["image_fp"] + acc["image_tn"], 1)
 
+    radius_count = max(acc["radius_count"], 1)
     return {
         "loss": acc["loss_sum"] / n,
         "bce": acc["bce_sum"] / n,
         "dice_loss": acc["dice_loss_sum"] / n,
+        "radius_loss": acc["radius_loss_sum"] / n,
+        "radius_bin_accuracy": acc["radius_correct"] / radius_count,
+        "radius_bin_count": acc["radius_count"],
         "soft_dice": acc["soft_dice_sum"] / n,
         "hard_dice": acc["hard_dice_sum"] / n,
         "hard_dice_pos": acc["hard_dice_pos_sum"] / pos_n,
@@ -1302,6 +1408,8 @@ def run_one_epoch(
     bce_weight,
     dice_weight,
     aux_head_weight,
+    radius_head_weight,
+    radius_bin_count,
     use_amp,
     grad_clip,
     boundary_weight,
@@ -1325,6 +1433,7 @@ def run_one_epoch(
         images = batch["image"].to(device, non_blocking=True)
         masks = batch["mask"].to(device, non_blocking=True)
         labels = batch["label"].to(device, non_blocking=True)
+        radius_bins = batch["radius_bin"].to(device, non_blocking=True)
 
         if train_mode:
             optimizer.zero_grad(set_to_none=True)
@@ -1332,7 +1441,12 @@ def run_one_epoch(
         with torch.set_grad_enabled(train_mode):
             with torch.amp.autocast(device_type=device.type, enabled=autocast_enabled):
                 model_output = model(images)
-                logits, image_logits = unpack_model_output(model_output)
+                logits, aux_logits = unpack_model_output(model_output)
+                image_logits, radius_logits = split_aux_logits(
+                    aux_logits,
+                    use_image_aux=aux_head_weight > 0.0,
+                    radius_bin_count=radius_bin_count,
+                )
                 if boundary_weight > 0.0 and boundary_width_pixels > 0:
                     bce = weighted_bce_with_logits(
                         logits=logits,
@@ -1349,6 +1463,14 @@ def run_one_epoch(
                     image_logits = image_logits.reshape(-1)
                     image_loss = F.binary_cross_entropy_with_logits(image_logits, labels.float())
                     loss = loss + float(aux_head_weight) * image_loss
+                radius_loss = None
+                if radius_head_weight > 0.0 and radius_logits is not None:
+                    valid_radius_for_loss = radius_bins >= 0
+                    if bool(valid_radius_for_loss.any()):
+                        radius_loss = F.cross_entropy(radius_logits, radius_bins, ignore_index=-100)
+                    else:
+                        radius_loss = radius_logits.sum() * 0.0
+                    loss = loss + float(radius_head_weight) * radius_loss
 
             if train_mode:
                 scaler.scale(loss).backward()
@@ -1359,6 +1481,16 @@ def run_one_epoch(
                 scaler.update()
 
         metrics = batch_metrics_from_logits(logits.detach(), masks.detach(), threshold)
+        if radius_head_weight > 0.0 and radius_logits is not None and radius_loss is not None:
+            valid_radius = radius_bins >= 0
+            if bool(valid_radius.any()):
+                radius_pred = torch.argmax(radius_logits.detach(), dim=1)
+                metrics["radius_correct"] = int((radius_pred[valid_radius] == radius_bins[valid_radius]).sum().item())
+                metrics["radius_count"] = int(valid_radius.sum().item())
+            else:
+                metrics["radius_correct"] = 0
+                metrics["radius_count"] = 0
+            metrics["radius_loss"] = float(radius_loss.detach().item())
         batch_size = int(images.shape[0])
         update_metric_accumulator(
             accumulator,
@@ -1414,8 +1546,11 @@ def main():
     labels = load_labels(h5_path)
     signal_strength = load_positive_signal_strength(h5_path)
     extra_channel_datasets = parse_extra_channel_datasets(args.extra_channel_dataset)
+    radius_bin_edges = parse_radius_bin_edges(args.radius_bin_edges_deg)
+    radius_bin_count = radius_bin_count_from_edges(radius_bin_edges) if args.radius_head_weight > 0.0 else 0
     args.extra_channel_dataset = extra_channel_datasets
     args.input_channels = 1 + len(extra_channel_datasets)
+    args.radius_bin_edges_deg = ",".join(f"{edge:g}" for edge in radius_bin_edges)
     if extra_channel_datasets:
         with h5py.File(h5_path, "r") as h5:
             for dataset_path in extra_channel_datasets:
@@ -1500,6 +1635,18 @@ def main():
         "candidate_selection": candidate_summary,
         "input_dataset_audit": input_audit_report,
     }
+    if args.radius_head_weight > 0.0:
+        run_config["radius_head"] = {
+            "enabled": True,
+            "weight": float(args.radius_head_weight),
+            "bin_edges_deg": [float(edge) for edge in radius_bin_edges],
+            "num_bins": int(radius_bin_count),
+            "target": "truth/theta_crit_deg for positive samples; negatives ignored",
+            "scientific_note": (
+                "Auxiliary scale supervision only. The Feeney-template generator, masks, "
+                "and deployment thresholds are unchanged."
+            ),
+        }
     sample_weights = None
     hard_positive_summary = None
     if args.hard_positive_mining_json:
@@ -1553,6 +1700,11 @@ def main():
             f"  Boundary loss:   +{args.boundary_weight:.2f}x BCE weight "
             f"within {args.boundary_width_pixels} px of target edge"
         )
+    if args.radius_head_weight > 0.0:
+        print(
+            f"  Radius head:     {radius_bin_count} bins {list(radius_bin_edges)} "
+            f"weighted x{args.radius_head_weight:.2f}"
+        )
     if hard_positive_summary:
         print(
             f"  Hard positives:  {hard_positive_summary['train_hard_samples']} train samples "
@@ -1587,6 +1739,7 @@ def main():
         extra_channel_datasets=extra_channel_datasets,
         channel_means=channel_means,
         channel_stds=channel_stds,
+        radius_bin_edges=radius_bin_edges if args.radius_head_weight > 0.0 else None,
     )
     val_dataset = H5BubbleDataset(
         h5_path=h5_path,
@@ -1600,6 +1753,7 @@ def main():
         extra_channel_datasets=extra_channel_datasets,
         channel_means=channel_means,
         channel_stds=channel_stds,
+        radius_bin_edges=radius_bin_edges if args.radius_head_weight > 0.0 else None,
     )
 
     loader_kwargs = {
@@ -1655,7 +1809,7 @@ def main():
         if not resume_checkpoint_path.exists():
             raise FileNotFoundError(f"Resume checkpoint not found: {resume_checkpoint_path}")
         resume_checkpoint = torch.load(resume_checkpoint_path, map_location=device, weights_only=False)
-        partial_resume = bool(args.model_only_resume or args.aux_head_weight > 0.0)
+        partial_resume = bool(args.model_only_resume or args.aux_head_weight > 0.0 or args.radius_head_weight > 0.0)
         load_model_state_dict(model, resume_checkpoint["model_state_dict"], strict=not partial_resume)
         if not partial_resume:
             optimizer.load_state_dict(resume_checkpoint["optimizer_state_dict"])
@@ -1693,6 +1847,8 @@ def main():
             bce_weight=args.bce_weight,
             dice_weight=args.dice_weight,
             aux_head_weight=args.aux_head_weight,
+            radius_head_weight=args.radius_head_weight,
+            radius_bin_count=radius_bin_count,
             use_amp=use_amp,
             grad_clip=args.grad_clip,
             boundary_weight=args.boundary_weight,
@@ -1712,6 +1868,8 @@ def main():
                 bce_weight=args.bce_weight,
                 dice_weight=args.dice_weight,
                 aux_head_weight=args.aux_head_weight,
+                radius_head_weight=args.radius_head_weight,
+                radius_bin_count=radius_bin_count,
                 use_amp=use_amp,
                 grad_clip=0.0,
                 boundary_weight=args.boundary_weight,
@@ -1780,12 +1938,18 @@ def main():
                 threshold=args.threshold,
             )
 
+        radius_text = (
+            f" | val radius acc {val_metrics['radius_bin_accuracy']:.4f}"
+            if args.radius_head_weight > 0.0
+            else ""
+        )
         print(
             f"Epoch {epoch:03d}/{args.epochs} | "
             f"train loss {train_metrics['loss']:.4f} | "
             f"val loss {val_metrics['loss']:.4f} | "
             f"val dice+ {val_metrics['hard_dice_pos']:.4f} | "
-            f"val img F1 {val_metrics['image_f1']:.4f} | "
+            f"val img F1 {val_metrics['image_f1']:.4f}"
+            f"{radius_text} | "
             f"lr {current_lr:.2e}"
         )
 
