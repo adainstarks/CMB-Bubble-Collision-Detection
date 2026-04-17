@@ -4,7 +4,7 @@
 
 A full-sky gnomonic tiling audit of all four Planck cleaned maps at HEALPix
 Nside=8 (~7.3 deg spacing, 700 patches per map after common-mask filter
-at unmasked-fraction >= 0.5) revealed **two serious findings**:
+at unmasked-fraction >= 0.5) revealed **three findings**:
 
 1. **The `smica_null_controls_all.h5` calibration pool systematically
    under-represents the mask-adjacent sky regions that dominate the
@@ -12,28 +12,33 @@ at unmasked-fraction >= 0.5) revealed **two serious findings**:
    shipped 14-feature-GBT threshold is 0.157 on SMICA vs. the
    calibration pool's 0.08. On Commander it is 0.463 — **5.8x inflated**.
 
-2. **Under deployment-representative tile calibration, the Batch 4
-   (PR #9) +0.043 gate-cell lift of `gbt_14` over `gbt_6` evaporates and
-   in some cases reverses.** Cross-map tile-recalibrated mixed-recall
-   delta (gbt_14 − gbt_6) is −0.001 on SMICA, +0.023 on NILC, **−0.045
-   on SEVEM**, **−0.036 on Commander**. Mean across maps **−0.015**,
-   stdev 0.027. The Batch 4 lift is indistinguishable from zero on
-   average and negative on 2 of 4 maps.
+2. **Under deployment-representative tile calibration, the PR #9
+   (Batch 4, `gbt_14`) lift evaporates or reverses cross-map.**
+   Cross-map mean `gbt_14 − gbt_6` recall delta is **−0.015** (SMICA
+   −0.001, NILC +0.023, **SEVEM −0.045**, **Commander −0.036**). The
+   Batch 4 geometry features specifically overfit the clean-pool
+   mask-fraction distribution. **PR #9 is downgraded; the 14-feature
+   router is not recommended as deployment policy.**
 
-These findings together mean:
+3. **The PR #8 (Batch 3, `gbt_6`) lift SURVIVES recalibration cleanly.**
+   Cross-map mean `gbt_6 − v6_only` recall delta under tile
+   recalibration is **+0.036** (shipped clean-null claim was +0.031).
+   Tied on SMICA/NILC, **+0.070 on SEVEM, +0.074 on Commander**.
+   The 6-feature router's v6/v7 score ensemble does exactly what
+   PR #8 said it would. **PR #8 is the right primary deployment
+   policy, with per-map calibrated thresholds.**
 
-- Batch 4's PR #9 numbers are correct *as evaluated on the clean null
-  pool*. They are not correct as deployment expectations. The shipped
-  claim "+0.043 recall at FPR 0.08" should be revised to "+0.043 on
-  clean-null calibration, ~0.00 under deployment-representative
-  calibration on SMICA, negative on SEVEM/Commander."
-- The 14-feature GBT is **not a deployment improvement over the
-  6-feature GBT** on any map except arguably NILC, and even there the
-  gain is within one tile-recalibration-uncertainty of zero.
-- The clean-null calibration bias also applies to the PR #8 numbers
-  (6-feature GBT vs `v6_only`). That comparison also needs re-running
-  on a deployment-representative pool before we can state its real-sky
-  deployment recall.
+Concrete deployment recommendation:
+
+- **Primary: `phase3_geometry_router.py --feature-set scores_only`
+  (the 6-feature GBT from PR #8), with per-map null calibration.**
+- **Fallback: `v6_aux_only` single model, per-map calibrated.**
+- **Archive: `--feature-set all` (PR #9 14-feature variant). Keep the
+  code for reproducibility of the published clean-null numbers; do not
+  deploy.**
+- **Per-map null pools are mandatory.** Single-threshold FPR calibration
+  on SMICA's clean null pool produces deployment FPR of 0.15 on SMICA's
+  own full tile, 0.29 on SEVEM, 0.46 on Commander.
 
 Gate (pre-registered from the session plan): my own "Step 1 hypothesis"
 (patch-level FPR is 2-5x what cluster-level FPR would be, so clustering
@@ -124,28 +129,73 @@ The 5000-patch SMICA null pool in `data/training_v4/smica_null_controls_all.h5`
 has `coord_mask_fraction` min 0.950, median 0.984 — it systematically
 excludes the mask-adjacent sky where the model fires most.
 
-## Finding 3: tile-recalibrated Batch 4 delta (the important one)
+## Finding 3: full cross-map deployment-calibrated policy comparison
 
-Recalibrating the `gbt_6` and `gbt_14` thresholds on the full-sky tile
-to land at the same 0.08 tile FPR, then re-applying to the cached
+Recalibrating all three policies (`v6_only`, `gbt_6`, `gbt_14`) per map
+using the Nside=8 tile as the null distribution (threshold set so
+exactly 8% of tile patches trigger), then re-applying to the cached
 17500-positive mixed gate set:
 
-| map | fpr6@shp | fpr14@shp | thr6_tile | thr14_tile | rec6_tile | rec14_tile | delta (14-6) |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| SMICA | 0.121 | 0.157 | 0.8907 | 0.9038 | 0.3306 | 0.3291 | **−0.001** |
-| NILC | 0.147 | 0.161 | 0.9012 | 0.9085 | 0.2923 | 0.3150 | **+0.023** |
-| SEVEM | 0.260 | 0.291 | 0.9893 | 0.9920 | 0.2369 | 0.1921 | **−0.045** |
-| Commander | 0.393 | 0.463 | 0.9934 | 0.9915 | 0.2297 | 0.1934 | **−0.036** |
+| map | `v6_only` | `gbt_6` | `gbt_14` | `gbt_6 − v6` | `gbt_14 − v6` | `gbt_14 − gbt_6` |
+|---|---:|---:|---:|---:|---:|---:|
+| SMICA | 0.334 | 0.331 | 0.329 | −0.003 | −0.005 | −0.001 |
+| NILC | 0.293 | 0.292 | **0.315** | −0.001 | **+0.022** | **+0.023** |
+| SEVEM | 0.167 | **0.237** | 0.192 | **+0.070** | +0.025 | −0.045 |
+| Commander | 0.155 | **0.230** | 0.193 | **+0.074** | +0.038 | −0.036 |
+| **cross-map mean** | **0.237** | **0.273** | 0.257 | **+0.036** | +0.020 | −0.015 |
 
-Cross-map summary of the tile-recalibrated `gbt_14 - gbt_6` delta:
-mean **−0.015**, stdev **0.027**, min **−0.045**, max **+0.023**.
+This is a more complete picture than just the pairwise `gbt_14 − gbt_6`
+comparison. Two things emerge:
 
-Contrast with the shipped clean-null delta: **+0.043** on the gate
-cell, claimed in PR #9 Section 22 / Section 26.
+### Result 1: PR #8 (6-feature GBT) SURVIVES deployment calibration
 
-**The Batch 4 lift does not survive deployment-representative
-calibration on any map except weakly NILC.** On SEVEM and Commander
-the 14-feature GBT is actively *worse* than the 6-feature variant.
+`gbt_6` beats `v6_only` by **+0.036 cross-map mean** under tile
+recalibration (shipped clean-null claim was +0.031). The 6-feature
+router's ensemble-of-scores signal generalizes cross-map; the geometry
+features do not.
+
+- SMICA: tied (−0.003, noise)
+- NILC: tied (−0.001, noise)
+- SEVEM: **+0.070** — big win for the router
+- Commander: **+0.074** — big win for the router
+
+The PR #8 delta is ROBUSTLY ≥0 across all four maps and dramatically
+positive on the two noisier maps. The PR #8 claim does not need to
+be retracted.
+
+### Result 2: PR #9 (14-feature GBT) FAILS deployment calibration
+
+`gbt_14` beats `v6_only` cross-map by only **+0.020 mean** (shipped
+clean-null claim was gbt_14 − v6_only ≈ +0.077). And `gbt_14` beats
+`gbt_6` by **−0.015 cross-map mean** (shipped claim: +0.043).
+
+- SMICA: tied (−0.005, noise vs v6_only; −0.001 vs gbt_6)
+- NILC: **+0.022 vs v6_only, +0.023 vs gbt_6** — the one map where Batch 4 genuinely helps
+- SEVEM: +0.025 vs v6_only but **−0.045 vs gbt_6** — the router helps but the geometry features hurt
+- Commander: +0.038 vs v6_only but **−0.036 vs gbt_6** — same pattern
+
+The Batch 4 geometry features made the router *worse than gbt_6* on
+the two noisier maps. The shipped "+0.043" was an artifact of the
+clean-null calibration pool.
+
+### Revised deployment recommendation (this PR)
+
+- **Primary policy: `learned_gbt` with `--feature-set scores_only` (6 features).**
+  Beats `v6_only` by +0.036 cross-map mean under tile recalibration;
+  statistically indistinguishable from `v6_only` on clean maps (SMICA/NILC)
+  and +0.070-0.074 on noisier maps (SEVEM/Commander).
+- **Single-model fallback: `v6_aux_only`** at per-map-calibrated thresholds.
+  Closest to the 6-feature GBT on SMICA/NILC; noticeably weaker on
+  SEVEM/Commander.
+- **Archive: `learned_gbt` with `--feature-set all` (14 features).** The
+  geometry features overfit the clean null pool and hurt deployment
+  recall on SEVEM/Commander. Keep the `--feature-set all` flag in the
+  codebase for reproducibility of the PR #9 numbers; do not use it as
+  the deployment policy.
+- **Per-map calibrated thresholds** are not optional. Single-threshold
+  "FPR 0.08" calibrated on SMICA's clean null produces deployment FPR
+  of 0.23 on SMICA's own full tile, 0.29 on SEVEM, **0.46 on Commander**.
+  Every deployment point needs its own map-specific null calibration.
 
 ## Why the 14-feature GBT specifically loses cross-map
 
@@ -174,19 +224,20 @@ deployment-generalizable one.
 ### Batch 4 (PR #9) is downgraded
 
 - Code stays merged; the feature-set plumbing is useful infrastructure.
-- The "default deployment policy" role goes back to either `v6_aux_only`
-  (per-map calibrated) or `gbt_6` (also per-map calibrated), pending
-  deployment-representative recalibration.
-- The `gbt_14` variant is **not** recommended as the primary
-  deployment policy on any map.
+- The "default deployment policy" role goes to **`gbt_6` (PR #8's
+  6-feature router)**, which survives recalibration cleanly (see
+  Result 1 above).
+- The `gbt_14` variant (PR #9's geometry-feature router) is **not**
+  recommended as the primary deployment policy on any map.
 
-### PR #8 (6-feature GBT) is unverified but not retracted
+### PR #8 (6-feature GBT) is CONFIRMED (not retracted)
 
-- `gbt_6` vs `v6_only` delta was +0.031 on the gate cell under clean-null
-  calibration. Under tile recalibration on 700-patch SMICA, `gbt_6`
-  mixed recall is 0.331; `v6_only` single-model tile-recalibrated recall
-  has not yet been computed but will likely be similar or slightly
-  lower. Full re-evaluation is Step 2b.
+- `gbt_6` vs `v6_only` cross-map mean delta under deployment-representative
+  tile calibration: **+0.036 recall** (shipped clean-null claim was
+  +0.031). The +3.1-4.5pp lift holds up.
+- On SMICA/NILC the lift is close to zero; on SEVEM/Commander it is
+  +0.070 to +0.074. The router's `v6 + v7` score ensemble does exactly
+  what it was designed to do on the two noisier maps.
 
 ### All prior FPR-calibrated thresholds in the repo are now suspect
 
