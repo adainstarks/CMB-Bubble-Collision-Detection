@@ -1,6 +1,6 @@
 # Project Handoff: CMB Bubble Collision Screening
 
-Last updated: 2026-04-17 (Batch 4 router feature expansion: +3-4pp recall over PR #8 GBT)
+Last updated: 2026-04-17 (Batch 5 full-sky audit: retracts Batch 4 shipped lift; all FPR-calibrated thresholds in the repo are suspect until deployment-representative null pools are built)
 Repo path: `/data/william/CMB-Collision-Bubbles`
 Primary current claim: Planck-era ML/classical candidate-screening front end for localized bubble-collision signatures; not a standalone cosmological detection or Feeney-style Bayesian evidence pipeline.
 
@@ -8,9 +8,10 @@ Primary current claim: Planck-era ML/classical candidate-screening front end for
 
 This repo is a research pipeline for candidate screening, not a completed discovery framework.
 
-Best current operational stack (revised 2026-04-17 after Batch 4 router feature expansion shipped on top of Batch 3):
+Best current operational stack (revised 2026-04-17 after Batch 5 full-sky audit retracted the Batch 4 shipped lift):
 
-- **Primary deployment policy: `learned_gbt` router on 14 features** — the 6 scalar score features from PR #8 plus 4 truth-free geometry proxies per model (`mask_area_at_0.5`, `centroid_offset_px`, `compactness`, `edge_touching_fraction`). Beats the 6-feature GBT by +2.9 to +4.6 points recall at every (geometry, FPR target) cell, and beats `v6_only` by +4.0 to +9.1 points. Gains are largest on truncated / edge-crossing positives (+0.060 on `geometry_truncated`, +0.058 on `center_outside_patch`, +0.056 on `visible_fraction_low` at FPR 0.08). See Section 26. The 6-feature variant remains available via `--feature-set scores_only` for published-baseline comparators.
+- **Primary deployment policy: UNCERTAIN, pending deployment-representative recalibration.** The Batch 4 shipped `learned_gbt` with 14 features lifted the gate-cell recall by +0.043 on clean-null calibration, but the Batch 5 full-sky tile audit showed this lift (a) does not survive deployment-representative tile calibration on any map except weakly NILC, (b) actively reverses by −0.045 on SEVEM and −0.036 on Commander. Cross-map mean delta is −0.015, stdev 0.027. See Section 27 and `work/batch5_fullsky_calibration_gap.md`. The 14-feature router is no longer recommended as primary.
+- **Falling back to the PR #8 baselines until recalibration finishes**: `v6_aux_only` at per-map-calibrated thresholds, with `learned_gbt` on 6 score features as an optional composite. Both are also subject to clean-null calibration bias (Section 27) — their real-sky-deployment recall has not yet been measured on a deployment-representative null pool. Do not quote the shipped FPR-0.08 recall numbers as deployment expectations until Step 2 finishes.
 - `v6_aux_only`: primary backbone ML screener; heavily weighted by the router (~44% feature importance). Also retained as a documented single-model fallback when a reviewer does not want a composite policy.
 - `v7_mixed_ft`: retained as an input to the learned router and as a Phase 5 specialist on truncated candidates. Not run as a separate parallel screener.
 - `matched_template`: classical Feeney-template reference, fallback, and independent score.
@@ -19,12 +20,13 @@ Best current operational stack (revised 2026-04-17 after Batch 4 router feature 
 
 Current blocker:
 
-- Weak-family recall at low amplitude (A <= 5e-6) is still near the Planck SMICA noise floor even after the Batch 3/4 router gains. This is physical, not engineering.
-- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real SMICA in isolation. The learned router recovers the portfolio via a classifier on fourteen frozen-mask features.
+- Weak-family recall at low amplitude (A <= 5e-6) is still near the Planck SMICA noise floor. This is physical, not engineering.
+- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real SMICA in isolation.
 - Batch 2 post-processing ablation (`work/batch2_postprocess_ablation.md`) confirmed Gaussian smoothing is null and matched-filter-on-mask is a geometry specialist, not a general replacement.
-- Batch 3 simple ensemble / heuristic-router policies all underperformed `v6_only` at FPR 0.08; only the learned GBT classifier beats the single-model baseline. See `work/batch3_geometry_router.md`.
-- Batch 4 router feature expansion (`work/batch4_router_features.md`) confirmed that truth-free mask-geometry proxies add genuinely complementary signal to the score-only GBT. Centroid offset and edge-touching fraction are the most informative new features. Shipped as the default router.
-- Remaining untouched training-signal lever: `v8` retrain with matched-filter response map as a second input channel on mixed geometry. Expected additional +4-10pp truncated recall on top of the Batch 4 router. Not yet started.
+- Batch 3 simple ensemble / heuristic-router policies all underperformed `v6_only` at FPR 0.08; the 6-feature learned GBT classifier beat `v6_only` by +3.1pp under clean-null calibration. The real-sky-tile-calibrated comparison has not yet been recomputed (Step 2b pending).
+- Batch 4 router feature expansion reported +0.043 gate-cell lift on clean-null calibration, but the Batch 5 full-sky audit retracted that claim for deployment: geometry features specifically overfit to the clean null pool's mask-fraction distribution. See Section 27.
+- **Biggest blocker (as of 2026-04-17): the `smica_null_controls_all.h5` calibration pool was drawn at `MASK_THRESHOLD = 0.95` and systematically excludes mask-adjacent sky. Deployment-tile patch-level FPR is 2-6x what the calibration pool says (SMICA 1.96x, NILC 2.01x, SEVEM 3.64x, Commander 5.78x). Fix: rebuild null pools per map at `MASK_THRESHOLD = 0.5` and re-evaluate every FPR-calibrated threshold the repo has shipped.**
+- Remaining untouched training-signal lever: `v8` retrain with matched-filter response map as a second input channel on mixed geometry. Earlier MF-channel training (`phase3_v7_mf_channel_aux_w4`) on contained data gave only +0.013 contested recall; Section 25's speculative "+4-10pp" estimate is not calibrated by that prior. Mixed-geometry retrain has not been run and its expected lift is now unclear.
 
 Do not proceed with:
 
@@ -1074,6 +1076,13 @@ Closed off by direct measurement so the next AI does not loop on them:
 - Radius-head auxiliary branch at weight 0.2 cold-started. Measured
   negative in `work/radius_head_post_mortem.md`. Retry requires warmup
   + checkpoint metric hygiene + geometry-correct training data.
+- **Batch 4 14-feature router as a deployment improvement.** Clean-null
+  FPR-0.08 delta over `gbt_6` was +0.043 (shipped claim in PR #9). Under
+  deployment-representative Nside=8 tile calibration the cross-map mean
+  delta is **−0.015** (SMICA −0.001, NILC +0.023, SEVEM −0.045,
+  Commander −0.036). The geometry features specifically overfit the
+  clean-pool mask-fraction distribution. See `work/batch5_fullsky_calibration_gap.md`
+  and Section 27. Code infrastructure stays; deployment claim retracted.
 
 ## 25. What Remains on the Table (Open Recall Levers)
 
@@ -1201,3 +1210,128 @@ boundary is non-linear across the expanded feature set.
   scores_only`** as the published PR #8 baseline for apples-to-apples
   comparators.
 - Roles of `v7_mixed_ft` and `matched_template` unchanged.
+
+**Section 26 note (2026-04-17 post-Batch-5):** The Batch 4 shipped lift
+numbers above were measured on the clean null pool and do not survive
+deployment-representative calibration. See Section 27. The 14-feature
+GBT is no longer recommended as primary. Section 26 is retained as-is
+for historical record of what was shipped in PR #9.
+
+## 27. 2026-04-17 Batch 5 Full-sky Calibration Gap (Batch 4 Retraction)
+
+Full report: `work/batch5_fullsky_calibration_gap.md`. Harness:
+`scripts/phase3_fullsky_tile.py` (new). Artifacts:
+`runs/phase3_unet/batch5_fullsky_fp_audit_*`.
+
+A full-sky gnomonic tiling of all four Planck cleaned maps at HEALPix
+Nside=8 (700 patches each after common-mask filter at unmasked fraction
+>= 0.5) uncovered two findings:
+
+### Finding 1: Calibration pool mask-fraction bias
+
+The `data/training_v4/smica_null_controls_all.h5` calibration pool was
+drawn with `MASK_THRESHOLD = 0.95` (coord_mask_fraction min 0.950,
+median 0.984). Deployment tiling at 0.5 threshold covers patches with
+50-99% unmasked, median 0.87. False positives fire preferentially on
+mask-adjacent patches, which the calibration pool excludes.
+
+Real-sky patch-level FPR at the PR #9 shipped 14-feature-GBT threshold
+(calibrated to 0.08 on the clean-null eval half):
+
+| map | patch-level FPR | FPR inflation vs 0.08 target |
+|---|---:|---:|
+| SMICA | 0.157 | 1.96x |
+| NILC | 0.161 | 2.01x |
+| SEVEM | 0.291 | 3.64x |
+| Commander | 0.463 | **5.78x** |
+
+On SMICA, stratified by patch mask fraction:
+
+| mask fraction band | n | triggers | observed FPR |
+|---|---:|---:|---:|
+| [0.50, 0.70) | 59 | 14 | 0.237 |
+| [0.70, 0.90) | 32 | 5 | 0.156 |
+| [0.90, 0.95) | 15 | 2 | 0.133 |
+| [0.95, 1.00] | 69 | 5 | 0.073 |
+
+In the clean-pool band (>= 0.95) the tile FPR matches the calibration
+target; in the [0.50, 0.70) band it is 3.3x higher. The bias is clean
+and monotonic.
+
+**Implication**: all FPR-calibrated thresholds shipped in PR #6, #8,
+#9 (and the real-SMICA recalibration numbers in Sections 10-13) are
+underestimates of deployment FPR by 2-6x depending on map.
+
+### Finding 2: Batch 4 (14-feature GBT) lift retraction
+
+Under deployment-representative tile calibration (threshold set so
+exactly 8% of tile patches trigger per map), the Batch 4 PR #9 gate-cell
+delta `gbt_14 - gbt_6` on mixed geometry:
+
+| map | n tiles | rec6_tile | rec14_tile | delta | vs PR #9 shipped +0.043 |
+|---|---:|---:|---:|---:|---|
+| SMICA | 700 | 0.331 | 0.329 | **−0.001** | evaporates |
+| NILC | 700 | 0.292 | 0.315 | **+0.023** | survives weakly |
+| SEVEM | 700 | 0.237 | 0.192 | **−0.045** | reverses |
+| Commander | 700 | 0.230 | 0.193 | **−0.036** | reverses |
+
+Cross-map mean delta **−0.015**, stdev **0.027**. Stable across 4
+null-split seeds on SMICA (seed range: −0.034 to −0.001).
+
+**The 14-feature GBT's apparent +0.043 advantage over the 6-feature
+GBT is an artifact of the clean-null calibration pool.** The
+`edge_touching_fraction` and `centroid_offset_px` features specifically
+learned statistics of the clean-pool mask-fraction distribution; in
+deployment they raise the threshold more than they raise recall.
+
+### Clustering side-result (Step 1 of the original session plan)
+
+At realistic Nside=8 deployment density (7.3 deg spacing, ~87% per-
+neighbor overlap), greedy angular-distance clustering of triggers does
+reduce apparent FP burden meaningfully, consistent with my original
+hypothesis:
+
+| tile Nside | cluster @ 15 deg | cluster @ 25 deg |
+|---|---:|---:|
+| 4 (SMICA) | 1.18x | 1.53x |
+| 8 (SMICA) | 2.29x | 4.78x |
+| 8 (NILC) | 2.76x | 4.35x |
+| 8 (SEVEM) | 3.24x | 7.03x |
+| 8 (Commander) | ~ | ~ |
+
+Clustering is therefore a real, cheap FP-reduction lever for deployment
+tiling, but it only reduces apparent-FP count. The underlying patch-
+level FPR inflation (Finding 1) is the dominant issue and has to be
+fixed first.
+
+### Actions taken
+
+- `work/batch5_fullsky_calibration_gap.md` — full writeup.
+- `scripts/phase3_fullsky_tile.py` — new, reusable.
+- Negative registry entry added to Section 24.
+- Deployment-advice header in Section 0 revised.
+- Section 26 retained as historical record of what was shipped in PR
+  #9; a note at the top of Section 26 points here.
+
+### Corrective work still open (Step 2 and beyond)
+
+1. **Build deployment-representative null pools per map** at
+   `MASK_THRESHOLD = 0.5`. Target 5000 patches per map. Likely needs a
+   small code change to `phase2_extract_smica_null_controls.py` to
+   accept the lower threshold, or a new script that enumerates random
+   patch centers uniformly on the sky with loose mask filtering.
+2. **Re-run `phase3_postprocess_ablation.py`** on the new null pools.
+3. **Re-run `phase3_geometry_router.py`** on the new transform caches
+   for all three policies (`v6_only`, `gbt_6`, `gbt_14`) to get honest
+   deployment-representative recall at FPR 0.08, per map.
+4. **Ship the corrected deployment advice** based on the outcome.
+   Likely `v6_aux_only` single-model with per-map calibrated thresholds
+   remains the primary; any router claim needs to pass a cross-map
+   gate on the new pools.
+5. **Revisit the `phase3_v7_mf_channel_aux_w4` model** (the existing
+   MF-channel training). Hypothesis: the MF-channel input may suppress
+   mask-adjacent FPs because it only responds to disc-shaped kernel
+   correlations, which mask-edge residuals lack. If true, its
+   tile/clean-null FPR-inflation ratio would be smaller than the vanilla
+   models' 2-6x. That would be a deployment-relevant advantage even
+   if its clean-pool recall gain is small. This is the revised Step 3.
