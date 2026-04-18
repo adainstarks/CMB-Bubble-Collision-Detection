@@ -101,8 +101,8 @@ def parse_args():
         "--learned-fit-on",
         type=str,
         default="cross",
-        choices=("cross", "in_sample", "kfold"),
-        help="How to train the learned router. cross: fit on the other geometry; in_sample: fit and eval on same data (optimistic upper bound); kfold: 5-fold within the eval geometry.",
+        choices=("cross", "in_sample"),
+        help="How to train the learned router. cross: fit on the other geometry; in_sample: fit and eval on same data (optimistic upper bound).",
     )
     parser.add_argument("--learned-seed", type=int, default=20260417)
     parser.add_argument(

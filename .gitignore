@@ -17,6 +17,9 @@ runs/
 # Local tool state
 .codex
 
+# Batch run logs (ephemeral, per-session stdout/stderr captures)
+work/*_logs/
+
 # Plots are committed to repo for README display
 
 # Python
