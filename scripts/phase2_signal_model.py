@@ -1,10 +1,18 @@
 """
-Phase 2 Preview: Bubble Collision Signal Model (Feeney et al. 2011, Eq. 1)
+Phase 2 Preview: Bubble Collision Signal Model.
+
+Assumptions
+-----------
+* `z0` and `zcrit` are dimensionless fractional temperature modulations
+  (Delta T / T), not Kelvin or microkelvin amplitudes.
+* The implemented template is the linearized spherical-cap profile from
+  Feeney, Johnson, Mortlock & Peiris, Phys. Rev. D 84, 043507 (2011),
+  arXiv:1012.3667. The short PRL summary arXiv:1012.1995 is not cited as
+  the equation source.
+* Patch arrays are CMB temperature anisotropies in Kelvin.
 
 Implements the bubble collision temperature modulation from:
-    Feeney, Johnson, Mortlock & Peiris (2011)
-    "First Observational Tests of Eternal Inflation"
-    arXiv:1012.1995
+    Feeney, Johnson, Mortlock & Peiris (2011), arXiv:1012.3667
 
 The signal model (centered on the north pole) is:
 
@@ -32,14 +40,15 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from scipy.special import erf
 
+from phase_config import PATCH_PIX, RESO_ARCMIN, T_CMB
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 PLOT_DIR = os.path.join(PROJECT_ROOT, "plots")
 SMICA_FILE = os.path.join(DATA_DIR, "COM_CMB_IQU-smica_2048_R3.00_full.fits")
 
-RESO_ARCMIN = 13.0
-PATCH_PIX = 256
-T_CMB_K = 2.7255
+RESO_ARCMIN = float(RESO_ARCMIN.to_value("arcmin"))
+T_CMB_K = float(T_CMB.to_value("K"))
 
 
 def causal_boundary_window(theta, theta_crit, edge_sigma_deg=0.0):
@@ -47,7 +56,7 @@ def causal_boundary_window(theta, theta_crit, edge_sigma_deg=0.0):
     Return a hard or softly smeared causal boundary window.
 
     For edge_sigma_deg = 0, this reduces to the sharp Heaviside step used in
-    Feeney et al. (2011). For edge_sigma_deg > 0, we smooth the boundary with
+    Feeney et al. (2011, arXiv:1012.3667). For edge_sigma_deg > 0, we smooth the boundary with
     a Gaussian CDF transition of width sigma to make the training set more
     robust to sub-degree edge smearing.
     """
@@ -61,7 +70,8 @@ def causal_boundary_window(theta, theta_crit, edge_sigma_deg=0.0):
 
 def bubble_collision_signal(theta, z0, zcrit, theta_crit, edge_sigma_deg=0.0):
     """
-    Feeney et al. (2011) Eq. 1: temperature modulation from a bubble collision.
+    Feeney et al. (2011, arXiv:1012.3667): temperature modulation from a
+    bubble collision.
 
     Parameters
     ----------
@@ -148,7 +158,7 @@ def inject_signal_into_patch(
     """
     Inject a bubble collision signal into a flat-sky patch.
     
-    Uses multiplicative injection per Feeney et al. (2011) Eq. 15:
+    Uses multiplicative injection with a Feeney-style fractional modulation:
         δT = (1 + f(n̂)) * (T0 + δT_cmb) - T0
 
     The Planck SMICA patch is a temperature-anisotropy map, so we reconstruct the

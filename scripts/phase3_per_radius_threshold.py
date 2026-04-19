@@ -26,16 +26,18 @@ from phase3_sensitivity_curve import (
     SIGN_QUADRANTS,
     make_centered_disc_kernel,
     make_feeney_template_kernel,
+    score_circular_template_patch,
     standardize_patch,
     threshold_from_negatives,
 )
+from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, canonical_method_name, method_metadata
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_H5 = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5"
 DEFAULT_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_report.json"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "per_radius_threshold_v1"
-METHODS = ("matched_template", "centered_disc")
+METHODS = (CIRCULAR_TEMPLATE_SCREEN, "centered_disc")
 
 
 def parse_args():
@@ -63,13 +65,11 @@ def exact_ci(k, n):
     return float(ci.low), float(ci.high)
 
 
-def score_fixed_matched(patch, kernels):
+def score_fixed_circular_template(patch, kernels):
+    """Score a patch with the current circular-template correlation screen."""
+
     patch = standardize_patch(patch)
-    best = -np.inf
-    for kernel in kernels:
-        response = fftconvolve(patch, kernel[::-1, ::-1], mode="same")
-        best = max(best, float(np.max(response)))
-    return best
+    return score_circular_template_patch(patch, kernels)
 
 
 def score_fixed_centered(patch, kernel):
@@ -78,14 +78,15 @@ def score_fixed_centered(patch, kernel):
 
 
 def score_theta(patches, method, theta_deg, beam_fwhm_arcmin, workers):
-    if method == "matched_template":
+    method = canonical_method_name(method)
+    if method == CIRCULAR_TEMPLATE_SCREEN:
         kernels = [
             make_feeney_template_kernel(theta_deg, z0_sign, zcrit_sign, beam_fwhm_arcmin=beam_fwhm_arcmin)
             for z0_sign, zcrit_sign in SIGN_QUADRANTS
         ]
 
         def score_one(idx):
-            return idx, score_fixed_matched(patches[idx], kernels)
+            return idx, score_fixed_circular_template(patches[idx], kernels)
 
     elif method == "centered_disc":
         kernel = make_centered_disc_kernel(theta_deg)
@@ -284,6 +285,7 @@ def main():
         "rows": [],
         "thresholds": {},
         "familywise": {},
+        "method_metadata": {method: method_metadata(method) for method in METHODS},
     }
 
     for method in METHODS:

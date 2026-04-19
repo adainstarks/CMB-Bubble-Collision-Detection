@@ -14,8 +14,8 @@ This script measures the gap between patch-level and cluster-level false
 positive burden on real SMICA (no injections):
 
   1. Enumerate HEALPix tile-center pixels at `--tile-nside`.
-  2. Keep centers whose gnomonic patch has >= MASK_THRESHOLD unmasked
-     fraction under the common Planck mask (same rule as training data).
+  2. Keep centers whose gnomonic patch has >= the requested mask threshold
+     unmasked fraction under the common Planck mask.
   3. Extract gnomonic patches and score through v6_aux_only and
      v7_mixed_ft. Compute the 14-feature vector per patch using the same
      transforms + geometry features as `phase3_postprocess_ablation.py`.
@@ -66,8 +66,9 @@ from phase2_generate_training import (
     NSIDE_WORKING,
     project_patch,
     projected_unmasked_fraction,
-    MASK_THRESHOLD,
 )
+from phase2_observing_model import remove_real_map_low_modes
+from phase_config import CANONICAL_MASK_THRESHOLD
 from phase2_signal_model import PATCH_PIX, RESO_ARCMIN
 from sklearn.ensemble import GradientBoostingClassifier
 
@@ -88,10 +89,9 @@ def parse_args():
                         help="Planck cleaned map to tile (smica, nilc, sevem, commander).")
     parser.add_argument("--tile-nside", type=int, default=4,
                         help="HEALPix Nside for tile centers. 4 -> 192 centers (14.7 deg spacing).")
-    parser.add_argument("--mask-threshold", type=float, default=0.5,
+    parser.add_argument("--mask-threshold", type=float, default=CANONICAL_MASK_THRESHOLD,
                         help=("Minimum unmasked fraction within a patch for it to be included. "
-                              "Default 0.5 is appropriate for deployment tiling; the training-data "
-                              "default (MASK_THRESHOLD=0.95) is too strict for full-sky coverage."))
+                              "Use 0.9 for canonical science runs and 0.5 only for separate stress-test tiling."))
     parser.add_argument("--batch2-dir", type=str, default=str(DEFAULT_BATCH2))
     parser.add_argument("--common-mask", type=str, default=str(DEFAULT_COMMON_MASK))
     parser.add_argument("--output-dir", type=str, default=str(DEFAULT_OUTPUT_DIR))
@@ -369,7 +369,13 @@ def run_tile(args, device, output_dir):
     map_2048 = hp.read_map(str(map_path), field=0, dtype=np.float64)
     map_256 = hp.ud_grade(map_2048, NSIDE_WORKING, order_in="RING", order_out="RING")
     common_mask_2048 = hp.read_map(args.common_mask, field=0)
-    common_mask_256 = np.where(hp.ud_grade(common_mask_2048, NSIDE_WORKING) > 0.5, 1.0, 0.0)
+    common_mask_256 = np.where(
+        hp.ud_grade(common_mask_2048, NSIDE_WORKING) >= float(args.mask_threshold),
+        1.0,
+        0.0,
+    )
+    map_256 = remove_real_map_low_modes(map_256, mask=common_mask_256)
+    map_256[np.asarray(common_mask_256) <= 0] = 0.0
     print(f"  map {args.map}: 2048->256 ud_grade; mask loaded "
           f"({float(np.mean(common_mask_256 > 0.5)):.3f} usable fraction at Nside=256)", flush=True)
 

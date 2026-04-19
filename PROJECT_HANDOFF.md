@@ -1,8 +1,50 @@
 # Project Handoff: CMB Bubble Collision Screening
 
-Last updated: 2026-04-17 (Batch 5 full-sky audit: retracts Batch 4 shipped lift; all FPR-calibrated thresholds in the repo are suspect until deployment-representative null pools are built)
+Last updated: 2026-04-19 (remediated-v1 artifacts generated; current results are candidate-screening diagnostics, not cosmological detection claims)
 Repo path: `/data/william/CMB-Collision-Bubbles`
 Primary current claim: Planck-era ML/classical candidate-screening front end for localized bubble-collision signatures; not a standalone cosmological detection or Feeney-style Bayesian evidence pipeline.
+
+## Immediate Audit Caveat
+
+Do not use pre-remediation operating-point thresholds in this handoff as deployment-ready values. They came from historical calibration products with mask-threshold and naming problems. The remediated-v1 family has rebuilt synthetic training/calibration/test products and per-map null controls under `data/remediated_v1/`, but the current ML threshold still shows material cluster dependence on real-map null controls. Treat all remediated-v1 numbers as screening diagnostics until cluster-level deployment calibration is finalized.
+
+Treat historical `matched_template` artifacts as circular-template correlation screens, not Wiener-whitened Feeney matched filters. New code writes `circular_template_screen` metadata and adds a separate `wiener_feeney_matched_filter` implementation for harmonic-space Feeney filtering. The remediated-v1 ML-gain heatmap now has a preselected ImageNet model and family-wise correction; the older post-hoc `8 / 35` count is historical only.
+
+## Remediated v1 Snapshot
+
+Core data products:
+
+- `data/remediated_v1/training_data.h5`: `20000` rows, balanced positives/negatives, split `16000/2000/2000` train/calibration/test.
+- `data/remediated_v1/calibration_data.h5` and `data/remediated_v1/test_data.h5`: split-specific copies with dataset hashes.
+- `data/remediated_v1/null_controls_{smica,nilc,sevem,commander}_{mask090,mask050}.h5`: `16000` rows each, cluster split `13064/1442/1494`.
+- `runs/phase3_unet/remediated_v1_sensitivity_curve/`: 33k-row CAMB sensitivity grid with zcrit-ratio scan and paired ML/classical scores.
+- `runs/phase3_unet/remediated_v1_real_sky_injection_smica_mask090/`: 28.2k-row SMICA real-background injection diagnostic.
+- `runs/phase3_unet/remediated_v1_classical_fullsky/`: SMICA mask090 harmonic `wiener_feeney_matched_filter` and `smhw_screen` score maps.
+
+Physics/observing-model defaults:
+
+- `Nside=256`, `PATCH_PIX=256`, Planck cleaned-map beam `5 arcmin`, `synfast(pixwin=True)`, science mask threshold `0.9`, stress-test nulls at `0.5` kept separate.
+- `z0` and `zcrit` are dimensionless fractional `Delta T / T`; geometry and harmonic work use `float64`, stored patch tensors use `float32` after finite/range checks.
+- Mixed signal geometry includes contained and edge-crossing positives; visible target fraction is bounded below by `0.15`.
+
+Current remediated-v1 held-out test operating points:
+
+| method | threshold source | threshold | precision | recall | FPR | F1 |
+|---|---|---:|---:|---:|---:|---:|
+| ImageNet U-Net `component_score` | calibration split | `0.96` | `0.888` | `0.396` | `0.050` | `0.548` |
+| random-init U-Net `component_score` | calibration split | `0.99` | `0.819` | `0.362` | `0.080` | `0.502` |
+| `circular_template_screen` | calibration split | `65.0217` | `0.921` | `0.267` | `0.023` | `0.414` |
+
+Real-map null controls:
+
+- ImageNet `component_score` frozen at `0.96` gives held-out null-test FPR `0.0556-0.0589` across SMICA/NILC/SEVEM/Commander and mask090/mask050 products.
+- The same threshold gives null-calibration FPR `0.2427-0.2483`, so cluster/block composition still dominates threshold portability.
+- `circular_template_screen` fixed from calibration is conservative on null-test products: FPR `0.0013-0.0074`; `centered_disc` is weaker at about `0.066-0.070`.
+
+Sensitivity and transfer diagnostics:
+
+- Preselected ImageNet-vs-`circular_template_screen` heatmap: ImageNet wins `30 / 35` cells; `14` Holm-significant and `17` BH-significant cells across amplitude-radius tests.
+- Real-SMICA injection comparison policy `imagenet_b64_aux_only`: real recall/FPR `0.372/0.185`; CAMB recall/FPR `0.349/0.050`. This is a calibration-domain warning because the real-background negative count is only `200`.
 
 ## 0. Current Working Interpretation
 
@@ -15,7 +57,7 @@ Best current operational stack (revised 2026-04-17 after Batch 5 full-sky audit 
 - **Archived: `learned_gbt --feature-set all`** (the PR #9 14-feature GBT). The 4 truth-free geometry proxies (`mask_area_at_0.5`, `centroid_offset_px`, `compactness`, `edge_touching_fraction`) overfit the clean-null pool's mask-fraction distribution; deployment recall is worse than `gbt_6` on SEVEM (−0.045) and Commander (−0.036). Code infrastructure stays; the `--feature-set all` path remains for reproducibility of PR #9's numbers.
 - `v6_aux_only`: primary backbone ML screener; heavily weighted by the router (~44% feature importance). Also retained as a documented single-model fallback when a reviewer does not want a composite policy.
 - `v7_mixed_ft`: retained as an input to the learned router and as a Phase 5 specialist on truncated candidates. Not run as a separate parallel screener.
-- `matched_template`: classical Feeney-template reference, fallback, and independent score.
+- `circular_template_screen`: simple classical Feeney-template correlation reference, fallback, and independent score. Historical `matched_template` labels refer to this screen.
 - Thresholds must be calibrated on real-map null controls, not CAMB-only negatives.
 - The five-model stack was important for investigation but should not be treated as the default deployment path.
 
@@ -27,7 +69,7 @@ Current blocker:
 - Batch 3 simple ensemble / heuristic-router policies all underperformed `v6_only` at FPR 0.08; the 6-feature learned GBT classifier beat `v6_only` by +3.1pp under clean-null calibration. The real-sky-tile-calibrated comparison has not yet been recomputed (Step 2b pending).
 - Batch 4 router feature expansion reported +0.043 gate-cell lift on clean-null calibration, but the Batch 5 full-sky audit retracted that claim for deployment: geometry features specifically overfit to the clean null pool's mask-fraction distribution. See Section 27.
 - **Biggest blocker (as of 2026-04-17): the `smica_null_controls_all.h5` calibration pool was drawn at `MASK_THRESHOLD = 0.95` and systematically excludes mask-adjacent sky. Deployment-tile patch-level FPR is 2-6x what the calibration pool says (SMICA 1.96x, NILC 2.01x, SEVEM 3.64x, Commander 5.78x). Fix: rebuild null pools per map at `MASK_THRESHOLD = 0.5` and re-evaluate every FPR-calibrated threshold the repo has shipped.**
-- Remaining untouched training-signal lever: `v8` retrain with matched-filter response map as a second input channel on mixed geometry. Earlier MF-channel training (`phase3_v7_mf_channel_aux_w4`) on contained data gave only +0.013 contested recall; Section 25's speculative "+4-10pp" estimate is not calibrated by that prior. Mixed-geometry retrain has not been run and its expected lift is now unclear.
+- Remaining untouched training-signal lever: retrain with a circular-template response map as a second input channel on mixed geometry. Earlier legacy MF-channel training (`phase3_v7_mf_channel_aux_w4`) on contained data gave only +0.013 contested recall; Section 25's speculative "+4-10pp" estimate is not calibrated by that prior. Mixed-geometry retrain has not been run and its expected lift is now unclear.
 
 Do not proceed with:
 

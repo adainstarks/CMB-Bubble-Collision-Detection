@@ -1,10 +1,13 @@
 """
-Cache a matched-filter response map as an HDF5 input feature channel.
+Cache a circular-template response map as an HDF5 input feature channel.
 
 For each patch, this computes the per-pixel maximum correlation response over a
 coarse Feeney-template bank. The result is intended as a second U-Net input
 channel that injects circularity/profile prior information without replacing
 the learned segmentation objective.
+
+This filename is retained as a legacy entry point. The cached feature is not a
+Wiener or CMB/noise-whitened matched filter.
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ import numpy as np
 from scipy.signal import fftconvolve
 
 import phase3_train_unet as p3
+from phase_config import DEFAULTS
+from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, method_metadata
 from phase3_sensitivity_curve import SIGN_QUADRANTS, make_feeney_template_kernel, standardize_patch
 
 
@@ -39,13 +44,13 @@ def parse_float_list(text: str) -> tuple[float, ...]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Cache matched-template response maps into HDF5 feature datasets.",
+        description="Cache circular-template response maps into HDF5 feature datasets.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--h5", action="append", default=[], help="HDF5 file to update. Can be repeated.")
-    parser.add_argument("--dataset", type=str, default="features/matched_filter_response")
+    parser.add_argument("--dataset", type=str, default="features/circular_template_response")
     parser.add_argument("--radii-deg", type=str, default=",".join(f"{x:g}" for x in DEFAULT_RADII))
-    parser.add_argument("--beam-fwhm-arcmin", type=float, default=15.0)
+    parser.add_argument("--beam-fwhm-arcmin", type=float, default=DEFAULTS.beam_fwhm_arcmin)
     parser.add_argument("--chunk-size", type=int, default=64)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--compression", type=str, default="lzf", choices=["none", "lzf", "gzip"])
@@ -146,13 +151,14 @@ def cache_one(path: Path, args: argparse.Namespace, kernels: list[np.ndarray]) -
             **compression_kwargs(args.compression),
         )
         out.attrs["created_utc"] = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-        out.attrs["description"] = "Per-pixel max Feeney matched-template response over radius and sign bank."
+        out.attrs["description"] = "Per-pixel max Feeney circular-template response over radius and sign bank."
+        out.attrs["method_metadata"] = json.dumps(method_metadata(CIRCULAR_TEMPLATE_SCREEN), sort_keys=True)
         out.attrs["radii_deg"] = json.dumps([float(x) for x in args.radii_deg])
         out.attrs["beam_fwhm_arcmin"] = float(args.beam_fwhm_arcmin)
         out.attrs["sign_quadrants"] = json.dumps([[float(a), float(b)] for a, b in SIGN_QUADRANTS])
         out.attrs["patch_standardization"] = "per-patch mean/std before convolution"
 
-        progress = p3.ProgressPrinter(n, f"Cache MF channel {path.name}")
+        progress = p3.ProgressPrinter(n, f"Cache circular channel {path.name}")
         completed = 0
         for start in range(0, n, args.chunk_size):
             stop = min(start + args.chunk_size, n)

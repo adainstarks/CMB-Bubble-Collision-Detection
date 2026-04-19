@@ -1,13 +1,13 @@
 """
-Build matched-FPR sensitivity curves for Phase 3 screeners.
+Build fixed-FPR sensitivity curves for Phase 3 screeners.
 
 This script generates an independent sensitivity grid over signal amplitude and
 angular radius, calibrates every method on the same negative patches at a fixed
 FPR, and reports P_det(A, theta_c) with binomial confidence intervals.
 
-The injected signal is the hard-boundary Feeney Eq. 1 reference signal:
-edge_sigma_deg = 0.0.  That keeps the comparison against circular matched
-templates interpretable.
+The injected signal is the hard-boundary Feeney PRD 84 linear cap reference
+signal with edge_sigma_deg = 0.0.  That keeps the comparison against the
+circular template screen interpretable.
 """
 
 from __future__ import annotations
@@ -39,6 +39,8 @@ from phase2_generate_training import (
     apply_observing_model_to_patch,
     build_balanced_sign_pairs,
     build_coordinate_pool,
+    coordinate_cluster_ids,
+    coordinate_cluster_pixels,
     generate_camb_realizations,
     fwhm_arcmin_to_sigma_pixels,
     load_mask,
@@ -50,6 +52,8 @@ from phase2_generate_training import (
 from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, bubble_collision_signal, inject_signal_into_patch
 from phase3_evaluate_run import load_json, resolve_checkpoint_path
 from phase_dataset_utils import make_angular_distance_grid, patch_center_pixel, stable_group_id
+from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, method_metadata
+from phase_config import DEFAULTS
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -93,14 +97,21 @@ def parse_args():
     parser.add_argument("--output-dir", type=str, default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--amplitude-grid", type=str, default=",".join(f"{x:g}" for x in DEFAULT_AMPLITUDE_GRID))
     parser.add_argument("--theta-grid-deg", type=str, default=",".join(f"{x:g}" for x in DEFAULT_THETA_GRID_DEG))
+    parser.add_argument(
+        "--zcrit-ratio-grid",
+        type=str,
+        default="0,0.5,1,2",
+        help="Grid of |zcrit| / |z0| profile ratios to marginalize within each amplitude-radius cell.",
+    )
     parser.add_argument("--num-per-cell", type=int, default=200)
     parser.add_argument("--num-negatives", type=int, default=5000)
     parser.add_argument("--fpr-target", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=20260417)
     parser.add_argument("--pool-size", type=int, default=16000)
+    parser.add_argument("--coord-cluster-nside", type=int, default=4)
     parser.add_argument("--num-cmb-realizations", type=int, default=384)
     parser.add_argument("--contained-margin-deg", type=float, default=0.5)
-    parser.add_argument("--beam-fwhm-arcmin", type=float, default=15.0)
+    parser.add_argument("--beam-fwhm-arcmin", type=float, default=DEFAULTS.beam_fwhm_arcmin)
     parser.add_argument("--noise-sigma-uk-arcmin", type=float, default=30.0)
     parser.add_argument("--noise-corr-fwhm-arcmin", type=float, default=0.0)
     parser.add_argument(
@@ -115,6 +126,15 @@ def parse_args():
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--classical-workers", type=int, default=0, help="Thread workers for classical FFT scoring. Use 0 to match --num-workers.")
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
+    parser.add_argument(
+        "--cache-ml-data",
+        action="store_true",
+        help=(
+            "Cache the sensitivity HDF5 arrays in RAM for ML scoring. This avoids "
+            "HDF5 multiprocessing stalls on large remediated grids and forces a "
+            "single-process PyTorch loader for deterministic inference."
+        ),
+    )
     parser.add_argument("--skip-existing-data", action="store_true", help="Reuse output sensitivity_data.h5 if present.")
     parser.add_argument("--skip-ml", action="store_true", help="Only run classical baselines.")
     parser.add_argument("--reuse-ml-scores", action="store_true", help="Reuse ML score arrays from an existing sensitivity_scores.npz.")
@@ -124,10 +144,13 @@ def parse_args():
 def validate_args(args):
     args.amplitude_grid = parse_float_list(args.amplitude_grid)
     args.theta_grid_deg = parse_float_list(args.theta_grid_deg)
+    args.zcrit_ratio_grid = parse_float_list(args.zcrit_ratio_grid)
     if not args.amplitude_grid or any(value <= 0.0 for value in args.amplitude_grid):
         raise ValueError("--amplitude-grid must contain positive values.")
     if not args.theta_grid_deg or any(value <= 0.0 for value in args.theta_grid_deg):
         raise ValueError("--theta-grid-deg must contain positive values.")
+    if not args.zcrit_ratio_grid or any(value < 0.0 for value in args.zcrit_ratio_grid):
+        raise ValueError("--zcrit-ratio-grid must contain non-negative values.")
     if args.num_per_cell <= 0:
         raise ValueError("--num-per-cell must be positive.")
     if args.num_negatives <= 0:
@@ -136,6 +159,8 @@ def validate_args(args):
         raise ValueError("--fpr-target must be in (0, 1).")
     if args.pool_size <= 1:
         raise ValueError("--pool-size must be at least 2.")
+    if args.coord_cluster_nside <= 0:
+        raise ValueError("--coord-cluster-nside must be positive.")
     if args.num_cmb_realizations <= 1:
         raise ValueError("--num-cmb-realizations must be at least 2.")
     if args.exclude_radius_deg < 0.0:
@@ -180,6 +205,7 @@ def allocate_arrays(num_samples):
         "glon_deg": np.empty(num_samples, dtype=np.float32),
         "glat_deg": np.empty(num_samples, dtype=np.float32),
         "coord_pool_idx": np.empty(num_samples, dtype=np.int32),
+        "coord_cluster_id": np.zeros(num_samples, dtype=np.uint64),
         "coord_mask_fraction": np.empty(num_samples, dtype=np.float32),
         "cmb_realization_idx": np.empty(num_samples, dtype=np.int32),
         "background_id": np.zeros(num_samples, dtype=np.uint64),
@@ -192,6 +218,7 @@ def allocate_arrays(num_samples):
         "theta_crit_deg": np.zeros(num_samples, dtype=np.float32),
         "z0": np.zeros(num_samples, dtype=np.float32),
         "zcrit": np.zeros(num_samples, dtype=np.float32),
+        "zcrit_ratio": np.zeros(num_samples, dtype=np.float32),
         "edge_sigma_deg": np.zeros(num_samples, dtype=np.float32),
         "signal_center_x_pix": np.full(num_samples, patch_center_pixel(PATCH_PIX), dtype=np.float32),
         "signal_center_y_pix": np.full(num_samples, patch_center_pixel(PATCH_PIX), dtype=np.float32),
@@ -201,16 +228,28 @@ def allocate_arrays(num_samples):
     stratification = {
         "amplitude_idx": np.full(num_samples, -1, dtype=np.int16),
         "theta_idx": np.full(num_samples, -1, dtype=np.int16),
+        "zcrit_ratio_idx": np.full(num_samples, -1, dtype=np.int16),
         "sign_quadrant": np.full(num_samples, -1, dtype=np.int16),
     }
     return patches, labels, masks, metadata, truth, stratification
 
 
-def fill_common_metadata(metadata, sample_idx, coord_idx, realization_idx, coord_pool, coord_mask_fractions, seed):
+def fill_common_metadata(
+    metadata,
+    sample_idx,
+    coord_idx,
+    realization_idx,
+    coord_pool,
+    coord_mask_fractions,
+    seed,
+    coord_cluster_id=None,
+):
     lon_i, lat_i = coord_pool[coord_idx]
     metadata["glon_deg"][sample_idx] = lon_i
     metadata["glat_deg"][sample_idx] = lat_i
     metadata["coord_pool_idx"][sample_idx] = coord_idx
+    if coord_cluster_id is not None and "coord_cluster_id" in metadata:
+        metadata["coord_cluster_id"][sample_idx] = np.uint64(coord_cluster_id[coord_idx])
     metadata["coord_mask_fraction"][sample_idx] = coord_mask_fractions[coord_idx]
     metadata["cmb_realization_idx"][sample_idx] = realization_idx
     background_id = stable_group_id("sensitivity_camb", seed, realization_idx, coord_idx)
@@ -219,7 +258,20 @@ def fill_common_metadata(metadata, sample_idx, coord_idx, realization_idx, coord
     return float(lon_i), float(lat_i), background_id
 
 
-def write_sensitivity_h5(path, patches, labels, masks, metadata, truth, stratification, coord_pool, coord_mask_fractions, summary):
+def write_sensitivity_h5(
+    path,
+    patches,
+    labels,
+    masks,
+    metadata,
+    truth,
+    stratification,
+    coord_pool,
+    coord_mask_fractions,
+    summary,
+    coord_cluster_pix=None,
+    coord_cluster_id=None,
+):
     path.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(path, "w") as h5:
         h5.create_dataset("patches", data=patches, compression="gzip", shuffle=True)
@@ -233,6 +285,10 @@ def write_sensitivity_h5(path, patches, labels, masks, metadata, truth, stratifi
         coord_group.create_dataset("glon_deg", data=coord_pool[:, 0].astype(np.float32), compression="gzip", shuffle=True)
         coord_group.create_dataset("glat_deg", data=coord_pool[:, 1].astype(np.float32), compression="gzip", shuffle=True)
         coord_group.create_dataset("mask_fraction", data=coord_mask_fractions.astype(np.float32), compression="gzip", shuffle=True)
+        if coord_cluster_pix is not None:
+            coord_group.create_dataset("coord_cluster_pix", data=np.asarray(coord_cluster_pix, dtype=np.int32), compression="gzip", shuffle=True)
+        if coord_cluster_id is not None:
+            coord_group.create_dataset("coord_cluster_id", data=np.asarray(coord_cluster_id, dtype=np.uint64), compression="gzip", shuffle=True)
         summary_group = h5.create_group("summary")
         for key, value in summary.items():
             summary_group.attrs[key] = value
@@ -242,7 +298,13 @@ def generate_sensitivity_dataset(args, h5_path):
     rng = np.random.default_rng(args.seed)
     amplitude_grid = tuple(float(x) for x in args.amplitude_grid)
     theta_grid_deg = tuple(float(x) for x in args.theta_grid_deg)
-    num_positive = len(amplitude_grid) * len(theta_grid_deg) * int(args.num_per_cell)
+    zcrit_ratio_grid = tuple(float(x) for x in args.zcrit_ratio_grid)
+    num_positive = (
+        len(amplitude_grid)
+        * len(theta_grid_deg)
+        * len(zcrit_ratio_grid)
+        * int(args.num_per_cell)
+    )
     num_samples = num_positive + int(args.num_negatives)
 
     mask_256, sky_fraction = load_mask()
@@ -257,7 +319,10 @@ def generate_sensitivity_dataset(args, h5_path):
     )
     if len(coord_pool) < 2:
         raise RuntimeError("Coordinate pool empty after training/validation exclusion.")
+    coord_cluster_pix = coordinate_cluster_pixels(coord_pool, args.coord_cluster_nside)
+    coord_cluster_id = coordinate_cluster_ids(coord_cluster_pix, args.coord_cluster_nside)
     print(f"  Coordinate pool after exclusions: {len(coord_pool)}")
+    print(f"  Coordinate clusters: {len(np.unique(coord_cluster_pix))} at Nside={args.coord_cluster_nside}")
     camb_realizations, camb_params = generate_camb_realizations(args.num_cmb_realizations, rng)
 
     patches, labels, masks, metadata, truth, stratification = allocate_arrays(num_samples)
@@ -267,86 +332,112 @@ def generate_sensitivity_dataset(args, h5_path):
     print("\n=== Generating sensitivity positives ===")
     for amp_idx, amplitude in enumerate(amplitude_grid):
         for theta_idx, theta_deg in enumerate(theta_grid_deg):
-            sign_pairs = build_balanced_sign_pairs(args.num_per_cell, rng)
-            for cell_row in range(args.num_per_cell):
-                coord_idx = int(rng.integers(0, len(coord_pool)))
-                realization_idx = int(rng.integers(0, len(camb_realizations)))
-                lon_i, lat_i, background_id = fill_common_metadata(
-                    metadata, sample_idx, coord_idx, realization_idx, coord_pool, coord_mask_fractions, args.seed
-                )
-                clean_patch = np.asarray(project_patch(camb_realizations[realization_idx], lon_i, lat_i), dtype=np.float32)
-                center_x_i, center_y_i = sample_signal_center_pixels(
-                    rng=rng,
-                    npix=PATCH_PIX,
-                    theta_crit_deg=theta_deg,
-                    geometry_mode="contained",
-                    edge_margin_pix=0.0,
-                    contained_margin_deg=args.contained_margin_deg,
-                )
-                sign_z0, sign_zcrit = sign_pairs[cell_row]
-                z0_i = float(sign_z0) * float(amplitude)
-                zcrit_i = float(sign_zcrit) * float(amplitude)
-                injected_patch, _ = inject_signal_into_patch(
-                    clean_patch,
-                    z0_i,
-                    zcrit_i,
-                    theta_deg,
-                    edge_sigma_deg=0.0,
-                    center_x_pix=center_x_i,
-                    center_y_pix=center_y_i,
-                )
-                theta_grid_i = make_angular_distance_grid(PATCH_PIX, RESO_ARCMIN, center_x_pix=center_x_i, center_y_pix=center_y_i)
-                mask_i = make_disk_mask(theta_grid_i, theta_deg)
-                touches_edge = target_touches_patch_edge(mask_i)
-                if touches_edge:
-                    raise RuntimeError("Contained sensitivity target touched the patch edge.")
-                observed_patch = apply_observing_model_to_patch(
-                    injected_patch,
-                    rng=rng,
-                    beam_fwhm_arcmin=args.beam_fwhm_arcmin,
-                    noise_sigma_uk_arcmin=args.noise_sigma_uk_arcmin,
-                    noise_corr_fwhm_arcmin=args.noise_corr_fwhm_arcmin,
-                )
-                event_id = stable_group_id(
-                    background_id,
-                    "sensitivity_signal",
-                    amp_idx,
-                    theta_idx,
-                    cell_row,
-                    f"{center_x_i:.6f}",
-                    f"{center_y_i:.6f}",
-                    f"{z0_i:.6e}",
-                    f"{zcrit_i:.6e}",
-                )
+            for ratio_idx, zcrit_ratio in enumerate(zcrit_ratio_grid):
+                sign_pairs = build_balanced_sign_pairs(args.num_per_cell, rng)
+                for cell_row in range(args.num_per_cell):
+                    coord_idx = int(rng.integers(0, len(coord_pool)))
+                    realization_idx = int(rng.integers(0, len(camb_realizations)))
+                    lon_i, lat_i, background_id = fill_common_metadata(
+                        metadata,
+                        sample_idx,
+                        coord_idx,
+                        realization_idx,
+                        coord_pool,
+                        coord_mask_fractions,
+                        args.seed,
+                        coord_cluster_id=coord_cluster_id,
+                    )
+                    clean_patch = np.asarray(
+                        project_patch(camb_realizations[realization_idx], lon_i, lat_i),
+                        dtype=np.float32,
+                    )
+                    center_x_i, center_y_i = sample_signal_center_pixels(
+                        rng=rng,
+                        npix=PATCH_PIX,
+                        theta_crit_deg=theta_deg,
+                        geometry_mode="contained",
+                        edge_margin_pix=0.0,
+                        contained_margin_deg=args.contained_margin_deg,
+                    )
+                    sign_z0, sign_zcrit = sign_pairs[cell_row]
+                    z0_i = float(sign_z0) * float(amplitude)
+                    zcrit_i = float(sign_zcrit) * float(amplitude) * float(zcrit_ratio)
+                    injected_patch, _ = inject_signal_into_patch(
+                        clean_patch,
+                        z0_i,
+                        zcrit_i,
+                        theta_deg,
+                        edge_sigma_deg=0.0,
+                        center_x_pix=center_x_i,
+                        center_y_pix=center_y_i,
+                    )
+                    theta_grid_i = make_angular_distance_grid(
+                        PATCH_PIX,
+                        RESO_ARCMIN,
+                        center_x_pix=center_x_i,
+                        center_y_pix=center_y_i,
+                    )
+                    mask_i = make_disk_mask(theta_grid_i, theta_deg)
+                    touches_edge = target_touches_patch_edge(mask_i)
+                    if touches_edge:
+                        raise RuntimeError("Contained sensitivity target touched the patch edge.")
+                    observed_patch = apply_observing_model_to_patch(
+                        injected_patch,
+                        rng=rng,
+                        beam_fwhm_arcmin=args.beam_fwhm_arcmin,
+                        noise_sigma_uk_arcmin=args.noise_sigma_uk_arcmin,
+                        noise_corr_fwhm_arcmin=args.noise_corr_fwhm_arcmin,
+                    )
+                    event_id = stable_group_id(
+                        background_id,
+                        "sensitivity_signal",
+                        amp_idx,
+                        theta_idx,
+                        ratio_idx,
+                        cell_row,
+                        f"{center_x_i:.6f}",
+                        f"{center_y_i:.6f}",
+                        f"{z0_i:.6e}",
+                        f"{zcrit_i:.6e}",
+                    )
 
-                patches[sample_idx] = observed_patch
-                labels[sample_idx] = 1
-                masks[sample_idx] = mask_i
-                truth["has_signal"][sample_idx] = 1
-                truth["event_id"][sample_idx] = np.uint64(event_id)
-                truth["amplitude"][sample_idx] = amplitude
-                truth["theta_crit_deg"][sample_idx] = theta_deg
-                truth["z0"][sample_idx] = z0_i
-                truth["zcrit"][sample_idx] = zcrit_i
-                truth["signal_center_x_pix"][sample_idx] = center_x_i
-                truth["signal_center_y_pix"][sample_idx] = center_y_i
-                truth["fully_contained"][sample_idx] = 1
-                stratification["amplitude_idx"][sample_idx] = amp_idx
-                stratification["theta_idx"][sample_idx] = theta_idx
-                stratification["sign_quadrant"][sample_idx] = int(
-                    np.where((np.asarray(SIGN_QUADRANTS) == (sign_z0, sign_zcrit)).all(axis=1))[0][0]
-                )
+                    patches[sample_idx] = observed_patch
+                    labels[sample_idx] = 1
+                    masks[sample_idx] = mask_i
+                    truth["has_signal"][sample_idx] = 1
+                    truth["event_id"][sample_idx] = np.uint64(event_id)
+                    truth["amplitude"][sample_idx] = amplitude
+                    truth["theta_crit_deg"][sample_idx] = theta_deg
+                    truth["z0"][sample_idx] = z0_i
+                    truth["zcrit"][sample_idx] = zcrit_i
+                    truth["zcrit_ratio"][sample_idx] = float(zcrit_ratio)
+                    truth["signal_center_x_pix"][sample_idx] = center_x_i
+                    truth["signal_center_y_pix"][sample_idx] = center_y_i
+                    truth["fully_contained"][sample_idx] = 1
+                    stratification["amplitude_idx"][sample_idx] = amp_idx
+                    stratification["theta_idx"][sample_idx] = theta_idx
+                    stratification["zcrit_ratio_idx"][sample_idx] = ratio_idx
+                    stratification["sign_quadrant"][sample_idx] = int(
+                        np.where((np.asarray(SIGN_QUADRANTS) == (sign_z0, sign_zcrit)).all(axis=1))[0][0]
+                    )
 
-                sample_idx += 1
-                if sample_idx % 500 == 0 or sample_idx == num_positive:
-                    print(f"  Positives: {sample_idx:5d} / {num_positive}")
+                    sample_idx += 1
+                    if sample_idx % 500 == 0 or sample_idx == num_positive:
+                        print(f"  Positives: {sample_idx:5d} / {num_positive}")
 
     print("\n=== Generating sensitivity negatives ===")
     for neg_idx in range(args.num_negatives):
         coord_idx = int(rng.integers(0, len(coord_pool)))
         realization_idx = int(rng.integers(0, len(camb_realizations)))
         lon_i, lat_i, _ = fill_common_metadata(
-            metadata, sample_idx, coord_idx, realization_idx, coord_pool, coord_mask_fractions, args.seed
+            metadata,
+            sample_idx,
+            coord_idx,
+            realization_idx,
+            coord_pool,
+            coord_mask_fractions,
+            args.seed,
+            coord_cluster_id=coord_cluster_id,
         )
         clean_patch = np.asarray(project_patch(camb_realizations[realization_idx], lon_i, lat_i), dtype=np.float32)
         observed_patch = apply_observing_model_to_patch(
@@ -376,11 +467,14 @@ def generate_sensitivity_dataset(args, h5_path):
         "num_negative": int(args.num_negatives),
         "amplitude_grid": json.dumps(amplitude_grid),
         "theta_grid_deg": json.dumps(theta_grid_deg),
+        "zcrit_ratio_grid": json.dumps(zcrit_ratio_grid),
         "num_per_cell": int(args.num_per_cell),
         "fpr_target": float(args.fpr_target),
         "seed": int(args.seed),
         "pool_size_requested": int(args.pool_size),
         "pool_size_after_exclusion": int(len(coord_pool)),
+        "coord_cluster_nside": int(args.coord_cluster_nside),
+        "num_coordinate_clusters": int(len(np.unique(coord_cluster_pix))),
         "num_cmb_realizations": int(args.num_cmb_realizations),
         "nside": int(NSIDE_WORKING),
         "patch_pixels": int(PATCH_PIX),
@@ -390,7 +484,8 @@ def generate_sensitivity_dataset(args, h5_path):
         "geometry_mode": "contained",
         "contained_margin_deg": float(args.contained_margin_deg),
         "edge_sigma_deg": 0.0,
-        "amplitude_definition": "|z0| = |zcrit| = A with balanced sign quadrants",
+        "amplitude_definition": "|z0| = A; |zcrit|/|z0| is scanned over zcrit_ratio_grid with balanced sign quadrants",
+        "signal_strength_definition": "reported amplitude grid is the absolute z0 reference amplitude, not max(|z0|, |zcrit|)",
         "beam_fwhm_arcmin": float(args.beam_fwhm_arcmin),
         "noise_sigma_uk_arcmin": float(args.noise_sigma_uk_arcmin),
         "noise_corr_fwhm_arcmin": float(args.noise_corr_fwhm_arcmin),
@@ -399,7 +494,20 @@ def generate_sensitivity_dataset(args, h5_path):
         "camb_params": json.dumps(camb_params, sort_keys=True),
         "created_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
     }
-    write_sensitivity_h5(h5_path, patches, labels, masks, metadata, truth, stratification, coord_pool, coord_mask_fractions, summary)
+    write_sensitivity_h5(
+        h5_path,
+        patches,
+        labels,
+        masks,
+        metadata,
+        truth,
+        stratification,
+        coord_pool,
+        coord_mask_fractions,
+        summary,
+        coord_cluster_pix=coord_cluster_pix,
+        coord_cluster_id=coord_cluster_id,
+    )
     with (h5_path.parent / "sensitivity_data_summary.json").open("w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
     return h5_path
@@ -441,13 +549,19 @@ def standardize_patch(patch):
     return patch
 
 
-def score_matched_template_patch(patch, kernels):
+def score_circular_template_patch(patch, kernels):
+    """Score a patch with the circular Feeney-template correlation screen."""
+
     patch = standardize_patch(patch)
     best = -np.inf
     for kernel in kernels:
         response = fftconvolve(patch, kernel[::-1, ::-1], mode="same")
         best = max(best, float(np.max(response)))
     return best
+
+
+# Compatibility alias for older scripts. This is not a Wiener matched filter.
+score_matched_template_patch = score_circular_template_patch
 
 
 def score_centered_disc_patch(patch, kernels):
@@ -466,7 +580,7 @@ def score_classical_methods(h5_path, theta_grid_deg, classical_workers, beam_fwh
     ]
     centered_kernels = [make_centered_disc_kernel(theta) for theta in theta_grid_deg]
     scores = {
-        "matched_template": np.zeros(n, dtype=np.float32),
+        CIRCULAR_TEMPLATE_SCREEN: np.zeros(n, dtype=np.float32),
         "centered_disc": np.zeros(n, dtype=np.float32),
     }
 
@@ -474,7 +588,7 @@ def score_classical_methods(h5_path, theta_grid_deg, classical_workers, beam_fwh
         patch = patches[idx]
         return (
             idx,
-            score_matched_template_patch(patch, matched_kernels),
+            score_circular_template_patch(patch, matched_kernels),
             score_centered_disc_patch(patch, centered_kernels),
         )
 
@@ -484,7 +598,7 @@ def score_classical_methods(h5_path, theta_grid_deg, classical_workers, beam_fwh
     if workers == 1:
         for idx in range(n):
             row_idx, matched_score, centered_score = score_one(idx)
-            scores["matched_template"][row_idx] = matched_score
+            scores[CIRCULAR_TEMPLATE_SCREEN][row_idx] = matched_score
             scores["centered_disc"][row_idx] = centered_score
             completed += 1
             if completed % 250 == 0 or completed == n:
@@ -494,7 +608,7 @@ def score_classical_methods(h5_path, theta_grid_deg, classical_workers, beam_fwh
             futures = [executor.submit(score_one, idx) for idx in range(n)]
             for future in as_completed(futures):
                 row_idx, matched_score, centered_score = future.result()
-                scores["matched_template"][row_idx] = matched_score
+                scores[CIRCULAR_TEMPLATE_SCREEN][row_idx] = matched_score
                 scores["centered_disc"][row_idx] = centered_score
                 completed += 1
                 if completed % 250 == 0 or completed == n:
@@ -524,14 +638,16 @@ def score_ml_model(spec, h5_path, args, device):
         augment=False,
         seed=int(run_config["args"]["seed"]) + 101,
         max_translate_pixels=0,
+        cache_data=bool(args.cache_ml_data),
     )
+    effective_num_workers = 0 if args.cache_ml_data else args.num_workers
     loader = p3.DataLoader(
         dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.num_workers,
+        num_workers=effective_num_workers,
         pin_memory=device.type == "cuda",
-        persistent_workers=args.num_workers > 0,
+        persistent_workers=effective_num_workers > 0,
     )
     scores = np.zeros(n, dtype=np.float32)
     offset = 0
@@ -654,8 +770,8 @@ def plot_sensitivity(path, rows, method_order, theta_grid_deg):
         ax.set_ylim(-0.03, 1.03)
         ax.grid(alpha=0.25)
         ax.set_title(rf"$\theta_c={theta_value:g}^\circ$")
-        ax.set_xlabel(r"$A=|z_0|=|z_{\rm crit}|$")
-    axes[0].set_ylabel(r"$P_{\rm det}$ at matched FPR")
+        ax.set_xlabel(r"$A=|z_0|$")
+    axes[0].set_ylabel(r"$P_{\rm det}$ at fixed FPR")
     handles, labels = axes[-1].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center", ncol=min(len(method_order), 4), frameon=False)
     fig.tight_layout(rect=(0, 0, 1, 0.86))
@@ -669,7 +785,8 @@ def write_markdown(path, report):
         "",
         f"- Dataset: `{report['data_h5']}`",
         f"- FPR target: `{report['fpr_target']}`",
-        f"- Positives per (A, theta) cell: `{report['num_per_cell']}`",
+        f"- Positives per (A, theta, zcrit-ratio) cell: `{report['num_per_cell']}`",
+        f"- zcrit ratio grid: `{report['zcrit_ratio_grid']}`",
         f"- Negatives for threshold calibration: `{report['num_negative']}`",
         f"- Signal definition: `{report['amplitude_definition']}`",
         f"- Edge smoothing: `{report['edge_sigma_deg']}`",
@@ -743,12 +860,21 @@ def main():
                 scores_by_method[spec.name] = scores
                 model_metadata[spec.name] = metadata
 
+    score_payload = {f"score__{name}": values.astype(np.float32) for name, values in scores_by_method.items()}
+    if CIRCULAR_TEMPLATE_SCREEN in scores_by_method:
+        score_payload["score__matched_template"] = scores_by_method[CIRCULAR_TEMPLATE_SCREEN].astype(np.float32)
     np.savez_compressed(
         scores_path,
         labels=labels,
-        **{f"score__{name}": values.astype(np.float32) for name, values in scores_by_method.items()},
+        **score_payload,
     )
     rows, thresholds = summarize_sensitivity(scores_by_method, h5_path, args.fpr_target)
+    if CIRCULAR_TEMPLATE_SCREEN in thresholds:
+        thresholds["matched_template"] = {
+            **thresholds[CIRCULAR_TEMPLATE_SCREEN],
+            "legacy_alias_for": CIRCULAR_TEMPLATE_SCREEN,
+            "naming_warning": method_metadata("matched_template").get("naming_warning", ""),
+        }
     csv_path = output_dir / "sensitivity_curve.csv"
     write_csv(csv_path, rows)
     method_order = list(scores_by_method.keys())
@@ -766,9 +892,12 @@ def main():
         "num_per_cell": int(data_summary["num_per_cell"]),
         "amplitude_grid": json.loads(data_summary["amplitude_grid"]),
         "theta_grid_deg": json.loads(data_summary["theta_grid_deg"]),
+        "zcrit_ratio_grid": json.loads(data_summary.get("zcrit_ratio_grid", "[1.0]")),
         "amplitude_definition": data_summary["amplitude_definition"],
+        "signal_strength_definition": data_summary.get("signal_strength_definition", ""),
         "edge_sigma_deg": float(data_summary["edge_sigma_deg"]),
         "thresholds": thresholds,
+        "method_metadata": {name: method_metadata(name) for name in scores_by_method},
         "model_metadata": model_metadata,
         "rows": rows,
         "created_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",

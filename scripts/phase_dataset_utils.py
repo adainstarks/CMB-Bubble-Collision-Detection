@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import struct
 from pathlib import Path
 
 import h5py
@@ -102,7 +103,19 @@ def make_angular_distance_grid(
 
 
 def stable_group_id(*parts):
-    digest = hashlib.sha1("|".join(str(part) for part in parts).encode("utf-8")).digest()
+    encoded = bytearray()
+    for part in parts:
+        if isinstance(part, (float, np.floating)):
+            encoded.extend(b"f64:")
+            encoded.extend(struct.pack("!d", float(part)))
+        elif isinstance(part, (int, np.integer)):
+            encoded.extend(b"u64:")
+            encoded.extend(struct.pack("!Q", int(part) & ((1 << 64) - 1)))
+        else:
+            encoded.extend(b"s:")
+            encoded.extend(str(part).encode("utf-8"))
+        encoded.extend(b"|")
+    digest = hashlib.sha256(bytes(encoded)).digest()
     return int.from_bytes(digest[:8], "big", signed=False)
 
 
@@ -186,12 +199,22 @@ def load_predefined_split_indices(h5_path):
         if "splits" not in h5:
             return None
         split_group = h5["splits"]
-        if "train_idx" not in split_group or "val_idx" not in split_group:
+        if "train_idx" not in split_group:
             return None
-        return {
+        if "calibration_idx" in split_group:
+            calibration_key = "calibration_idx"
+        elif "val_idx" in split_group:
+            calibration_key = "val_idx"
+        else:
+            return None
+        out = {
             "train_idx": np.asarray(split_group["train_idx"][:], dtype=np.int64),
-            "val_idx": np.asarray(split_group["val_idx"][:], dtype=np.int64),
+            "val_idx": np.asarray(split_group[calibration_key][:], dtype=np.int64),
+            "calibration_idx": np.asarray(split_group[calibration_key][:], dtype=np.int64),
         }
+        if "test_idx" in split_group:
+            out["test_idx"] = np.asarray(split_group["test_idx"][:], dtype=np.int64)
+        return out
 
 
 def select_candidate_component(pred_mask, prob_map):

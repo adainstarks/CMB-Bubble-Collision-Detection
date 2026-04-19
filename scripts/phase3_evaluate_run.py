@@ -19,9 +19,11 @@ from pathlib import Path
 import h5py
 import numpy as np
 import torch
+from scipy import ndimage as ndi
 
 from phase3_audit_outputs import run_audit as run_output_audit
 import phase3_train_unet as p3
+from phase_config import min_component_area_pixels
 from phase_dataset_utils import build_patch_candidate, load_metadata_array, load_optional_metadata_array, load_truth_array
 
 SELECTION_METRICS = (
@@ -29,10 +31,16 @@ SELECTION_METRICS = (
     "image_precision",
     "image_recall",
     "image_specificity",
+    "aux_image_f1",
+    "aux_image_precision",
+    "aux_image_recall",
+    "aux_image_specificity",
     "hard_dice_pos",
     "iou_pos",
 )
-OPERATING_POINT_RULES = ("fpr_cap", "metric_max")
+OPERATING_POINT_RULES = ("fpr_cap", "metric_max", "fixed_threshold")
+IMAGE_RULES = ("connected_component", "area_floor")
+SCORE_MODES = ("component_score", "segmentation_max", "aux_score", "calibrated_composite")
 MASK_SHAPE = (256, 256)
 
 
@@ -48,7 +56,7 @@ def parse_args():
         default="best",
         help="Checkpoint to evaluate: `best`, `last`, or a checkpoint path.",
     )
-    parser.add_argument("--split", type=str, default="val", choices=["train", "val"])
+    parser.add_argument("--split", type=str, default="calibration", choices=["train", "calibration", "val", "test"])
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument(
@@ -60,6 +68,15 @@ def parse_args():
     parser.add_argument("--threshold-min", type=float, default=0.50)
     parser.add_argument("--threshold-max", type=float, default=0.99)
     parser.add_argument("--threshold-count", type=int, default=50)
+    parser.add_argument(
+        "--image-min-positive-pixels",
+        type=int,
+        default=min_component_area_pixels(theta_min_deg=5.0, fraction=0.01),
+        help=(
+            "Minimum thresholded pixels required before a patch counts as image-positive "
+            "for threshold-sweep image metrics."
+        ),
+    )
     parser.add_argument(
         "--selection-metric",
         type=str,
@@ -73,6 +90,37 @@ def parse_args():
         default="fpr_cap",
         choices=OPERATING_POINT_RULES,
         help="Frozen threshold-selection rule used to choose the screening operating point.",
+    )
+    parser.add_argument(
+        "--fixed-threshold",
+        type=float,
+        default=-1.0,
+        help="Required for --split=test unless the checkpoint's configured threshold should be used.",
+    )
+    parser.add_argument(
+        "--use-configured-threshold",
+        action="store_true",
+        help="Use the training run's configured threshold as the fixed operating point.",
+    )
+    parser.add_argument(
+        "--image-rule",
+        type=str,
+        default="connected_component",
+        choices=IMAGE_RULES,
+        help="Image-level detection rule for operating metrics.",
+    )
+    parser.add_argument(
+        "--score-mode",
+        type=str,
+        default="component_score",
+        choices=SCORE_MODES,
+        help=(
+            "Scalar score family used for image-level threshold sweeps. "
+            "`component_score` applies the connected-component pixel rule; "
+            "`segmentation_max` thresholds max pixel probability; `aux_score` "
+            "thresholds the image auxiliary head; `calibrated_composite` averages "
+            "segmentation max with the auxiliary score."
+        ),
     )
     parser.add_argument(
         "--target-fpr",
@@ -97,6 +145,8 @@ def validate_args(args):
         raise ValueError("--batch-size must be non-negative.")
     if args.threshold_count <= 1:
         raise ValueError("--threshold-count must be greater than 1.")
+    if args.image_min_positive_pixels < 1:
+        raise ValueError("--image-min-positive-pixels must be at least 1.")
     if not (0.0 < args.threshold_min < 1.0):
         raise ValueError("--threshold-min must be between 0 and 1.")
     if not (0.0 < args.threshold_max < 1.0):
@@ -107,6 +157,15 @@ def validate_args(args):
         raise ValueError("--preview-count must be positive.")
     if not (0.0 <= args.target_fpr < 1.0):
         raise ValueError("--target-fpr must be in [0, 1).")
+    if args.fixed_threshold >= 0.0 and not (0.0 < args.fixed_threshold < 1.0):
+        raise ValueError("--fixed-threshold must be in (0, 1), or negative to disable.")
+    if args.operating_point_rule == "fixed_threshold" and args.fixed_threshold < 0.0 and not args.use_configured_threshold:
+        raise ValueError("--operating-point-rule=fixed_threshold requires --fixed-threshold or --use-configured-threshold.")
+    if args.split == "test" and args.fixed_threshold < 0.0 and not args.use_configured_threshold:
+        raise ValueError(
+            "Refusing to select an operating threshold on the test split. "
+            "Pass --fixed-threshold or --use-configured-threshold."
+        )
 
 
 def load_json(path):
@@ -140,7 +199,10 @@ def load_split_indices(run_dir, split_name):
     if not split_path.exists():
         raise FileNotFoundError(f"Split file not found: {split_path}")
     split_data = np.load(split_path)
-    return np.asarray(split_data[f"{split_name}_idx"], dtype=np.int64)
+    key = "calibration_idx" if split_name == "calibration" else f"{split_name}_idx"
+    if key not in split_data and split_name == "calibration" and "val_idx" in split_data:
+        key = "val_idx"
+    return np.asarray(split_data[key], dtype=np.int64)
 
 
 def make_eval_accumulator():
@@ -151,12 +213,46 @@ def make_eval_accumulator():
             "pred_frac_pos_sum": 0.0,
             "pred_frac_neg_sum": 0.0,
             "num_negative_samples": 0,
+            "aux_image_tp": 0,
+            "aux_image_fp": 0,
+            "aux_image_fn": 0,
+            "aux_image_tn": 0,
+            "aux_score_sum": 0.0,
+            "aux_score_pos_sum": 0.0,
+            "aux_score_neg_sum": 0.0,
+            "aux_score_count": 0,
+            "operating_score_sum": 0.0,
+            "operating_score_pos_sum": 0.0,
+            "operating_score_neg_sum": 0.0,
+            "operating_score_count": 0,
         }
     )
     return acc
 
 
-def batch_metrics_from_probs(probs, targets, threshold):
+def component_image_predictions(preds, image_min_positive_pixels):
+    pred_np = preds.detach().cpu().numpy().astype(bool)
+    out = []
+    for row in pred_np:
+        mask = row[0] if row.ndim == 3 else row
+        labels, count = ndi.label(mask)
+        if count <= 0:
+            out.append(False)
+            continue
+        areas = ndi.sum(mask, labels, index=np.arange(1, count + 1))
+        out.append(bool(np.max(areas) >= int(image_min_positive_pixels)))
+    return torch.as_tensor(out, dtype=torch.bool, device=preds.device)
+
+
+def batch_metrics_from_probs(
+    probs,
+    targets,
+    threshold,
+    image_min_positive_pixels=1,
+    aux_scores=None,
+    image_rule="connected_component",
+    score_mode="component_score",
+):
     preds = probs >= threshold
     truths = targets >= 0.5
 
@@ -178,18 +274,55 @@ def batch_metrics_from_probs(probs, targets, threshold):
         (intersection + p3.EPS) / (union + p3.EPS),
     )
 
-    image_pred = pred_sum > 0
     image_true = truth_sum > 0
+    segmentation_score = probs.flatten(1).max(dim=1).values
+    if aux_scores is not None:
+        aux_scores = aux_scores.reshape(-1)
 
-    return {
+    if score_mode == "component_score":
+        if image_rule == "connected_component":
+            image_pred = component_image_predictions(preds, image_min_positive_pixels)
+        else:
+            image_pred = pred_sum >= int(image_min_positive_pixels)
+        operating_score = segmentation_score
+    elif score_mode == "segmentation_max":
+        operating_score = segmentation_score
+        image_pred = operating_score >= float(threshold)
+    elif score_mode == "aux_score":
+        if aux_scores is None:
+            raise RuntimeError("--score-mode aux_score requires a checkpoint trained with --aux-head-weight > 0.")
+        operating_score = aux_scores
+        image_pred = operating_score >= float(threshold)
+    elif score_mode == "calibrated_composite":
+        if aux_scores is None:
+            raise RuntimeError("--score-mode calibrated_composite requires a checkpoint trained with --aux-head-weight > 0.")
+        operating_score = 0.5 * (segmentation_score + aux_scores)
+        image_pred = operating_score >= float(threshold)
+    else:
+        raise ValueError(f"Unsupported score mode: {score_mode}")
+
+    metrics = {
         "hard_dice": hard_dice.detach(),
         "iou": iou.detach(),
         "positive_mask": image_true.detach(),
+        "operating_score": operating_score.detach(),
         "image_tp": int((image_pred & image_true).sum().item()),
         "image_fp": int((image_pred & ~image_true).sum().item()),
         "image_fn": int((~image_pred & image_true).sum().item()),
         "image_tn": int((~image_pred & ~image_true).sum().item()),
-    }, preds
+    }
+    if aux_scores is not None:
+        aux_pred = aux_scores >= float(threshold)
+        metrics.update(
+            {
+                "aux_score": aux_scores.detach(),
+                "aux_image_tp": int((aux_pred & image_true).sum().item()),
+                "aux_image_fp": int((aux_pred & ~image_true).sum().item()),
+                "aux_image_fn": int((~aux_pred & image_true).sum().item()),
+                "aux_image_tn": int((~aux_pred & ~image_true).sum().item()),
+            }
+        )
+    return metrics, preds
 
 
 def update_eval_accumulator(acc, probs, metrics, preds, batch_size):
@@ -212,6 +345,25 @@ def update_eval_accumulator(acc, probs, metrics, preds, batch_size):
     if bool(negative_mask.any()):
         acc["pred_frac_neg_sum"] += float(pred_frac[negative_mask].sum().item())
         acc["num_negative_samples"] += int(negative_mask.sum().item())
+    if "aux_score" in metrics:
+        aux_score = metrics["aux_score"]
+        acc["aux_score_sum"] += float(aux_score.sum().item())
+        acc["aux_score_count"] += int(aux_score.numel())
+        if bool(positive_mask.any()):
+            acc["aux_score_pos_sum"] += float(aux_score[positive_mask].sum().item())
+        if bool(negative_mask.any()):
+            acc["aux_score_neg_sum"] += float(aux_score[negative_mask].sum().item())
+        acc["aux_image_tp"] += metrics["aux_image_tp"]
+        acc["aux_image_fp"] += metrics["aux_image_fp"]
+        acc["aux_image_fn"] += metrics["aux_image_fn"]
+        acc["aux_image_tn"] += metrics["aux_image_tn"]
+    operating_score = metrics["operating_score"]
+    acc["operating_score_sum"] += float(operating_score.sum().item())
+    acc["operating_score_count"] += int(operating_score.numel())
+    if bool(positive_mask.any()):
+        acc["operating_score_pos_sum"] += float(operating_score[positive_mask].sum().item())
+    if bool(negative_mask.any()):
+        acc["operating_score_neg_sum"] += float(operating_score[negative_mask].sum().item())
 
 
 def finalize_eval_metrics(acc):
@@ -225,8 +377,33 @@ def finalize_eval_metrics(acc):
             "mean_predicted_positive_fraction_pos": acc["pred_frac_pos_sum"] / pos_n,
             "mean_predicted_positive_fraction_neg": acc["pred_frac_neg_sum"] / neg_n,
             "num_negative_samples": acc["num_negative_samples"],
+            "operating_score_mean": acc["operating_score_sum"] / max(acc["operating_score_count"], 1),
+            "operating_score_mean_pos": acc["operating_score_pos_sum"] / pos_n,
+            "operating_score_mean_neg": acc["operating_score_neg_sum"] / neg_n,
         }
     )
+    if acc["aux_score_count"] > 0:
+        aux_precision = acc["aux_image_tp"] / max(acc["aux_image_tp"] + acc["aux_image_fp"], 1)
+        aux_recall = acc["aux_image_tp"] / max(acc["aux_image_tp"] + acc["aux_image_fn"], 1)
+        aux_f1 = 2.0 * aux_precision * aux_recall / max(aux_precision + aux_recall, p3.EPS)
+        aux_specificity = acc["aux_image_tn"] / max(acc["aux_image_tn"] + acc["aux_image_fp"], 1)
+        aux_fpr = acc["aux_image_fp"] / max(acc["aux_image_fp"] + acc["aux_image_tn"], 1)
+        metrics.update(
+            {
+                "aux_image_precision": aux_precision,
+                "aux_image_recall": aux_recall,
+                "aux_image_f1": aux_f1,
+                "aux_image_specificity": aux_specificity,
+                "aux_image_false_positive_rate": aux_fpr,
+                "aux_score_mean": acc["aux_score_sum"] / max(acc["aux_score_count"], 1),
+                "aux_score_mean_pos": acc["aux_score_pos_sum"] / pos_n,
+                "aux_score_mean_neg": acc["aux_score_neg_sum"] / neg_n,
+                "aux_image_tp": acc["aux_image_tp"],
+                "aux_image_fp": acc["aux_image_fp"],
+                "aux_image_fn": acc["aux_image_fn"],
+                "aux_image_tn": acc["aux_image_tn"],
+            }
+        )
     return metrics
 
 
@@ -339,7 +516,19 @@ def save_threshold_sweep_plot(rows, output_path, best_threshold, selection_label
     plt.close(fig)
 
 
-def evaluate_thresholds(model, loader, thresholds, device, preview_count, split_name):
+def evaluate_thresholds(
+    model,
+    loader,
+    thresholds,
+    device,
+    preview_count,
+    split_name,
+    image_min_positive_pixels,
+    use_image_aux,
+    radius_bin_count,
+    image_rule,
+    score_mode,
+):
     accumulators = [make_eval_accumulator() for _ in thresholds]
     previews = {"positive": [], "negative": []}
     progress = p3.ProgressPrinter(len(loader), f"Eval {split_name}")
@@ -349,8 +538,14 @@ def evaluate_thresholds(model, loader, thresholds, device, preview_count, split_
         for batch_idx, batch in enumerate(loader, start=1):
             images = batch["image"].to(device, non_blocking=True)
             masks = batch["mask"].to(device, non_blocking=True)
-            logits, _ = p3.unpack_model_output(model(images))
+            logits, aux_logits = p3.unpack_model_output(model(images))
+            image_logits, _ = p3.split_aux_logits(
+                aux_logits,
+                use_image_aux=use_image_aux,
+                radius_bin_count=radius_bin_count,
+            )
             probs = torch.sigmoid(logits)
+            aux_scores = torch.sigmoid(image_logits.reshape(-1)) if image_logits is not None else None
 
             images_cpu = images.detach().cpu().numpy()
             masks_cpu = masks.detach().cpu().numpy()
@@ -367,7 +562,15 @@ def evaluate_thresholds(model, loader, thresholds, device, preview_count, split_
             )
 
             for threshold, acc in zip(thresholds, accumulators):
-                metrics, preds = batch_metrics_from_probs(probs, masks, float(threshold))
+                metrics, preds = batch_metrics_from_probs(
+                    probs,
+                    masks,
+                    float(threshold),
+                    image_min_positive_pixels=image_min_positive_pixels,
+                    aux_scores=aux_scores,
+                    image_rule=image_rule,
+                    score_mode=score_mode,
+                )
                 update_eval_accumulator(
                     acc,
                     probs=probs,
@@ -382,6 +585,11 @@ def evaluate_thresholds(model, loader, thresholds, device, preview_count, split_
 
 
 def choose_best_threshold(rows, selection_metric):
+    if rows and selection_metric not in rows[0]:
+        raise RuntimeError(
+            f"Selection metric {selection_metric!r} is unavailable in threshold rows. "
+            "Auxiliary-head metrics require a checkpoint trained with --aux-head-weight > 0."
+        )
     best_row = None
     for row in rows:
         if best_row is None:
@@ -439,6 +647,13 @@ def find_closest_threshold_row(rows, target_threshold):
     return min(rows, key=lambda row: abs(row["threshold"] - target_threshold))
 
 
+def canonical_threshold_grid(values):
+    """Return sorted unique thresholds with floating-point duplicates merged."""
+
+    values = np.asarray(values, dtype=np.float64)
+    return np.unique(np.round(values, 10))
+
+
 def collect_prediction_artifacts(
     model,
     loader,
@@ -449,6 +664,9 @@ def collect_prediction_artifacts(
     glat_lookup,
     provenance_lookup,
     truth_lookup,
+    use_image_aux,
+    radius_bin_count,
+    score_mode,
 ):
     previews = {"positive": [], "negative": []}
     candidate_records = []
@@ -461,13 +679,20 @@ def collect_prediction_artifacts(
         for batch_idx, batch in enumerate(loader, start=1):
             images = batch["image"].to(device, non_blocking=True)
             masks = batch["mask"].to(device, non_blocking=True)
-            logits, _ = p3.unpack_model_output(model(images))
+            logits, aux_logits = p3.unpack_model_output(model(images))
+            image_logits, _ = p3.split_aux_logits(
+                aux_logits,
+                use_image_aux=use_image_aux,
+                radius_bin_count=radius_bin_count,
+            )
             probs = torch.sigmoid(logits)
+            aux_scores = torch.sigmoid(image_logits.reshape(-1)) if image_logits is not None else None
 
             images_cpu = images.detach().cpu().numpy()
             masks_cpu = masks.detach().cpu().numpy()
             logits_cpu = logits.detach().cpu().numpy()
             probs_cpu = probs.detach().cpu().numpy()
+            aux_scores_cpu = aux_scores.detach().cpu().numpy() if aux_scores is not None else None
             indices_cpu = np.asarray(batch["index"][:], dtype=np.int64)
 
             maybe_collect_preview_samples(
@@ -489,6 +714,14 @@ def collect_prediction_artifacts(
                 )
                 candidate.update(
                     {
+                        "score_mode": score_mode,
+                        "segmentation_max_score": float(np.max(probs_cpu[row, 0])),
+                        "aux_score": float(aux_scores_cpu[row]) if aux_scores_cpu is not None else None,
+                        "calibrated_composite_score": (
+                            float(0.5 * (np.max(probs_cpu[row, 0]) + aux_scores_cpu[row]))
+                            if aux_scores_cpu is not None
+                            else None
+                        ),
                         "truth_label": int(truth_lookup["has_signal"][sample_idx]),
                         "truth_theta_crit_deg": float(truth_lookup["theta_crit_deg"][sample_idx]),
                         "truth_z0": float(truth_lookup["z0"][sample_idx]),
@@ -679,14 +912,33 @@ def main():
         num_workers=args.num_workers,
         pin_memory=device.type == "cuda",
         persistent_workers=args.num_workers > 0,
+        worker_init_fn=p3.seed_worker if args.num_workers > 0 else None,
+        generator=torch.Generator().manual_seed(0),
     )
 
     model_args = p3.model_args_from_run_config(run_config)
+    radius_bin_edges = p3.parse_radius_bin_edges(getattr(model_args, "radius_bin_edges_deg", "5,10,15,20,25"))
+    radius_bin_count = (
+        p3.radius_bin_count_from_edges(radius_bin_edges)
+        if getattr(model_args, "radius_head_weight", 0.0) > 0.0
+        else 0
+    )
+    use_image_aux = getattr(model_args, "aux_head_weight", 0.0) > 0.0
+    if args.score_mode in {"aux_score", "calibrated_composite"} and not use_image_aux:
+        raise RuntimeError(f"--score-mode {args.score_mode} requires a checkpoint trained with --aux-head-weight > 0.")
     model = p3.build_model(model_args).to(device)
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     p3.load_model_state_dict(model, checkpoint["model_state_dict"])
 
-    thresholds = np.linspace(args.threshold_min, args.threshold_max, args.threshold_count, dtype=np.float64)
+    thresholds = canonical_threshold_grid(np.linspace(args.threshold_min, args.threshold_max, args.threshold_count, dtype=np.float64))
+    fixed_threshold_source = None
+    if args.use_configured_threshold:
+        args.fixed_threshold = configured_threshold
+        fixed_threshold_source = "run_config"
+    if args.fixed_threshold > 0.0:
+        if fixed_threshold_source is None:
+            fixed_threshold_source = "cli"
+        thresholds = canonical_threshold_grid(np.concatenate([thresholds, np.asarray([args.fixed_threshold], dtype=np.float64)]))
     metrics_per_threshold, previews = evaluate_thresholds(
         model=model,
         loader=loader,
@@ -694,6 +946,11 @@ def main():
         device=device,
         preview_count=args.preview_count,
         split_name=args.split,
+        image_min_positive_pixels=args.image_min_positive_pixels,
+        use_image_aux=use_image_aux,
+        radius_bin_count=radius_bin_count,
+        image_rule=args.image_rule,
+        score_mode=args.score_mode,
     )
 
     rows = []
@@ -702,12 +959,20 @@ def main():
         row.update(metrics)
         rows.append(row)
 
-    operating_row, operating_point = choose_operating_point(
-        rows=rows,
-        operating_point_rule=args.operating_point_rule,
-        selection_metric=args.selection_metric,
-        target_fpr=args.target_fpr,
-    )
+    if args.fixed_threshold > 0.0:
+        operating_row = find_closest_threshold_row(rows, args.fixed_threshold)
+        operating_point = {
+            "rule": "fixed_threshold",
+            "threshold_source": fixed_threshold_source,
+            "threshold": float(args.fixed_threshold),
+        }
+    else:
+        operating_row, operating_point = choose_operating_point(
+            rows=rows,
+            operating_point_rule=args.operating_point_rule,
+            selection_metric=args.selection_metric,
+            target_fpr=args.target_fpr,
+        )
     configured_row = find_closest_threshold_row(rows, configured_threshold)
 
     selection_label = operating_point["rule"]
@@ -775,6 +1040,8 @@ def main():
         num_workers=args.num_workers,
         pin_memory=device.type == "cuda",
         persistent_workers=args.num_workers > 0,
+        worker_init_fn=p3.seed_worker if args.num_workers > 0 else None,
+        generator=torch.Generator().manual_seed(0),
     )
     artifact_bundle = collect_prediction_artifacts(
         model=model,
@@ -786,6 +1053,9 @@ def main():
         glat_lookup=glat_lookup,
         provenance_lookup=provenance_lookup,
         truth_lookup=truth_lookup,
+        use_image_aux=use_image_aux,
+        radius_bin_count=radius_bin_count,
+        score_mode=args.score_mode,
     )
     stratified_metrics = make_stratified_metrics(data_h5=data_h5, artifact_bundle=artifact_bundle)
     p3.save_json(output_dir / "stratified_metrics.json", stratified_metrics)
@@ -798,6 +1068,10 @@ def main():
         "split": args.split,
         "num_samples": int(len(split_indices)),
         "configured_threshold": configured_threshold,
+        "image_min_positive_pixels": int(args.image_min_positive_pixels),
+        "image_rule": args.image_rule,
+        "score_mode": args.score_mode,
+        "aux_head_evaluated": bool(use_image_aux),
         "configured_threshold_metrics": configured_row,
         "operating_point": operating_point,
         "selected_threshold": float(operating_row["threshold"]),

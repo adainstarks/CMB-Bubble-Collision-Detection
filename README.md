@@ -8,13 +8,48 @@ Working claim:
 
 > A reproducible Planck-era ML candidate-screening method for localized bubble-collision signatures, intended to accelerate or supplement classical follow-up.
 
+## Calibration Caveat
+
+The Phase 3 operating-point numbers below are retained as historical audit context, not as deployment-ready thresholds. The current null-control pool was built with `MASK_THRESHOLD = 0.95`, while full-sky deployment tiling uses mask-adjacent patches down to `MASK_THRESHOLD = 0.5`. Batch 5 measured deployment-tile FPR inflation of `1.96x` on SMICA, `2.01x` on NILC, `3.64x` on SEVEM, and `5.78x` on Commander relative to that clean null pool. All FPR-calibrated thresholds, candidate-volume estimates, real-SMICA recalibration numbers, and router lifts must be recomputed on per-map deployment-representative null pools before being used for science claims.
+
+Historical `matched_template` outputs are circular disc/ring correlation screens, not Wiener-whitened Feeney matched filters. New reports use `circular_template_screen` for that comparator and reserve `wiener_feeney_matched_filter` for the harmonic-space Feeney template with beam and CMB/noise inverse-covariance weighting. Any ML-vs-matched-filter claim still requires regeneration and re-benchmarking on remediated artifacts.
+
+The `8 / 35` sensitivity-cell gain claim was computed after selecting the best learned branch per cell. That post-hoc winner selection does not control family-wise error across model variants, so the count is provisional until recomputed for a pre-specified model or a corrected max-statistic test.
+
 ## Current State
 
 - Phase 1 defines the observable domain: Planck 2018 cleaned maps, mask-aware sky coordinates, and gnomonic patch geometry.
 - Phase 2 builds the current synthetic generator: Feeney Eq. 1 disc templates, multiplicative injection, CAMB backgrounds, Planck mask geometry, beam/noise realism, provenance-clean splits, and real-map null controls.
-- Phase 3 contains the current screening stack: U-Net branches, boundary-aware variants, matched-template and centered-disc baselines, sensitivity curves, real-SMICA recalibration, threshold-volume analysis, and machine-readable candidate outputs.
+- Phase 3 contains the current screening stack: U-Net branches, boundary-aware variants, circular-template and centered-disc baselines, sensitivity curves, real-SMICA recalibration, threshold-volume analysis, and machine-readable candidate outputs.
 - The best current interpretation is operational, not triumphant: ML improves screening and morphology relative to simple classical screens in several regimes, but recall remains limited for low-amplitude, small-radius, weak-edge cases.
-- A focused Nside=512 probe did not justify a full 512 retrain. Positive-only recall improved only by saturating on real-SMICA nulls. The current practical baseline remains Nside=256 with calibrated operating points.
+- A focused Nside=512 probe did not justify a full 512 retrain under the then-current setup. That probe predates the current transfer-function and calibration audit, so it should not be treated as a final physics conclusion about Nside=512.
+
+## Remediated v1 Status
+
+The remediated artifact family is now written under `data/remediated_v1/` and `runs/phase3_unet/remediated_v1_*`. It uses `Nside=256`, `256 x 256` patches, Planck-mask threshold `0.9` for the science product, Planck `5 arcmin` harmonic beam, `synfast(pixwin=True)`, mixed contained/truncated signal geometry, coordinate-cluster split accounting, and `float64` geometry/harmonic work with `float32` stored tensors after finite/range checks.
+
+Primary generated products:
+
+| product | rows | split/accounting |
+|---|---:|---|
+| `data/remediated_v1/training_data.h5` | `20000` | `16000/2000/2000` train/calibration/test, balanced labels |
+| `data/remediated_v1/calibration_data.h5` | `2000` | calibration split copy with dataset hash |
+| `data/remediated_v1/test_data.h5` | `2000` | test split copy with dataset hash |
+| `data/remediated_v1/null_controls_{map}_{mask}.h5` | `16000` each | map in `smica,nilc,sevem,commander`; mask in `mask090,mask050`; cluster-split nulls |
+
+The current remediated ML comparison is an EfficientNet-B0 U-Net ablation with random and ImageNet encoder initialization. At calibration-selected thresholds and held-out test evaluation, the best single operating point is:
+
+| model | score mode | threshold | precision | recall | FPR | F1 |
+|---|---|---:|---:|---:|---:|---:|
+| ImageNet encoder | `component_score` | `0.96` | `0.888` | `0.396` | `0.050` | `0.548` |
+| random encoder | `component_score` | `0.99` | `0.819` | `0.362` | `0.080` | `0.502` |
+| `circular_template_screen` | fixed from calibration | `65.0217` | `0.921` | `0.267` | `0.023` | `0.414` |
+
+Real-map null controls show that the ImageNet `component_score` threshold is close on the held-out null-test clusters (`0.0556-0.0589` FPR across maps/masks) but unstable on the null-calibration clusters (`0.2427-0.2483` FPR at the same frozen threshold). That cluster split dependence is a live calibration warning, not a detection result.
+
+The remediated real-SMICA injection gate (`runs/phase3_unet/remediated_v1_real_sky_injection_smica_mask090/`) compares SMICA real-map backgrounds against the CAMB sensitivity grid. For the comparison policy `imagenet_b64_aux_only`, real-map recall/FPR is `0.372/0.185` while CAMB recall/FPR is `0.349/0.050`. Because the real-background negative set has only 200 backgrounds and the FPR inflation is material, these numbers are a transfer/calibration diagnostic only.
+
+The preselected ImageNet-vs-`circular_template_screen` sensitivity heatmap uses paired tests with Holm/FDR correction. It reports `14` Holm-significant and `17` BH-significant amplitude-radius cells, with the ImageNet model winning `30 / 35` cells. This replaces the older post-hoc `8 / 35` best-branch count for remediated-v1 discussions.
 
 ## Signal Model
 
@@ -86,7 +121,7 @@ The current generator is intentionally stricter than an early ML demo:
 
 ## Phase 3 Screening Results
 
-Phase 3 is now evaluated against classical baselines on the same audited splits. The five learned/model-policy variants below were important investigative controls: they tested whether boundary-aware losses, consensus policies, auxiliary heads, and branch averaging produced materially different behavior. The current working path is narrower. We are focusing on the two-model pair `v6_aux_only + matched_template` because it keeps the best morphology-aligned ML branch while retaining an interpretable Feeney-template classical score, without carrying the calibration and maintenance burden of several near-tied learned branches.
+Phase 3 is now evaluated against classical baselines on the same audited splits. The five learned/model-policy variants below were important investigative controls: they tested whether boundary-aware losses, consensus policies, auxiliary heads, and branch averaging produced materially different behavior. The current working path is narrower. Historical runs focused on the two-model pair `v6_aux_only + matched_template`; under the remediated naming contract that means `v6_aux_only + circular_template_screen`, not a Wiener matched filter.
 
 At matched synthetic FPR `0.08` on the independent stratified validation set:
 
@@ -105,7 +140,7 @@ At matched synthetic FPR `0.08` on the independent stratified validation set:
 
 ## Sensitivity Versus Matched Template
 
-At matched synthetic FPR `0.05`, the best ML branch significantly beats the beam-matched Feeney-template screen in `8 / 35` amplitude-radius cells and shows no significant losses. This is a localized gain, not universal dominance.
+At matched synthetic FPR `0.05`, the historical best-branch analysis reported ML gains in `8 / 35` amplitude-radius cells. This count is provisional because it selected the best learned branch per cell and used the current circular-template baseline.
 
 Representative significant cells:
 
@@ -120,11 +155,11 @@ Representative significant cells:
 
 ![Phase 3 ML gain heatmap](plots/10_phase3_ml_gain_heatmap.png)
 
-**Figure 8.** Significant gain over a beam-matched template screen. Gray cells are not ML failures; they are cells where the confidence interval overlaps parity. The lower-left region remains hard because low amplitude and small angular radius give limited integrated signal-to-noise, especially after Feeney-faithful smoothing and realistic background structure.
+**Figure 8.** Historical gain over the circular-template screen. Gray cells are not ML failures; they are cells where the confidence interval overlaps parity. The lower-left region remains hard because low amplitude and small angular radius give limited integrated signal-to-noise, especially after Feeney-faithful smoothing and realistic background structure.
 
 ## Real-SMICA Calibration
 
-A real-SMICA injection gate initially looked like a domain-gap failure. Recalibration showed the dominant issue was threshold mismatch:
+A real-SMICA injection gate initially looked like a domain-gap failure. These historical recalibration numbers are provisional until rebuilt against deployment-representative per-map null pools:
 
 | method | CAMB threshold | SMICA-null threshold | real recall at CAMB threshold | real recall after SMICA recalibration |
 |---|---:|---:|---:|---:|
@@ -135,7 +170,7 @@ Interpretation: thresholds calibrated on CAMB negatives were too strict on real 
 
 ## Threshold And Candidate Volume
 
-The current detector can recover more contested positives by lowering the threshold, but false-positive volume rises quickly.
+The current detector can recover more contested positives by lowering the threshold, but the false-positive volumes in this historical table use now-suspect calibration products and must be recomputed.
 
 | threshold | contested recall | solved recall | expected FP over 3000 independent patches |
 |---:|---:|---:|---:|
@@ -158,7 +193,7 @@ Current Phase 3 should be treated as a two-score screening system, not a five-mo
 
 - Run `v6_aux_only` as the current ML morphology and candidate-score branch for contained positives.
 - Run `v7_mixed_ft` as the complementary ML branch for truncated / edge-crossing positives. See the 2026-04-17 portfolio-decision update below.
-- Run `matched_template` as the classical Feeney-template reference, fallback, and independent ranking score.
+- Run `circular_template_screen` as the simple classical Feeney-template correlation reference, fallback, and independent ranking score; reserve `wiener_feeney_matched_filter` for covariance-weighted harmonic filtering.
 - Calibrate all thresholds on real-map null controls, not CAMB negatives alone.
 - Preserve the ML score, matched-template score, threshold decisions, mask, estimated radius, sky metadata, and template-fit artifacts in each candidate record.
 - Keep the older learned branches as documented ablation evidence and regression checks, not as the preferred operating stack.
@@ -203,7 +238,7 @@ Negative and corrective findings worth citing:
 - It does not perform model selection against LambdaCDM.
 - It does not constrain the expected detectable collision count.
 - Weak-family recall remains the central blocker. At FPR 0.08 on real SMICA, none of our models exceed 0.10 recall at `A <= 5e-6`. The weak-amplitude bins are genuinely at or below the Planck SMICA noise floor; this is a physical limit, not an engineering gap.
-- Nside=512 is not justified by the current focused probe.
+- Nside=512 is not justified by the current focused probe alone; the probe should be revisited only after the pixel-window, observing-model, normalization, and null-calibration fixes.
 
 Current engineering targets:
 
@@ -211,7 +246,7 @@ Current engineering targets:
 - After recalibration: ship the honest deployment policy (likely `v6_aux_only` per-map) and rerun the full-sky tiling audit with candidate clustering (Nside=8, 15-25 deg angular-distance linkage) to report real-sky deployment FP burden.
 - Keep matched-template scores in every candidate record as a classical sanity check.
 - Add isotonic score calibration on the new per-map null pools for clean candidate-volume statistics in the paper.
-- `v8` retrain with a matched-filter response map as a second input channel on mixed geometry remains on the roadmap as a potential training-signal lever. The earlier MF-channel experiment on contained data (`phase3_v7_mf_channel_aux_w4`) gave only +0.013 contested recall, so expected gain is unclear; a cheap cross-map tile audit of that existing checkpoint should be done before any new retrain.
+- A retrain with a circular-template response map as a second input channel on mixed geometry remains on the roadmap as a potential training-signal lever. The earlier legacy MF-channel experiment on contained data (`phase3_v7_mf_channel_aux_w4`) gave only +0.013 contested recall, so expected gain is unclear; a cheap cross-map tile audit of that existing checkpoint should be done before any new retrain.
 - Feed candidate records into a classical template-fit or Bayesian follow-up stage.
 
 ## Quick Start

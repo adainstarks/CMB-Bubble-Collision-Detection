@@ -21,6 +21,7 @@ import json
 import math
 import os
 import random
+import hashlib
 from pathlib import Path
 
 import h5py
@@ -32,9 +33,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from phase2_audit_dataset import run_audit
+from phase_config import min_component_area_pixels
 from phase_dataset_utils import load_predefined_split_indices, load_signal_strength
 
 try:
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -59,9 +62,10 @@ else:
     SMP_IMPORT_ERROR = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_H5 = PROJECT_ROOT / "data" / "training_v4" / "training_data.h5"
+DEFAULT_DATA_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "training_data.h5"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "runs" / "phase3_unet"
 EPS = 1e-6
+DICE_SMOOTH = 1.0
 
 
 def parse_args():
@@ -95,13 +99,14 @@ def parse_args():
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--min-positive-amplitude", type=float, default=0.0)
     parser.add_argument("--encoder-name", type=str, default="efficientnet-b0")
-    parser.add_argument("--encoder-weights", type=str, default="imagenet")
+    parser.add_argument("--encoder-weights", type=str, default="none")
     parser.add_argument(
         "--extra-channel-dataset",
         action="append",
         default=[],
         help=(
             "Optional HDF5 dataset path to append as an input channel, e.g. "
+            "`features/circular_template_response`. Legacy files may still contain "
             "`features/matched_filter_response`. Can be repeated."
         ),
     )
@@ -165,6 +170,16 @@ def parse_args():
         default=0.5,
         help="Monitoring threshold used for training-time metrics and preview panels. Deployment thresholds are chosen later.",
     )
+    parser.add_argument(
+        "--image-min-positive-pixels",
+        type=int,
+        default=min_component_area_pixels(theta_min_deg=5.0, fraction=0.01),
+        help=(
+            "Minimum thresholded pixels required before a patch counts as image-positive "
+            "for training-time image metrics. This prevents single-pixel activations from "
+            "driving checkpoint selection."
+        ),
+    )
     parser.add_argument("--preview-count", type=int, default=6)
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
     parser.add_argument(
@@ -179,7 +194,10 @@ def parse_args():
         "--normalization-config",
         type=str,
         default="",
-        help="Optional previous run_config.json to reuse train normalization and positive-pixel statistics.",
+        help=(
+            "Optional previous run_config.json to reuse train normalization and "
+            "positive-sample-only positive-pixel statistics."
+        ),
     )
     parser.add_argument("--grad-clip", type=float, default=0.0)
     parser.add_argument("--max-translate-pixels", type=int, default=48)
@@ -236,6 +254,15 @@ def seed_everything(seed):
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 def validate_args(args):
@@ -247,6 +274,8 @@ def validate_args(args):
         raise ValueError("--train-fraction must be between 0 and 1.")
     if not (0.0 < args.threshold < 1.0):
         raise ValueError("--threshold must be between 0 and 1.")
+    if args.image_min_positive_pixels < 1:
+        raise ValueError("--image-min-positive-pixels must be at least 1.")
     if args.preview_count <= 0:
         raise ValueError("--preview-count must be positive.")
     if args.max_train_samples < 0 or args.max_val_samples < 0:
@@ -321,6 +350,17 @@ def load_dataset_summary(h5_path):
 def load_labels(h5_path):
     with h5py.File(h5_path, "r") as h5:
         return np.asarray(h5["labels"][:], dtype=np.uint8)
+
+
+def file_sha256(path, chunk_size=8 * 1024 * 1024):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while True:
+            chunk = handle.read(chunk_size)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_positive_signal_strength(h5_path):
@@ -699,13 +739,22 @@ def compute_positive_pixel_fraction(h5_path, indices, chunk_size=256):
 
     with h5py.File(h5_path, "r") as h5:
         masks = h5["masks"]
+        labels = h5["labels"]
         for chunk in iter_index_chunks(indices, chunk_size):
-            batch = np.asarray(masks[chunk], dtype=np.float64)
+            chunk_labels = np.asarray(labels[chunk], dtype=np.uint8)
+            positive_rows = chunk[chunk_labels == 1]
+            if len(positive_rows) == 0:
+                processed += len(chunk)
+                progress.update(processed)
+                continue
+            batch = np.asarray(masks[positive_rows], dtype=np.float64)
             total_positive += float(batch.sum())
             total_pixels += int(batch.size)
             processed += len(chunk)
             progress.update(processed)
 
+    if total_pixels == 0:
+        raise ValueError("Cannot compute positive-pixel fraction: training split has no positive samples.")
     fraction = total_positive / max(total_pixels, 1)
     return float(fraction)
 
@@ -922,6 +971,16 @@ class H5BubbleDataset(Dataset):
             label = float(h5["labels"][index])
             theta_crit = None if self.radius_bin_edges is None else float(h5["truth/theta_crit_deg"][index])
 
+        if not np.all(np.isfinite(patch)):
+            raise ValueError(f"Patch index {index} contains non-finite values.")
+        if float(np.max(np.abs(patch))) > 1.0:
+            raise ValueError(
+                f"Patch index {index} is outside Kelvin anisotropy scale; "
+                "check microkelvin/Kelvin conversion."
+            )
+        if not np.all(np.isfinite(mask)):
+            raise ValueError(f"Mask index {index} contains non-finite values.")
+
         if extra_channels:
             patch = np.stack([patch, *extra_channels], axis=0).astype(np.float32, copy=False)
 
@@ -1121,7 +1180,7 @@ def dice_loss_from_logits(logits, targets):
     dims = (1, 2, 3)
     intersection = (probs * targets).sum(dim=dims)
     denominator = probs.sum(dim=dims) + targets.sum(dim=dims)
-    dice = (2.0 * intersection + EPS) / (denominator + EPS)
+    dice = (2.0 * intersection + DICE_SMOOTH) / (denominator + DICE_SMOOTH)
     return 1.0 - dice.mean()
 
 
@@ -1150,7 +1209,7 @@ def weighted_bce_with_logits(logits, targets, base_pos_weight, boundary_weight, 
     )
 
 
-def batch_metrics_from_logits(logits, targets, threshold):
+def batch_metrics_from_logits(logits, targets, threshold, image_min_positive_pixels=1):
     probs = torch.sigmoid(logits)
     preds = probs >= threshold
     truths = targets >= 0.5
@@ -1173,7 +1232,7 @@ def batch_metrics_from_logits(logits, targets, threshold):
         (intersection + EPS) / (union + EPS),
     )
 
-    image_pred = pred_sum > 0
+    image_pred = pred_sum >= int(image_min_positive_pixels)
     image_true = truth_sum > 0
 
     return {
@@ -1405,11 +1464,21 @@ def load_normalization_config(path):
     normalization = payload.get("normalization", {})
     loss_reweighting = payload.get("loss_reweighting", {})
     required_norm = ("train_mean", "train_std")
-    required_loss = ("positive_pixel_fraction", "bce_pos_weight")
+    required_loss = (
+        "positive_pixel_fraction",
+        "positive_pixel_fraction_denominator",
+        "bce_pos_weight",
+    )
     missing = [key for key in required_norm if key not in normalization]
     missing += [key for key in required_loss if key not in loss_reweighting]
     if missing:
         raise RuntimeError(f"Normalization config is missing fields: {missing}")
+    denominator = str(loss_reweighting["positive_pixel_fraction_denominator"])
+    if denominator != "positive_samples_only":
+        raise RuntimeError(
+            "Normalization config uses an obsolete positive-pixel denominator "
+            f"({denominator!r}); recompute normalization/loss statistics."
+        )
     result = {
         "train_mean": float(normalization["train_mean"]),
         "train_std": float(normalization["train_std"]),
@@ -1431,6 +1500,7 @@ def run_one_epoch(
     loss_fn,
     device,
     threshold,
+    image_min_positive_pixels,
     bce_weight,
     dice_weight,
     aux_head_weight,
@@ -1506,7 +1576,12 @@ def run_one_epoch(
                 scaler.step(optimizer)
                 scaler.update()
 
-        metrics = batch_metrics_from_logits(logits.detach(), masks.detach(), threshold)
+        metrics = batch_metrics_from_logits(
+            logits.detach(),
+            masks.detach(),
+            threshold,
+            image_min_positive_pixels=image_min_positive_pixels,
+        )
         if radius_head_weight > 0.0 and radius_logits is not None and radius_loss is not None:
             valid_radius = radius_bins >= 0
             if bool(valid_radius.any()):
@@ -1598,9 +1673,16 @@ def main():
         max_val_samples=args.max_val_samples,
         split_source=args.split_source,
     )
+    predefined_splits = load_predefined_split_indices(h5_path)
+    test_idx = None
+    if predefined_splits is not None and "test_idx" in predefined_splits:
+        test_idx = np.asarray(predefined_splits["test_idx"], dtype=np.int64)
 
     train_pos, train_neg = count_class_balance(labels, train_idx)
     val_pos, val_neg = count_class_balance(labels, val_idx)
+    test_pos = test_neg = 0
+    if test_idx is not None:
+        test_pos, test_neg = count_class_balance(labels, test_idx)
     normalization_source = None
     channel_means = None
     channel_stds = None
@@ -1637,15 +1719,23 @@ def main():
     run_config = {
         "created_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
         "data_h5": str(h5_path.resolve()),
+        "data_h5_sha256": file_sha256(h5_path),
         "summary": summary,
         "args": vars(args),
         "split": {
             "train_samples": int(len(train_idx)),
+            "calibration_samples": int(len(val_idx)),
             "val_samples": int(len(val_idx)),
+            "test_samples": int(len(test_idx)) if test_idx is not None else 0,
             "train_positive": train_pos,
             "train_negative": train_neg,
+            "calibration_positive": val_pos,
+            "calibration_negative": val_neg,
             "val_positive": val_pos,
             "val_negative": val_neg,
+            "test_positive": test_pos,
+            "test_negative": test_neg,
+            "calibration_alias": "val",
         },
         "normalization": {
             "train_mean": train_mean,
@@ -1656,6 +1746,7 @@ def main():
         },
         "loss_reweighting": {
             "positive_pixel_fraction": positive_fraction,
+            "positive_pixel_fraction_denominator": "positive_samples_only",
             "bce_pos_weight": pos_weight,
         },
         "candidate_selection": candidate_summary,
@@ -1685,13 +1776,18 @@ def main():
         run_config["hard_positive_mining"] = hard_positive_summary
 
     save_json(run_dir / "run_config.json", run_config)
-    np.savez_compressed(run_dir / "split_indices.npz", train_idx=train_idx, val_idx=val_idx)
+    split_payload = {"train_idx": train_idx, "val_idx": val_idx, "calibration_idx": val_idx}
+    if test_idx is not None:
+        split_payload["test_idx"] = test_idx
+    np.savez_compressed(run_dir / "split_indices.npz", **split_payload)
 
     print("\n=== Phase 3 dataset summary ===")
     print(f"  HDF5:            {h5_path}")
     print(f"  Split source:    {candidate_summary['split_source']}")
     print(f"  Train samples:   {len(train_idx)} ({train_pos} pos / {train_neg} neg)")
-    print(f"  Val samples:     {len(val_idx)} ({val_pos} pos / {val_neg} neg)")
+    print(f"  Calibration:     {len(val_idx)} ({val_pos} pos / {val_neg} neg)")
+    if test_idx is not None:
+        print(f"  Test samples:    {len(test_idx)} ({test_pos} pos / {test_neg} neg)")
     if args.min_positive_amplitude > 0.0:
         if candidate_summary["split_source"] == "predefined":
             train_summary = candidate_summary["train"]
@@ -1787,6 +1883,8 @@ def main():
         "num_workers": args.num_workers,
         "pin_memory": device.type == "cuda",
         "persistent_workers": args.num_workers > 0,
+        "worker_init_fn": seed_worker if args.num_workers > 0 else None,
+        "generator": torch.Generator().manual_seed(int(args.seed)),
     }
     sampler = None
     if sample_weights is not None:
@@ -1870,6 +1968,7 @@ def main():
             loss_fn=loss_fn,
             device=device,
             threshold=args.threshold,
+            image_min_positive_pixels=args.image_min_positive_pixels,
             bce_weight=args.bce_weight,
             dice_weight=args.dice_weight,
             aux_head_weight=args.aux_head_weight,
@@ -1891,6 +1990,7 @@ def main():
                 loss_fn=loss_fn,
                 device=device,
                 threshold=args.threshold,
+                image_min_positive_pixels=args.image_min_positive_pixels,
                 bce_weight=args.bce_weight,
                 dice_weight=args.dice_weight,
                 aux_head_weight=args.aux_head_weight,

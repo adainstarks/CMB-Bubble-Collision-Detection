@@ -7,6 +7,7 @@ data/**/*.h5
 data/**/*.npz
 data/training*/
 data/validation*/
+data/remediated_v1/
 runs/
 *.pt
 *.pth
@@ -41,3 +42,12 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent stack (secrets, state, model outputs, logs)
+tools/.env
+tools/logs/
+tools/state/
+tools/openhands/state/
+tools/finetune/data/
+tools/finetune/outputs/
+tools/finetune/__pycache__/

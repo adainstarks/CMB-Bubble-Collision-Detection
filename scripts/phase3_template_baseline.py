@@ -1,8 +1,8 @@
 """
 Classical circular-template baselines for the Phase 3 split.
 
-Two baselines are evaluated on the exact saved train/validation split from a Phase 3 run:
-    - matched_template: circular template screen with position search over the patch
+Two baselines are evaluated on the exact saved split from a Phase 3 run:
+    - circular_template_screen: circular template screen with position search over the patch
     - centered_disc: shortcut baseline restricted to the patch center
 
 The goal is not to reproduce Feeney's full needlet+CHT+Bayesian pipeline. The goal is to
@@ -21,8 +21,9 @@ from scipy.signal import fftconvolve
 
 import phase3_evaluate_run as p3eval
 from phase_dataset_utils import make_angular_distance_grid, patch_center_pixel, patch_offsets_deg_to_sky
+from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, canonical_method_name, method_metadata
 
-METHODS = ("matched_template", "centered_disc", "both")
+METHODS = (CIRCULAR_TEMPLATE_SCREEN, "matched_template", "centered_disc", "both")
 
 
 def parse_args():
@@ -31,10 +32,20 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--run-dir", type=str, required=True)
-    parser.add_argument("--split", type=str, default="val", choices=["train", "val"])
+    parser.add_argument("--split", type=str, default="calibration", choices=["train", "calibration", "val", "test"])
     parser.add_argument("--method", type=str, default="both", choices=METHODS)
     parser.add_argument("--output-dir", type=str, default="")
     parser.add_argument("--target-fpr", type=float, default=0.10)
+    parser.add_argument(
+        "--fixed-threshold-summary",
+        type=str,
+        default="",
+        help=(
+            "Optional summary.json from a calibration split. When supplied, "
+            "method thresholds are loaded from that file and applied without "
+            "test-split threshold selection."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -240,12 +251,35 @@ def choose_operating_point(rows, target_fpr):
     return best_row, operating_point
 
 
-def run_method(method_name, patches, truth_masks, labels, glon, glat, global_indices, kernels, target_fpr):
+def load_fixed_thresholds(path):
+    if not path:
+        return {}
+    with open(path, "r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+    thresholds = {}
+    for method_name, payload in summary.get("methods", {}).items():
+        thresholds[canonical_method_name(method_name)] = float(payload["selected_threshold"])
+    return thresholds
+
+
+def run_method(
+    method_name,
+    patches,
+    truth_masks,
+    labels,
+    glon,
+    glat,
+    global_indices,
+    kernels,
+    target_fpr,
+    fixed_threshold=None,
+):
+    canonical_name = canonical_method_name(method_name)
     scores = np.zeros(len(labels), dtype=np.float32)
     pred_masks = np.zeros_like(truth_masks, dtype=np.uint8)
     candidate_records = []
 
-    centered_only = method_name == "centered_disc"
+    centered_only = canonical_name == "centered_disc"
     for row in range(len(labels)):
         best, pred_mask = search_best_candidate(patches[row], kernels, centered_only=centered_only)
         scores[row] = float(best["score"])
@@ -271,8 +305,18 @@ def run_method(method_name, patches, truth_masks, labels, glon, glat, global_ind
         )
 
     rows = sweep_thresholds(scores, pred_masks, truth_masks, labels)
-    selected_row, operating_point = choose_operating_point(rows, target_fpr=target_fpr)
+    if fixed_threshold is None:
+        selected_row, operating_point = choose_operating_point(rows, target_fpr=target_fpr)
+    else:
+        selected_row = compute_metrics(scores, pred_masks, truth_masks, labels, float(fixed_threshold))
+        rows.append(selected_row)
+        operating_point = {
+            "rule": "fixed_threshold",
+            "threshold_source": "fixed_threshold_summary",
+            "target_fpr": float(target_fpr),
+        }
     return {
+        "method_metadata": method_metadata(method_name),
         "threshold_metrics": rows,
         "selected_threshold": float(selected_row["threshold"]),
         "selected_threshold_metrics": selected_row,
@@ -302,6 +346,7 @@ def save_method_outputs(output_dir, method_name, result):
     with open(method_dir / "summary.json", "w", encoding="utf-8") as handle:
         json.dump(
             {
+                "method_metadata": result["method_metadata"],
                 "selected_threshold": result["selected_threshold"],
                 "selected_threshold_metrics": result["selected_threshold_metrics"],
                 "operating_point": result["operating_point"],
@@ -337,7 +382,8 @@ def main():
         glat = np.asarray(h5["metadata"]["glat_deg"][sorted_split_indices], dtype=np.float32)
 
     kernels = build_kernel_bank(patches[0].shape)
-    methods = ["matched_template", "centered_disc"] if args.method == "both" else [args.method]
+    methods = [CIRCULAR_TEMPLATE_SCREEN, "centered_disc"] if args.method == "both" else [args.method]
+    fixed_thresholds = load_fixed_thresholds(args.fixed_threshold_summary)
 
     combined_summary = {
         "run_dir": str(run_dir),
@@ -360,9 +406,11 @@ def main():
             global_indices=sorted_split_indices,
             kernels=kernels,
             target_fpr=args.target_fpr,
+            fixed_threshold=fixed_thresholds.get(canonical_method_name(method_name)),
         )
         method_dir = save_method_outputs(output_dir, method_name, result)
         combined_summary["methods"][method_name] = {
+            "method_metadata": result["method_metadata"],
             "selected_threshold": result["selected_threshold"],
             "selected_threshold_metrics": result["selected_threshold_metrics"],
             "operating_point": result["operating_point"],

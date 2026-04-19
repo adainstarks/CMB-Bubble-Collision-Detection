@@ -1,18 +1,22 @@
 name: cmb
 channels:
   - conda-forge
+  - pytorch
   - defaults
 dependencies:
-  - python=3.11
-  - healpy
-  - h5py
-  - numpy
-  - scipy
-  - scikit-learn
-  - matplotlib
-  - astropy
-  - camb
+  - python=3.11.15
+  - numpy=2.4.3
+  - scipy=1.17.1
+  - astropy=7.2.0
+  - healpy=1.19.0
+  - h5py=3.16.0
+  - matplotlib=3.10.8
+  - pytorch=2.5.1
+  - torchvision=0.20.1
+  - pytorch-cuda=11.8
   - pip
   - pip:
-      - segmentation-models-pytorch
-      - timm
+      - camb==1.6.6
+      - scikit-learn==1.8.0
+      - segmentation-models-pytorch==0.5.0
+      - timm==1.0.26
