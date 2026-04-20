@@ -1,4 +1,4 @@
-# CMB Bubble Collision Detection
+# $\color{#7B2FBE}{\text{CMB}}$ $\color{#5B86E5}{\text{Bubble}}$ $\color{#9B59B6}{\text{Collision}}$ $\color{#4A90D9}{\text{Detection}}$
 
 Planck-era machine-learning candidate screening for localized bubble-collision signatures in the Cosmic Microwave Background.
 
