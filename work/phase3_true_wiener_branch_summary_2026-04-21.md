@@ -64,8 +64,21 @@ Largest losses:
   moderate/high amplitude and larger radii.
 - It does not solve the hardest low-amplitude recall problem, so it should not
   replace the baseline blindly.
-- The next defensible use is either:
+
+## Promotion Decision
+
+- Decision on `2026-04-21`: `do_not_promote`.
+- Rationale:
+  1. the gain is still only demonstrated on the synthetic screening grid;
+  2. Batch-6 real-sky tile caches do not yet carry
+     `features/wiener_feeney_response`, so the branch has no current
+     deployment-burden or candidate-calibration audit;
+  3. the frozen deployed candidate set now collapses sharply under HM-plus-
+     frequency follow-up, so the paper should stabilize the current screening
+     story before adding another promoted branch.
+- Defensible use right now:
   1. keep it as a secondary branch in the paper,
   2. test calibrated score fusion against the baseline and Wiener classical
-     screener, or
-  3. audit deployment burden before promoting it operationally.
+     screener after the current follow-up story is stable, or
+  3. build the missing deployment-side feature cache and candidate audit before
+     revisiting promotion.

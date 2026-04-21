@@ -96,6 +96,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hm1-map", type=str, default="", help="HM1 map path (.fits, .npy, or .npz).")
     parser.add_argument("--hm2-map", type=str, default="", help="HM2 map path (.fits, .npy, or .npz).")
     parser.add_argument(
+        "--hm1-map-template",
+        type=str,
+        default="",
+        help=(
+            "Optional per-map HM1 template, e.g. "
+            "'data/planck_pr3_hm/COM_CMB_IQU-{map}_2048_R3.00_hm1.fits'."
+        ),
+    )
+    parser.add_argument(
+        "--hm2-map-template",
+        type=str,
+        default="",
+        help=(
+            "Optional per-map HM2 template, e.g. "
+            "'data/planck_pr3_hm/COM_CMB_IQU-{map}_2048_R3.00_hm2.fits'."
+        ),
+    )
+    parser.add_argument(
         "--candidate-jsonl",
         action="append",
         required=True,
@@ -176,8 +194,23 @@ def validate_args(args: argparse.Namespace) -> None:
     if any(theta <= 0.0 for theta in args.theta_grid_deg):
         raise ValueError("Template radii must be positive.")
     args.models = tuple(parse_model_spec(text) for text in (args.model or DEFAULT_MODELS))
-    if not args.preflight_only and (not args.hm1_map or not args.hm2_map):
-        raise ValueError("--hm1-map and --hm2-map are required unless --preflight-only is used.")
+    direct_pair = bool(args.hm1_map or args.hm2_map)
+    template_pair = bool(args.hm1_map_template or args.hm2_map_template)
+    if direct_pair and template_pair:
+        raise ValueError("Use either direct HM map paths or per-map templates, not both.")
+    if args.hm1_map and not args.hm2_map:
+        raise ValueError("--hm2-map is required when --hm1-map is provided.")
+    if args.hm2_map and not args.hm1_map:
+        raise ValueError("--hm1-map is required when --hm2-map is provided.")
+    if args.hm1_map_template and not args.hm2_map_template:
+        raise ValueError("--hm2-map-template is required when --hm1-map-template is provided.")
+    if args.hm2_map_template and not args.hm1_map_template:
+        raise ValueError("--hm1-map-template is required when --hm2-map-template is provided.")
+    if not args.preflight_only and not (bool(args.hm1_map and args.hm2_map) or bool(args.hm1_map_template and args.hm2_map_template)):
+        raise ValueError(
+            "Provide either --hm1-map/--hm2-map or "
+            "--hm1-map-template/--hm2-map-template unless --preflight-only is used."
+        )
     path_texts = [*args.candidate_jsonl]
     if args.hm1_map:
         path_texts.append(args.hm1_map)
@@ -246,6 +279,44 @@ def load_candidates(paths: list[str], limit: int = 0) -> list[dict[str, Any]]:
     if not rows:
         raise ValueError("No candidate records loaded.")
     return rows
+
+
+def required_candidate_maps(candidates: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Return the unique candidate map labels in stable order."""
+
+    seen: set[str] = set()
+    maps: list[str] = []
+    for record in candidates:
+        name = str(record.get("map", "")).strip().lower()
+        if not name:
+            raise KeyError("Candidate record is missing a non-empty map field.")
+        if name not in seen:
+            seen.add(name)
+            maps.append(name)
+    return tuple(maps)
+
+
+def resolve_map_path(
+    *,
+    direct_path: str,
+    template_path: str,
+    map_name: str,
+) -> str:
+    """Return the concrete path to use for one candidate map family."""
+
+    if direct_path:
+        return str(direct_path)
+    if not template_path:
+        return ""
+    return str(template_path).format(map=str(map_name).lower())
+
+
+def optional_resolved_path(path_text: str) -> str:
+    """Return a resolved path string or an empty string."""
+
+    if not str(path_text):
+        return ""
+    return str(Path(path_text).expanduser().resolve())
 
 
 def candidate_center(record: dict[str, Any]) -> tuple[float, float]:
@@ -649,6 +720,7 @@ def run_preflight(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
     policy_rows = load_policy_rows(policy_path)
     policies_by_slug = {policy_slug(row): row for row in policy_rows}
     candidates = load_candidates(list(args.candidate_jsonl), int(args.candidate_limit))
+    candidate_maps = required_candidate_maps(candidates)
     candidate_summary = preflight_candidates(
         candidates,
         policies_by_slug,
@@ -656,23 +728,50 @@ def run_preflight(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
         min_valid_fraction=float(args.min_valid_fraction),
         issues=issues,
     )
+    hm1_infos: dict[str, dict[str, Any]] = {}
+    hm2_infos: dict[str, dict[str, Any]] = {}
+    for map_name in candidate_maps:
+        hm1_path = resolve_map_path(
+            direct_path=str(args.hm1_map),
+            template_path=str(args.hm1_map_template),
+            map_name=map_name,
+        )
+        hm2_path = resolve_map_path(
+            direct_path=str(args.hm2_map),
+            template_path=str(args.hm2_map_template),
+            map_name=map_name,
+        )
+        hm1_infos[map_name] = inspect_map_input(
+            hm1_path,
+            label=f"hm1_{map_name}",
+            field=int(args.fits_field),
+            target_nside=int(args.target_nside),
+            expect_half_mission=True,
+            issues=issues,
+        )
+        hm2_infos[map_name] = inspect_map_input(
+            hm2_path,
+            label=f"hm2_{map_name}",
+            field=int(args.fits_field),
+            target_nside=int(args.target_nside),
+            expect_half_mission=True,
+            issues=issues,
+        )
+        hm1_nside = hm1_infos[map_name].get("nside")
+        hm2_nside = hm2_infos[map_name].get("nside")
+        if hm1_nside is not None and hm2_nside is not None and int(hm1_nside) != int(hm2_nside):
+            add_preflight_issue(
+                issues,
+                "fail",
+                "hm_nside_match",
+                "HM1 and HM2 native NSIDE values differ.",
+                map=map_name,
+                hm1_nside=hm1_nside,
+                hm2_nside=hm2_nside,
+            )
     map_info = {
-        "hm1": inspect_map_input(
-            str(args.hm1_map),
-            label="hm1",
-            field=int(args.fits_field),
-            target_nside=int(args.target_nside),
-            expect_half_mission=True,
-            issues=issues,
-        ),
-        "hm2": inspect_map_input(
-            str(args.hm2_map),
-            label="hm2",
-            field=int(args.fits_field),
-            target_nside=int(args.target_nside),
-            expect_half_mission=True,
-            issues=issues,
-        ),
+        "hm1_by_map": hm1_infos,
+        "hm2_by_map": hm2_infos,
         "common_mask": inspect_map_input(
             str(args.common_mask),
             label="common_mask",
@@ -682,17 +781,6 @@ def run_preflight(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
             issues=issues,
         ),
     }
-    hm1_nside = map_info["hm1"].get("nside")
-    hm2_nside = map_info["hm2"].get("nside")
-    if hm1_nside is not None and hm2_nside is not None and int(hm1_nside) != int(hm2_nside):
-        add_preflight_issue(
-            issues,
-            "fail",
-            "hm_nside_match",
-            "HM1 and HM2 native NSIDE values differ.",
-            hm1_nside=hm1_nside,
-            hm2_nside=hm2_nside,
-        )
     engine = str(args.circular_engine)
     if engine == "auto":
         engine = "torch" if torch.cuda.is_available() else "scipy"
@@ -713,6 +801,8 @@ def run_preflight(args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
         "inputs": {
             "hm1_map": str(args.hm1_map),
             "hm2_map": str(args.hm2_map),
+            "hm1_map_template": str(args.hm1_map_template),
+            "hm2_map_template": str(args.hm2_map_template),
             "common_mask": str(args.common_mask),
             "policy_json": str(policy_path),
             "candidate_jsonl": [
@@ -769,17 +859,40 @@ def load_analysis_mask(args: argparse.Namespace) -> np.ndarray:
     return np.where(np.asarray(mask_256) >= 0.5, 1.0, 0.0).astype(np.float32)
 
 
-def prepare_half_mission_maps(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load, match, low-mode clean, and mask HM maps."""
+def prepare_half_mission_maps(
+    args: argparse.Namespace,
+    *,
+    map_name: str,
+    mask: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Load, match, low-mode clean, and mask one map family's HM products."""
 
-    hm1 = degrade_map_if_needed(load_map(Path(args.hm1_map).expanduser().resolve(), int(args.fits_field)), args.target_nside)
-    hm2 = degrade_map_if_needed(load_map(Path(args.hm2_map).expanduser().resolve(), int(args.fits_field)), args.target_nside)
+    hm1_path = resolve_map_path(
+        direct_path=str(args.hm1_map),
+        template_path=str(args.hm1_map_template),
+        map_name=map_name,
+    )
+    hm2_path = resolve_map_path(
+        direct_path=str(args.hm2_map),
+        template_path=str(args.hm2_map_template),
+        map_name=map_name,
+    )
+    if not hm1_path or not hm2_path:
+        raise FileNotFoundError(
+            f"Missing HM paths for map {map_name!r}; provide direct paths or per-map templates."
+        )
+    hm1 = degrade_map_if_needed(
+        load_map(Path(hm1_path).expanduser().resolve(), int(args.fits_field)),
+        args.target_nside,
+    )
+    hm2 = degrade_map_if_needed(
+        load_map(Path(hm2_path).expanduser().resolve(), int(args.fits_field)),
+        args.target_nside,
+    )
     if hm1.shape != hm2.shape:
         raise ValueError(f"HM map shape mismatch: {hm1.shape} vs {hm2.shape}.")
     if hp.get_nside(hm1) != hp.get_nside(hm2):
         raise ValueError("HM maps have inconsistent NSIDE after degradation.")
-
-    mask = load_analysis_mask(args)
     if mask.shape != hm1.shape:
         raise ValueError(f"Mask shape {mask.shape} does not match HM maps {hm1.shape}.")
     if not args.skip_low_mode_removal:
@@ -800,7 +913,7 @@ def prepare_half_mission_maps(args: argparse.Namespace) -> tuple[np.ndarray, np.
             f"Prepared HM maps exceed anisotropy scale: max |T|={max_abs:.3g} K. "
             "Use Kelvin anisotropy maps, not microkelvin or full-temperature maps."
         )
-    return mean_map, diff_map, mask
+    return mean_map, diff_map
 
 
 def load_models(specs: tuple[ModelSpec, ...], device: torch.device) -> list[LoadedModel]:
@@ -1338,7 +1451,7 @@ def main() -> None:
     policies = load_policy_rows(Path(args.policy_json).expanduser().resolve())
     policies_by_slug = {policy_slug(row): row for row in policies}
     candidates = load_candidates(list(args.candidate_jsonl), int(args.candidate_limit))
-    mean_map, diff_map, mask_map = prepare_half_mission_maps(args)
+    mask_map = load_analysis_mask(args)
     loaded_models = load_models(args.models, device)
     kernels = circular_kernels(tuple(args.theta_grid_deg), float(args.beam_fwhm_arcmin))[:, ::-1, ::-1]
     engine = str(args.circular_engine)
@@ -1347,6 +1460,7 @@ def main() -> None:
     args.circular_engine = engine
     kernel_fft = prepare_circular_kernel_fft(kernels, device) if engine == "torch" else None
     rng = np.random.default_rng(int(args.seed))
+    map_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
     rows: list[dict[str, Any]] = []
     null_arrays: dict[str, np.ndarray] = {}
@@ -1356,6 +1470,16 @@ def main() -> None:
             policies_by_slug,
             override_slug=str(args.policy_slug),
         )
+        map_name = str(record.get("map", "")).strip().lower()
+        if not map_name:
+            raise KeyError(f"Candidate {idx} is missing a non-empty map field.")
+        if map_name not in map_cache:
+            map_cache[map_name] = prepare_half_mission_maps(
+                args,
+                map_name=map_name,
+                mask=mask_map,
+            )
+        mean_map, diff_map = map_cache[map_name]
         result, arrays = evaluate_candidate(
             record,
             idx,
@@ -1377,11 +1501,14 @@ def main() -> None:
 
     report = {
         "metadata": {
-            "hm1_map": str(Path(args.hm1_map).expanduser().resolve()),
-            "hm2_map": str(Path(args.hm2_map).expanduser().resolve()),
+            "hm1_map": optional_resolved_path(str(args.hm1_map)),
+            "hm2_map": optional_resolved_path(str(args.hm2_map)),
+            "hm1_map_template": str(args.hm1_map_template),
+            "hm2_map_template": str(args.hm2_map_template),
             "policy_json": str(Path(args.policy_json).expanduser().resolve()),
             "candidate_jsonl": [str(Path(path).expanduser().resolve()) for path in args.candidate_jsonl],
             "num_candidates": int(len(candidates)),
+            "candidate_maps": sorted(required_candidate_maps(candidates)),
             "num_realizations": int(args.num_realizations),
             "seed": int(args.seed),
             "target_nside": int(args.target_nside),

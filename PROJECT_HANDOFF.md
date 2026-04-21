@@ -40,6 +40,12 @@ Run this before relying on the current artifact graph:
 python scripts/audit_remediated_flow.py
 ```
 
+Audit the local raw Planck inputs before swapping map products or releases:
+
+```bash
+python scripts/phase0_planck_unit_audit.py
+```
+
 For a compact environment/source/artifact manifest:
 
 ```bash
@@ -66,7 +72,9 @@ Core remediated products:
 | `runs/phase3_unet/remediated_v1_tile_constrained_candidates/` | current | canonical-mask emitted candidates and cluster representatives |
 | `runs/phase3_unet/remediated_v1_candidate_score_calibration/` | current | calibration-split null-survival scores for candidate representatives |
 | `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/` | current diagnostic | full-sky burden audit for legacy two-channel recall candidate |
-| `runs/phase3_unet/phase5_half_mission_signflip_null/` | current | HM sign-flip preflight; p-value reports once HM maps are supplied |
+| `runs/phase3_unet/phase5_half_mission_signflip_null/` | current | HM sign-flip preflight and PR3 HM-backed candidate p-value reports |
+| `runs/phase3_unet/phase5_frequency_jackknife_followup/` | current | common-resolution `100/143/217 GHz` candidate jackknife follow-up |
+| `runs/phase3_unet/remediated_v1_scale_dependent_followup_table/` | current | adaptive follow-up system table using fitted `theta_crit / 2` association |
 | `runs/phase3_unet/remediated_v1_classical_fullsky/` | current | SMICA full-sky Wiener Feeney and SMHW maps |
 | `runs/phase3_unet/batch6_fullsky_nside32_*/` | current | deployment tile calibration |
 
@@ -244,13 +252,25 @@ Composite-policy audits:
   (`5768` pooled null margins) and writes empirical survival p-values plus BH
   q-values to
   `runs/phase3_unet/remediated_v1_candidate_score_calibration/calibrated_candidates.jsonl`.
-- Phase 5 HM sign-flip preflight validates the frozen `24` candidate
-  representatives, policy slug, model checkpoints, and common mask. It is
-  currently `blocked` only because HM1/HM2 cleaned-map paths are not available
-  in the local artifact tree.
-  The best current representative has plus-one pooled null-survival
-  `p=0.000173` and BH q-value `0.000693`. These are follow-up prioritization
-  scores, not global detection probabilities.
+- Phase 5 HM sign-flip now runs against the local PR3 HM1/HM2 cleaned maps for
+  all four component-separation families and writes
+  `runs/phase3_unet/phase5_half_mission_signflip_null/hm_signflip_null_report.json`.
+- The companion common-resolution frequency jackknife on source-backed
+  foreground-reduced `100/143/217 GHz` maps writes
+  `runs/phase3_unet/phase5_frequency_jackknife_followup/frequency_jackknife_report.json`.
+- Real-sky follow-up outcome on the frozen `24` representatives:
+  - frequency jackknife stable: `23 / 24`;
+  - HM sign-flip stable at `p <= 0.05`: `3 / 24`;
+  - combined HM-plus-frequency survivors in the merged handoff: `3 / 24`.
+- The new adaptive follow-up grouping
+  (`runs/phase3_unet/remediated_v1_scale_dependent_followup_table/`) uses
+  `r_assoc = clamp(theta_crit_fit / 2, 5 deg, 15 deg)` and collapses the
+  `24` representatives into `10` sky systems. Only `2 / 10` systems contain
+  any combined real-sky survivor, and `8 / 10` systems remain geometry-limited
+  until projection-robust re-extraction.
+- The best current representative still has pooled null-survival
+  `p=0.000173` and BH q-value `0.000693`, but those are screening
+  prioritization scores, not global detection probabilities.
 - Treat that as the current deployment-safe composite candidate, but do not
   promote any diagnostic recall result to a cosmological claim.
 
@@ -321,25 +341,29 @@ Same-grid classical status:
    recall for `A <= 5e-6`. Treat `A <= 2e-6` as CMB-confusion dominated under
    the current ideal SNR diagnostic; treat higher-SNR cells as algorithmic
    targets under the now-closed same-grid benchmark.
-2. **Candidate-volume convention.** Candidate-volume accounting exists, but the
-   paper narrative still needs a final cluster radius and score-calibration
-   convention.
+2. **Candidate identity convention.** Keep fixed `15 deg` clustering for
+   workload accounting, but use the adaptive `theta_crit_fit / 2` follow-up
+   systems for paper-facing candidate identity and survivor reporting.
 3. **Posterior/evidence calibration.** Empirical null-survival scores exist,
-   but top candidates still need template likelihood or Bayesian follow-up.
+   and the real-sky gate is now harsh: only `3 / 24` representatives and
+   `2 / 10` adaptive systems survive HM plus frequency follow-up. Those are the
+   only plausible inputs to a downstream template likelihood or Bayesian stage.
 4. **Projection-robust follow-up.** The deterministic template/Bayesian
-   handoff exists, but projection cautions remain attached to a majority of the
-   frozen candidates and need native-sphere or projection-robust follow-up
-   before any parameter statement.
+   handoff exists, but `8 / 10` adaptive systems are still geometry-limited and
+   need native-sphere or projection-robust re-extraction before any parameter
+   statement.
 5. **True-Wiener two-stream branch.** The corrected full-cache rerun is now
    complete. Relative to `imagenet_b64_aux`, `true_wiener_ft` raises mean
    synthetic sensitivity from `0.34875` to `0.36839` overall, helps
    moderate/high-amplitude cells (`+0.03881` mean delta) and large-radius
    cells (`+0.02226`), but remains worse on the hardest low-amplitude subset
-   (`-0.00592`). Keep it as a candidate secondary branch or fusion input, not
-   an automatic baseline replacement.
-6. **Half-mission null report.** The Phase 5 HM sign-flip preflight exists and
-   validates candidate/policy/model readiness, but no HM1/HM2-backed candidate
-   p-value report has been produced because the HM maps are not local.
+   (`-0.00592`). It is not promotable as the default branch because it still
+   lacks Batch-6 deployment-burden, candidate-calibration, and frozen-candidate
+   follow-up evidence. Keep it as a candidate secondary branch or fusion input.
+6. **Half-mission null report.** The HM sign-flip report now exists and already
+   excludes most of the frozen representatives from serious follow-up. The next
+   step is projection-robust re-extraction for the surviving systems, not more
+   threshold shopping.
 7. **Remediated matched-filter-channel retrain.** The legacy v7 tile audit is
    promising for recall, but it must be retrained and recalibrated under the
    current artifact contract before it can replace the deployment-safe
@@ -347,26 +371,22 @@ Same-grid classical status:
 
 ## Current Next Steps
 
-1. Retrain and audit a remediated-v1 matched-filter-channel branch using the
+1. Use the adaptive follow-up table, not the fixed `15 deg` clusters, as the
+   paper-facing candidate table.
+2. Run native-sphere or equal-area re-extraction for the `2` surviving
+   adaptive systems first, then for the remaining geometry-limited systems if
+   they still matter scientifically.
+3. Add posterior/template-likelihood calibration only for the surviving
+   systems; the `21 / 24` failed representatives should not anchor stronger
+   paper claims.
+4. Keep the true-Wiener two-stream branch unpromoted and revisit model-level
+   improvement only as Wiener-plus-ML score fusion after the current story is
+   stable.
+5. Retrain and audit a remediated-v1 matched-filter-channel branch using the
    current `5 arcmin` beam, canonical masks, disjoint splits, and real-map null
    deployment gates.
-2. Cache `features/circular_template_response` with
-   `scripts/phase3_cache_matched_filter_channel.py` for the remediated train,
-   calibration, test, sensitivity, real-injection, and null-control products
-   needed by that retrain. Do not use the historical `15 arcmin` feature
-   contract for new claims.
-3. Close the true Wiener/SMHW classical comparison on the same remediated
-   injection/null products.
-4. Select/provide Planck HM1/HM2 component-separated map paths, rerun the Phase
-   5 preflight, then run sign-flip calibration on the frozen cluster
-   representatives.
-5. Add posterior/template-likelihood calibration for the top HM-vetted
-   candidates.
-6. Choose and justify the paper-facing cluster radius for candidate burden.
-7. Train against real-map null backgrounds rather than another CAMB-only
-   distribution.
-8. Build the template-fit/Bayesian handoff path for emitted candidates.
-9. Run Phase 5 HM sign-flip p-values after Planck HM1/HM2 maps are selected.
+6. Train against real-map null backgrounds and later domain adaptation only
+   after the screening-plus-follow-up path is scientifically clean.
 
 ## Quality Gates
 

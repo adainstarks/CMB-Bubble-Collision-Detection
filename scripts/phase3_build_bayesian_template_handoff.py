@@ -48,6 +48,20 @@ DEFAULT_PROJECTION_AUDIT_JSON = (
     / "remediated_v1_projection_clustering_audit"
     / "projection_clustering_audit.json"
 )
+DEFAULT_HM_SIGNFLIP_JSON = (
+    PROJECT_ROOT
+    / "runs"
+    / "phase3_unet"
+    / "phase5_half_mission_signflip_null"
+    / "hm_signflip_null_report.json"
+)
+DEFAULT_FREQUENCY_JACKKNIFE_JSON = (
+    PROJECT_ROOT
+    / "runs"
+    / "phase3_unet"
+    / "phase5_frequency_jackknife_followup"
+    / "frequency_jackknife_report.json"
+)
 DEFAULT_OUTPUT_DIR = (
     PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_bayesian_template_handoff"
 )
@@ -63,6 +77,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-jsonl", type=str, default=str(DEFAULT_CANDIDATE_JSONL))
     parser.add_argument("--template-jsonl", type=str, default=str(DEFAULT_TEMPLATE_JSONL))
     parser.add_argument("--projection-audit-json", type=str, default=str(DEFAULT_PROJECTION_AUDIT_JSON))
+    parser.add_argument("--hm-signflip-json", type=str, default=str(DEFAULT_HM_SIGNFLIP_JSON))
+    parser.add_argument(
+        "--frequency-jackknife-json",
+        type=str,
+        default=str(DEFAULT_FREQUENCY_JACKKNIFE_JSON),
+    )
     parser.add_argument("--output-dir", type=str, default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument(
         "--screening-envelope-amplitude-min",
@@ -112,6 +132,24 @@ def parse_args() -> argparse.Namespace:
         default=20.0,
         help="Template radius above which projection/systematics caution is attached.",
     )
+    parser.add_argument(
+        "--projection-offset-high-deg",
+        type=float,
+        default=20.0,
+        help="Large candidate offset above which geometry escalation is marked high severity.",
+    )
+    parser.add_argument(
+        "--projection-theta-high-deg",
+        type=float,
+        default=22.0,
+        help="Large fitted theta above which geometry escalation is marked high severity.",
+    )
+    parser.add_argument(
+        "--hm-signflip-p-max",
+        type=float,
+        default=0.05,
+        help="Maximum empirical HM sign-flip p-value counted as stable follow-up.",
+    )
     return parser.parse_args()
 
 
@@ -127,6 +165,9 @@ def validate_args(args: argparse.Namespace) -> None:
         ("--tier2-bh-q", args.tier2_bh_q),
         ("--projection-offset-caution-deg", args.projection_offset_caution_deg),
         ("--projection-theta-caution-deg", args.projection_theta_caution_deg),
+        ("--projection-offset-high-deg", args.projection_offset_high_deg),
+        ("--projection-theta-high-deg", args.projection_theta_high_deg),
+        ("--hm-signflip-p-max", args.hm_signflip_p_max),
     ):
         if not np.isfinite(float(value)):
             raise ValueError(f"{label} must be finite.")
@@ -144,6 +185,12 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--projection-offset-caution-deg must be non-negative.")
     if float(args.projection_theta_caution_deg) <= 0.0:
         raise ValueError("--projection-theta-caution-deg must be positive.")
+    if float(args.projection_offset_high_deg) < float(args.projection_offset_caution_deg):
+        raise ValueError("--projection-offset-high-deg must be >= --projection-offset-caution-deg.")
+    if float(args.projection_theta_high_deg) < float(args.projection_theta_caution_deg):
+        raise ValueError("--projection-theta-high-deg must be >= --projection-theta-caution-deg.")
+    if not (0.0 <= float(args.hm_signflip_p_max) <= 1.0):
+        raise ValueError("--hm-signflip-p-max must lie in [0, 1].")
     for label, value in (
         ("candidate JSONL", args.candidate_jsonl),
         ("template JSONL", args.template_jsonl),
@@ -192,6 +239,20 @@ def index_template_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dic
     return indexed
 
 
+def index_followup_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
+    """Index HM/frequency follow-up rows by source candidate key."""
+
+    indexed: dict[tuple[str, int], dict[str, Any]] = {}
+    for row in rows:
+        source = row.get("source_candidate", row)
+        map_name = str(source.get("map", "")).lower()
+        patch_index = source.get("patch_index")
+        if not map_name or patch_index is None:
+            continue
+        indexed[candidate_key(map_name, int(patch_index))] = row
+    return indexed
+
+
 def screening_tier(q_value: float, args: argparse.Namespace) -> str:
     """Return a descriptive screening tier from pooled BH q-values."""
 
@@ -234,9 +295,65 @@ def validate_template_seed(template_row: dict[str, Any]) -> list[str]:
     return errors
 
 
+def projection_caution_metadata(
+    *,
+    theta_fit: float | None,
+    offset_deg: float | None,
+    support_radius_deg: float | None,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Return candidate-specific geometry caution metadata."""
+
+    reasons: list[str] = []
+    if theta_fit is not None and theta_fit >= float(args.projection_theta_caution_deg):
+        reasons.append("large_theta_crit_fit")
+    if offset_deg is not None and offset_deg >= float(args.projection_offset_caution_deg):
+        reasons.append("large_offset_from_tile_center")
+
+    caution = bool(reasons)
+    high_severity = bool(
+        (theta_fit is not None and theta_fit >= float(args.projection_theta_high_deg))
+        or (offset_deg is not None and offset_deg >= float(args.projection_offset_high_deg))
+        or len(reasons) >= 2
+    )
+    severity = "high" if high_severity else ("medium" if caution else "none")
+    preferred_geometry = (
+        "native_sphere_or_projection_robust_reextract"
+        if caution
+        else "current_patch_geometry_seed_ok"
+    )
+    actions = (
+        [
+            "reextract_candidate_on_sphere_or_equal_area_geometry",
+            "rerun_local_template_fit_on_projection_robust_cutout",
+            "defer_parameter_statement_until_geometry_cross_check",
+        ]
+        if caution
+        else ["current_patch_seed_is_acceptable_for_initial_followup_ordering"]
+    )
+    return {
+        "projection_systematics_caution": caution,
+        "projection_systematics_reasons": reasons,
+        "projection_followup": {
+            "required": caution,
+            "severity": severity,
+            "preferred_geometry": preferred_geometry,
+            "recommended_roi_radius_deg": support_radius_deg,
+            "recommended_actions": actions,
+        },
+        "projection_systematics_note": (
+            "Rerun follow-up on a native-sphere or projection-robust extraction before making any parameter statement."
+            if caution
+            else "Current projection audit does not force an immediate geometry escalation for this seed."
+        ),
+    }
+
+
 def build_row(
     candidate_row: dict[str, Any],
     template_row: dict[str, Any] | None,
+    hm_row: dict[str, Any] | None,
+    frequency_row: dict[str, Any] | None,
     audit_summary: dict[str, Any],
     args: argparse.Namespace,
 ) -> dict[str, Any]:
@@ -296,9 +413,12 @@ def build_row(
         offset_deg = float(np.hypot(offset_dx, offset_dy))
 
     theta_fit = finite_float(template_row.get("theta_crit_fit_deg"))
-    projection_caution = bool(
-        (theta_fit is not None and theta_fit >= float(args.projection_theta_caution_deg))
-        or (offset_deg is not None and offset_deg >= float(args.projection_offset_caution_deg))
+    support_radius_deg = finite_float(template_row.get("support_radius_deg"))
+    caution_metadata = projection_caution_metadata(
+        theta_fit=theta_fit,
+        offset_deg=offset_deg,
+        support_radius_deg=support_radius_deg,
+        args=args,
     )
 
     row.update(
@@ -312,7 +432,7 @@ def build_row(
                 "z0": finite_float(template_row.get("z0_fit")),
                 "zcrit": finite_float(template_row.get("zcrit_fit")),
                 "delta_chi2_vs_plane_null": finite_float(template_row.get("delta_chi2_vs_plane_null")),
-                "support_radius_deg": finite_float(template_row.get("support_radius_deg")),
+                "support_radius_deg": support_radius_deg,
                 "candidate_offset_deg": offset_deg,
                 "radius_seed_available": bool(template_row.get("candidate_radius_seed_available", False)),
             },
@@ -327,24 +447,89 @@ def build_row(
                     if theta_fit is None
                     else float(min(float(args.screening_envelope_theta_max_deg), theta_fit + 3.0))
                 ),
-                "roi_radius_deg": finite_float(template_row.get("support_radius_deg")),
+                "roi_radius_deg": support_radius_deg,
                 "note": (
                     "Use the seed for local template-likelihood initialization; keep amplitude priors broad and physics-driven."
                 ),
             },
-            "projection_systematics_caution": projection_caution,
-            "projection_systematics_note": (
-                "Rerun follow-up on a native-sphere or projection-robust extraction if the fitted scale is large or the candidate lies far from the tile center."
-                if projection_caution
-                else "Current projection audit does not force an immediate geometry escalation for this seed."
-            ),
+            **caution_metadata,
         }
     )
     row["followup_route"] = (
         "bayesian_or_template_likelihood_followup_with_projection_caution"
-        if projection_caution
+        if row["projection_systematics_caution"]
         else "bayesian_or_template_likelihood_followup"
     )
+    hm_status = "pending"
+    hm_pass = None
+    hm_p_value = None
+    if hm_row is not None:
+        hm_status = str(hm_row.get("status", "missing"))
+        hm_p_value = finite_float(hm_row.get("hm_signflip_empirical_p_value"))
+        hm_pass = bool(hm_status == "ok" and hm_p_value is not None and hm_p_value <= float(args.hm_signflip_p_max))
+    row["hm_signflip_followup"] = {
+        "available": hm_row is not None,
+        "status": hm_status,
+        "empirical_p_value": hm_p_value,
+        "p_value_threshold": float(args.hm_signflip_p_max),
+        "stable": hm_pass,
+        "observed_policy_margin": None if hm_row is None else finite_float(hm_row.get("observed_policy_margin")),
+        "null_policy_pass_fraction": None if hm_row is None else finite_float(hm_row.get("null_policy_pass_fraction")),
+    }
+
+    freq_status = "pending"
+    freq_pass = None
+    freq_failures: list[str] = []
+    if frequency_row is not None:
+        freq_status = "available"
+        freq_pass = bool(frequency_row.get("frequency_jackknife_stable"))
+        freq_failures = [str(item) for item in frequency_row.get("frequency_jackknife_failures", [])]
+    row["frequency_jackknife_followup"] = {
+        "available": frequency_row is not None,
+        "status": freq_status,
+        "stable": freq_pass,
+        "failures": freq_failures,
+        "all_channel_abs_z0_snr_proxy": (
+            None if frequency_row is None else finite_float(frequency_row.get("all_channel_abs_z0_snr_proxy"))
+        ),
+        "min_leave_one_out_snr_retention": (
+            None
+            if frequency_row is None
+            else finite_float(
+                min(frequency_row.get("leave_one_out_snr_retention", {}).values())
+                if frequency_row.get("leave_one_out_snr_retention")
+                else None
+            )
+        ),
+        "max_leave_one_out_theta_shift_deg": (
+            None
+            if frequency_row is None
+            else finite_float(
+                max(frequency_row.get("leave_one_out_theta_shift_deg", {}).values())
+                if frequency_row.get("leave_one_out_theta_shift_deg")
+                else None
+            )
+        ),
+    }
+
+    if hm_pass is True and freq_pass is True:
+        row["real_sky_followup_status"] = "survives_hm_and_frequency_followup"
+        row["followup_route"] = (
+            "candidate_survives_real_sky_followup_with_projection_caution"
+            if row["projection_systematics_caution"]
+            else "candidate_survives_real_sky_followup"
+        )
+    elif hm_pass is False or freq_pass is False:
+        failure_reasons: list[str] = []
+        if hm_pass is False:
+            failure_reasons.append("hm_signflip")
+        if freq_pass is False:
+            failure_reasons.append("frequency_jackknife")
+        row["real_sky_followup_status"] = "fails_real_sky_followup"
+        row["real_sky_followup_failures"] = failure_reasons
+        row["followup_route"] = "screening_artifact_or_followup_failed"
+    else:
+        row["real_sky_followup_status"] = "pending_real_sky_followup"
     return row
 
 
@@ -354,8 +539,12 @@ def summarize_rows(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict
     tier_counts: dict[str, int] = {}
     route_counts: dict[str, int] = {}
     map_counts: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+    severity_counts: dict[str, int] = {}
+    real_sky_counts: dict[str, int] = {}
     caution_count = 0
     template_ok = 0
+    survivor_count = 0
     top_rows = []
     for row in rows:
         tier = str(row["screening_priority_tier"])
@@ -365,7 +554,15 @@ def summarize_rows(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict
         route_counts[route] = route_counts.get(route, 0) + 1
         map_counts[map_name] = map_counts.get(map_name, 0) + 1
         caution_count += int(bool(row.get("projection_systematics_caution", False)))
+        severity = str(row.get("projection_followup", {}).get("severity", "none"))
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        real_sky = str(row.get("real_sky_followup_status", "pending_real_sky_followup"))
+        real_sky_counts[real_sky] = real_sky_counts.get(real_sky, 0) + 1
+        for reason in row.get("projection_systematics_reasons", []):
+            label = str(reason)
+            reason_counts[label] = reason_counts.get(label, 0) + 1
         template_ok += int(str(row.get("template_seed_status")) == "fit_ok")
+        survivor_count += int(real_sky == "survives_hm_and_frequency_followup")
     for row in rows[:10]:
         seed = row.get("template_seed", {})
         top_rows.append(
@@ -380,6 +577,9 @@ def summarize_rows(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict
                 "z0": seed.get("z0"),
                 "zcrit": seed.get("zcrit"),
                 "delta_chi2_vs_plane_null": seed.get("delta_chi2_vs_plane_null"),
+                "projection_severity": row.get("projection_followup", {}).get("severity"),
+                "projection_reasons": row.get("projection_systematics_reasons", []),
+                "real_sky_followup_status": row.get("real_sky_followup_status"),
                 "followup_route": row.get("followup_route"),
             }
         )
@@ -388,9 +588,13 @@ def summarize_rows(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict
         "num_candidates": int(len(rows)),
         "num_template_seed_ok": int(template_ok),
         "num_projection_cautions": int(caution_count),
+        "num_real_sky_followup_survivors": int(survivor_count),
         "tier_counts": tier_counts,
         "route_counts": route_counts,
         "map_counts": map_counts,
+        "projection_caution_reason_counts": reason_counts,
+        "projection_followup_severity_counts": severity_counts,
+        "real_sky_followup_counts": real_sky_counts,
         "screening_envelope": {
             "amplitude_abs_min": float(args.screening_envelope_amplitude_min),
             "amplitude_abs_max": float(args.screening_envelope_amplitude_max),
@@ -427,13 +631,17 @@ def write_markdown(path: Path, summary: dict[str, Any], rows: list[dict[str, Any
     lines.append(f"- `num_candidates`: `{summary['num_candidates']}`")
     lines.append(f"- `num_template_seed_ok`: `{summary['num_template_seed_ok']}`")
     lines.append(f"- `num_projection_cautions`: `{summary['num_projection_cautions']}`")
+    lines.append(f"- `num_real_sky_followup_survivors`: `{summary['num_real_sky_followup_survivors']}`")
     lines.append(f"- `tier_counts`: `{summary['tier_counts']}`")
     lines.append(f"- `route_counts`: `{summary['route_counts']}`")
+    lines.append(f"- `projection_caution_reason_counts`: `{summary['projection_caution_reason_counts']}`")
+    lines.append(f"- `projection_followup_severity_counts`: `{summary['projection_followup_severity_counts']}`")
+    lines.append(f"- `real_sky_followup_counts`: `{summary['real_sky_followup_counts']}`")
     lines.append("")
     lines.append("## Top Follow-Up Rows")
     lines.append("")
-    lines.append("| rank | map | patch | tier | pooled p | q | theta_fit_deg | delta_chi2 | route |")
-    lines.append("|---:|---|---:|---|---:|---:|---:|---:|---|")
+    lines.append("| rank | map | patch | tier | pooled p | q | theta_fit_deg | delta_chi2 | real-sky status | projection severity | route |")
+    lines.append("|---:|---|---:|---|---:|---:|---:|---:|---|---|---|")
     for row in rows[:10]:
         seed = row.get("template_seed", {})
         lines.append(
@@ -442,6 +650,8 @@ def write_markdown(path: Path, summary: dict[str, Any], rows: list[dict[str, Any
             f"{float(row.get('screening_pooled_bh_q', 1.0)):.6f} | "
             f"{float(seed.get('theta_crit_deg') or 0.0):.2f} | "
             f"{float(seed.get('delta_chi2_vs_plane_null') or 0.0):.3e} | "
+            f"{row.get('real_sky_followup_status')} | "
+            f"{row.get('projection_followup', {}).get('severity')} | "
             f"{row.get('followup_route')} |"
         )
     lines.append("")
@@ -450,6 +660,7 @@ def write_markdown(path: Path, summary: dict[str, Any], rows: list[dict[str, Any
     lines.append("- Screening survival p-values and BH q-values are ranking metadata, not posterior probabilities.")
     lines.append("- Template seeds are deterministic local fits; use them only to initialize the downstream likelihood or sampler.")
     lines.append("- If `projection_systematics_caution` is true, rerun the follow-up on a native-sphere or projection-robust extraction before making any parameter statement.")
+    lines.append("- Use `projection_caution_followup.jsonl` as the explicit geometry-escalation work queue.")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -503,6 +714,8 @@ def main() -> None:
     candidate_path = Path(args.candidate_jsonl).expanduser().resolve()
     template_path = Path(args.template_jsonl).expanduser().resolve()
     projection_audit_path = Path(args.projection_audit_json).expanduser().resolve()
+    hm_signflip_path = Path(args.hm_signflip_json).expanduser().resolve()
+    frequency_jackknife_path = Path(args.frequency_jackknife_json).expanduser().resolve()
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -511,12 +724,27 @@ def main() -> None:
     template_index = index_template_rows(template_rows)
     audit_report = load_json(projection_audit_path) if projection_audit_path.exists() else {}
     audit_summary = projection_audit_summary(audit_report)
+    hm_index = index_followup_rows(load_json(hm_signflip_path).get("candidates", [])) if hm_signflip_path.exists() else {}
+    frequency_index = (
+        index_followup_rows(load_json(frequency_jackknife_path).get("candidates", []))
+        if frequency_jackknife_path.exists()
+        else {}
+    )
 
     rows = []
     for candidate_row in candidate_rows:
         key = candidate_key(str(candidate_row["map"]), int(candidate_row["patch_index"]))
         template_row = template_index.get(key)
-        rows.append(build_row(candidate_row, template_row, audit_summary, args))
+        rows.append(
+            build_row(
+                candidate_row,
+                template_row,
+                hm_index.get(key),
+                frequency_index.get(key),
+                audit_summary,
+                args,
+            )
+        )
 
     rows.sort(
         key=lambda row: (
@@ -526,11 +754,17 @@ def main() -> None:
         )
     )
     summary = summarize_rows(rows, args)
+    projection_rows = [row for row in rows if bool(row.get("projection_systematics_caution", False))]
+    standard_rows = [row for row in rows if not bool(row.get("projection_systematics_caution", False))]
 
     jsonl_path = output_dir / "bayesian_template_handoff.jsonl"
+    projection_jsonl_path = output_dir / "projection_caution_followup.jsonl"
+    standard_jsonl_path = output_dir / "standard_followup.jsonl"
     summary_path = output_dir / "bayesian_template_handoff_summary.json"
     markdown_path = output_dir / "bayesian_template_handoff.md"
     write_jsonl(jsonl_path, rows)
+    write_jsonl(projection_jsonl_path, projection_rows)
+    write_jsonl(standard_jsonl_path, standard_rows)
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     write_markdown(markdown_path, summary, rows)
 
@@ -540,7 +774,13 @@ def main() -> None:
                 "candidate_jsonl": str(candidate_path),
                 "template_jsonl": str(template_path),
                 "projection_audit_json": str(projection_audit_path) if projection_audit_path.exists() else "",
+                "hm_signflip_json": str(hm_signflip_path) if hm_signflip_path.exists() else "",
+                "frequency_jackknife_json": (
+                    str(frequency_jackknife_path) if frequency_jackknife_path.exists() else ""
+                ),
                 "output_jsonl": str(jsonl_path),
+                "projection_caution_jsonl": str(projection_jsonl_path),
+                "standard_followup_jsonl": str(standard_jsonl_path),
                 "output_summary": str(summary_path),
                 "output_markdown": str(markdown_path),
                 "num_rows": len(rows),

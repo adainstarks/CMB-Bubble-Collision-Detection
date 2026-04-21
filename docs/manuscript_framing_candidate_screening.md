@@ -29,6 +29,8 @@ This is the central framing rule for the paper, README, and talk slides.
   candidate-volume accounting.
 - The full-sky candidate list, clustering audit, and template-fit packet are
   **handoff products** for later inference.
+- HM sign-flip and frequency-jackknife follow-up can be used to say which
+  screened candidates remain viable follow-up targets.
 - The upper-limit calculator yields a **screening-derived detectable-collision
   sensitivity proxy** under explicit assumptions.
 
@@ -70,6 +72,22 @@ This is the central framing rule for the paper, README, and talk slides.
 4. State the non-claim explicitly: no cosmological detection claim is made
    without downstream Bayesian evidence.
 
+Use results wording at this level:
+
+- The same-grid Wiener/Feeney filter is the strongest average screener on the
+  fixed synthetic benchmark; ML remains locally competitive rather than
+  uniformly better.
+- The corrected true-Wiener two-stream branch is promising on synthetic recall
+  but is not promoted because deployment burden, candidate calibration, and
+  frozen-candidate follow-up evidence are still missing.
+- The frozen real-sky follow-up is harsh: `23 / 24` representatives remain
+  stable under the frequency jackknife, but only `3 / 24` remain stable under
+  both HM sign-flip and frequency follow-up, collapsing to `2 / 10` adaptive
+  sky systems.
+- The upper-limit number is a screening-derived sensitivity proxy, not a
+  standalone cosmological bound.
+- No standalone detection claim is being made.
+
 ## Paper-Facing Checklist
 
 - The introduction cites Feeney/McEwen/OSS as the downstream inference target,
@@ -77,8 +95,9 @@ This is the central framing rule for the paper, README, and talk slides.
 - The methods section separates screening, calibration, clustering, and
   follow-up handoff.
 - The results section reports recall, null burden, candidate burden, and
-  same-grid screening comparisons separately.
+  same-grid screening comparisons separately, then gives the HM-plus-frequency
+  survivor table as a follow-up triage result.
 - Every table that contains p-values, q-values, or cluster counts states that
   these are screening/follow-up quantities.
-- The conclusion says the next scientific step is HM/frequency-vetted
-  candidate-level Bayesian or template-likelihood analysis.
+- The conclusion says the next scientific step is projection-robust Bayesian or
+  template-likelihood analysis of the surviving adaptive systems.

@@ -70,6 +70,12 @@ Run the lightweight artifact-flow audit:
 python scripts/audit_remediated_flow.py
 ```
 
+Audit the raw local Planck FITS headers, units, and release provenance:
+
+```bash
+python scripts/phase0_planck_unit_audit.py
+```
+
 Run the broader quality gate:
 
 ```bash
@@ -388,9 +394,29 @@ Corrected template-fit and Bayesian handoff artifacts now live in:
 
 - `runs/phase3_unet/remediated_v1_template_fit_handoff/`
 - `runs/phase3_unet/remediated_v1_bayesian_template_handoff/`
+- `runs/phase3_unet/phase5_half_mission_signflip_null/`
+- `runs/phase3_unet/phase5_frequency_jackknife_followup/`
+- `runs/phase3_unet/remediated_v1_scale_dependent_followup_table/`
 
 These package deterministic local Feeney-template seeds plus projection-aware
 follow-up guardrails. They are handoff artifacts, not Bayesian evidence.
+
+Current real-sky follow-up outcome on the frozen `24` representatives:
+
+- Common-resolution `100/143/217 GHz` frequency jackknife: `23 / 24` stable;
+  the lone failure is a mask-coverage skip (`nilc`, patch `9034`), not a broad
+  spectral collapse.
+- HM sign-flip calibration: `3 / 24` candidates satisfy the default
+  `p <= 0.05` stability gate; `1 / 24` is skipped because the projected HM
+  valid-mask fraction falls below `0.9`.
+- Combined handoff: only `3 / 24` representatives survive both HM and
+  frequency follow-up, so the screening story must be framed as aggressive
+  candidate triage rather than a near-detection list.
+- Scale-dependent follow-up grouping with
+  `r_assoc = clamp(theta_crit_fit / 2, 5 deg, 15 deg)` collapses those `24`
+  representatives into `10` sky systems; only `2 / 10` systems contain any
+  HM-plus-frequency survivor, and `8 / 10` systems remain geometry-limited
+  until projection-robust re-extraction.
 
 ## Matched-Filter-Channel Recall Candidate
 
@@ -498,46 +524,41 @@ approximation check; do not treat it as a universal bound.
   not a deployment result.
 - The same-grid Wiener/SMHW benchmark is now closed on the stratified manifest
   and shows Wiener as the strongest average screener. What remains open is how
-  to use that result in deployment: score fusion, the now-completed
-  true-Wiener two-stream branch, and projection-robust follow-up still need
-  final policy decisions.
+  to use that result in deployment: calibrated score fusion is still worth
+  testing, but the true-Wiener two-stream branch is not yet promotable because
+  it still lacks Batch-6 deployment-burden, candidate-calibration, and frozen
+  candidate follow-up evidence.
 - The legacy matched-filter-channel checkpoint improves diagnostic recall, but
   is not promoted because it was trained before `remediated_v1`. It now has a
   tile-burden audit and should be replaced by a remediated two-channel retrain
   before paper-facing claims.
-- Half-mission sign-flip calibration is implemented as a Phase 5 downstream
-  CLI. The preflight report validates the frozen `24` cluster representatives,
-  policy slug, model checkpoints, and common mask, but is currently `blocked`
-  because HM1/HM2 cleaned-map paths have not been provided.
+- Half-mission sign-flip calibration is now fully run on the PR3 HM maps.
+  Only `3 / 24` frozen representatives survive the default HM `p <= 0.05`
+  gate, so cross-map agreement alone is not sufficient evidence that the
+  screened candidates are robust real-sky follow-up targets.
 - There is no Bayesian parameter inference or model comparison against
   LambdaCDM.
-- Candidate-volume accounting exists, but the paper-facing deployment section
-  still needs a final cluster radius and score-calibration convention.
+- Candidate-volume accounting exists, but the paper-facing follow-up section
+  should now use the scale-dependent system table for scientific identity and
+  reserve the fixed `15 deg` clustering for workload accounting only.
 
 ## Next Work
 
-1. Decide how to use the completed remediated true-Wiener two-stream branch in
-   the active comparison set.
-   Status update:
-   the corrected full-cache rerun is complete. `true_wiener_ft` raises mean
-   sensitivity from `0.34875` to `0.36839` overall (`+0.01964`), helps
-   moderate/high-amplitude cells (`+0.03881` mean delta) and large-radius cells
-   (`+0.02226`), but still hurts the hardest low-amplitude subset
-   (`-0.00592`). Treat it as a promising secondary branch, not a default
-   replacement, until deployment burden or score-fusion tests are closed.
-2. Select/provide Planck HM1/HM2 component-separated map paths, rerun the Phase
-   5 preflight, then run HM sign-flip calibration on the frozen cluster
-   representatives.
-3. Choose and justify the paper-facing cluster radius for deployment burden
-   using the completed projection/clustering audit, rather than the old fixed
-   `15 deg` convention by default.
-4. Promote the deterministic template-fit and Bayesian handoff into the
-   follow-up narrative for the frozen `24` cluster representatives, then add
-   native-sphere or projection-robust follow-up for the `17` projection-caution
-   candidates.
-5. Prioritize real-map null backgrounds over another CAMB-only branch.
-6. Feed screened candidates into template fitting, Bayesian follow-up, and
-   `scripts/phase5_half_mission_signflip_null.py` when HM inputs are available.
+1. Keep the corrected true-Wiener two-stream branch as a secondary synthetic
+   result, not a promoted deployment branch. The next model-level test should
+   be calibrated Wiener-plus-ML score fusion after the current follow-up story
+   is stable.
+2. Treat the new scale-dependent follow-up table as the paper-facing candidate
+   identity convention and reserve the fixed `15 deg` clusters for workload
+   accounting only.
+3. Run native-sphere or equal-area re-extraction for the `8 / 10`
+   geometry-limited adaptive systems, prioritizing the `2` surviving systems.
+4. Push the surviving systems into the downstream template-likelihood or
+   Bayesian stage; do not spend more effort on the `21 / 24` representatives
+   that already fail the HM-plus-frequency gate unless the follow-up geometry
+   changes materially.
+5. Prioritize real-map null backgrounds and later domain adaptation only after
+   the current screening-plus-follow-up narrative is scientifically clean.
 
 ## Key Commands
 

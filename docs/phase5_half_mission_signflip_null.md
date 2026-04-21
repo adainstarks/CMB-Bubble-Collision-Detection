@@ -67,17 +67,17 @@ python scripts/phase5_half_mission_signflip_null.py \
 ```
 
 The current local preflight validates the `24` cluster representatives and
-their `tile_constrained_rank1_2_of_3` policy slug, but reports `blocked`
-because HM1/HM2 cleaned-map paths have not been supplied. This is expected until
-the Planck half-mission component-separated products are staged locally.
+their `tile_constrained_rank1_2_of_3` policy slug. That preflight is now
+resolved against local PR3 HM maps for SMICA, NILC, SEVEM, and Commander.
 
 Current full calibration CLI pattern:
 
 ```bash
 python scripts/phase5_half_mission_signflip_null.py \
-  --hm1-map data/HM1_cleaned_map.fits \
-  --hm2-map data/HM2_cleaned_map.fits \
+  --hm1-map-template data/planck_pr3_hm/COM_CMB_IQU-{map}_2048_R3.00_hm1.fits \
+  --hm2-map-template data/planck_pr3_hm/COM_CMB_IQU-{map}_2048_R3.00_hm2.fits \
   --candidate-jsonl runs/phase3_unet/remediated_v1_tile_constrained_candidates/cluster_representatives_15deg.jsonl \
+  --on-invalid skip \
   --num-realizations 1024
 ```
 
@@ -105,6 +105,15 @@ Outputs:
 - Empirical p-value and multiple-testing-ready metadata.
 - Reproducibility manifest containing map versions, mask version, scorer hash,
   RNG seed, and sign-flip policy.
+
+Current real-sky result on the frozen `24` representatives:
+
+- `23 / 24` candidates are evaluated successfully; `1 / 24` is skipped because
+  the projected HM valid-mask fraction falls below the default `0.9` cutoff.
+- `3 / 24` satisfy the default `hm_signflip_empirical_p_value <= 0.05` gate.
+- When combined with the common-resolution frequency jackknife, only `3 / 24`
+  representatives remain viable follow-up targets in the merged Bayesian
+  handoff.
 
 ## Implementation Notes
 

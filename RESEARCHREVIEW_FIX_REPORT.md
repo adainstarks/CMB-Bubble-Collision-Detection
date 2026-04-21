@@ -93,6 +93,17 @@ Repo baseline inspected: `remediated_v1`
 - The deterministic template-fit and Bayesian handoff now exist for the frozen
   `24` cluster representatives, with `17` candidates flagged for projection
   caution in downstream follow-up.
+- Real-sky follow-up is now materially closed on that frozen set:
+  - common-resolution frequency jackknife stable: `23 / 24`;
+  - HM sign-flip stable at `p <= 0.05`: `3 / 24`;
+  - combined HM-plus-frequency survivors in the merged handoff: `3 / 24`.
+- A new adaptive follow-up table now groups the `24` representatives into
+  `10` sky systems using `r_assoc = clamp(theta_crit_fit / 2, 5 deg, 15 deg)`;
+  only `2 / 10` systems contain any real-sky survivor, and `8 / 10` are still
+  geometry-limited until projection-robust re-extraction.
+- The true-Wiener two-stream branch is now explicitly `not promotable` as the
+  default deployment branch. It remains a secondary synthetic result until
+  deployment burden, candidate calibration, and follow-up stability are closed.
 
 ### P0.1 Patch-RMS Noise Floor Is Not A Physics Proof
 
