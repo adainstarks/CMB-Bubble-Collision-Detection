@@ -1,9 +1,12 @@
 """
-Create example panels for real-SMICA smoothed positive injections.
+Historical example panels for real-SMICA smoothed positive injections.
 
 The gallery shows positive patches, truth masks, v6 probability maps, thresholded
 model guesses, and truth/prediction overlays. It uses the saved smoothed-score
 artifact to select a deterministic mix of true positives and false negatives.
+
+The default paths are pre-remediation v6 diagnostics. Current paper-facing
+examples should be regenerated from remediated-v1 or Batch 6 products.
 """
 
 from __future__ import annotations
@@ -20,8 +23,9 @@ import torch
 from scipy.ndimage import gaussian_filter
 
 import phase3_train_unet as p3
+from phase_config import DEFAULT_INJECTION_CONVENTION
 from phase2_generate_training import fwhm_arcmin_to_sigma_pixels
-from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, T_CMB_K, bubble_collision_signal
+from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, bubble_collision_signal, fractional_signal_delta
 from phase3_evaluate_run import load_json, resolve_checkpoint_path
 from phase_dataset_utils import make_angular_distance_grid
 
@@ -187,7 +191,14 @@ def reconstruct_example(h5: h5py.File, row: int, edge_sigma_deg: float, beam_sig
         np.radians(theta_crit_deg),
         edge_sigma_deg=float(edge_sigma_deg),
     )
-    signal_delta = np.asarray(signal * (T_CMB_K + base), dtype=np.float32)
+    signal_delta = np.asarray(
+        fractional_signal_delta(
+            base,
+            signal,
+            injection_convention=DEFAULT_INJECTION_CONVENTION,
+        ),
+        dtype=np.float32,
+    )
     if beam_sigma_pix > 0.0:
         signal_delta = gaussian_filter(signal_delta, sigma=beam_sigma_pix, mode="reflect")
     patch = (base + signal_delta).astype(np.float32)

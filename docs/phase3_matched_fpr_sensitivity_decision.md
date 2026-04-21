@@ -1,4 +1,15 @@
-# Phase 3 Matched-FPR Sensitivity Decision
+# Historical Phase 3 Matched-FPR Sensitivity Decision
+
+This note is retained for provenance only. It predates the remediated-v1
+artifact family, the method-name cleanup, and the preselected ImageNet heatmap.
+Historical `matched_template` below means `circular_template_screen`, not a
+Wiener-whitened Feeney matched filter.
+
+Current replacement artifacts:
+
+- `runs/phase3_unet/remediated_v1_sensitivity_curve/sensitivity_report.{json,md}`
+- `runs/phase3_unet/remediated_v1_sensitivity_curve/ml_gain_heatmap_imagenet_preselected/`
+- `PROJECT_HANDOFF.md`
 
 Generated from the Day 1-4 evaluation stack:
 
@@ -126,7 +137,7 @@ Do not claim:
    Planck-era patch extraction, mask-aware coordinate pools, gnomonic geometry, `Nside=256`, `256 x 256` patches, `13 arcmin` pixels.
 
 2. Signal model:
-   Feeney Eq. 1 hard-boundary template, multiplicative injection, balanced sign quadrants, amplitude grid, radius grid.
+   Feeney Eq. 1 hard-boundary template, Feeney 2011 full-temperature modulation, balanced sign quadrants, amplitude grid, radius grid.
 
 3. Forward model:
    CAMB CMB realizations, beam smoothing, noise injection, coordinate exclusion from previous train/validation products.

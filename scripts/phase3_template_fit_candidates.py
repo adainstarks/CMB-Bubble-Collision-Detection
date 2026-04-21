@@ -79,12 +79,21 @@ def resolve_data_h5(eval_dir, data_h5_arg):
 
 
 def radius_grid(radius_est_deg, args):
+    """Return the radius search grid for one candidate.
+
+    When a screening-stage radius estimate is unavailable, do not collapse the
+    template search around an arbitrary default scale. Search the full
+    configured radius interval instead.
+    """
+
     radius_est_deg = float(radius_est_deg)
     if not np.isfinite(radius_est_deg) or radius_est_deg <= 0.0:
-        radius_est_deg = 10.0
-    radius_est_deg = float(np.clip(radius_est_deg, float(args.min_radius_deg), float(args.max_radius_deg)))
-    lo = max(float(args.min_radius_deg), radius_est_deg - float(args.radius_window_deg))
-    hi = min(float(args.max_radius_deg), radius_est_deg + float(args.radius_window_deg))
+        lo = float(args.min_radius_deg)
+        hi = float(args.max_radius_deg)
+    else:
+        radius_est_deg = float(np.clip(radius_est_deg, float(args.min_radius_deg), float(args.max_radius_deg)))
+        lo = max(float(args.min_radius_deg), radius_est_deg - float(args.radius_window_deg))
+        hi = min(float(args.max_radius_deg), radius_est_deg + float(args.radius_window_deg))
     grid = np.arange(lo, hi + 0.5 * float(args.radius_step_deg), float(args.radius_step_deg))
     grid = np.clip(grid, float(args.min_radius_deg), float(args.max_radius_deg))
     return np.unique(np.round(grid, 6))
@@ -144,10 +153,17 @@ def fit_one_candidate(patch, record, args):
     )
     theta_grid_deg = np.degrees(theta_grid)
     candidate_radius = float(record.get("radius_est_deg") or 0.0)
-    support_radius = min(
-        float(args.max_radius_deg) + float(args.support_extra_deg),
-        max(candidate_radius + float(args.support_extra_deg), candidate_radius * float(args.support_factor)),
-    )
+    has_radius_seed = bool(np.isfinite(candidate_radius) and candidate_radius > 0.0)
+    if has_radius_seed:
+        support_radius = min(
+            float(args.max_radius_deg) + float(args.support_extra_deg),
+            max(candidate_radius + float(args.support_extra_deg), candidate_radius * float(args.support_factor)),
+        )
+    else:
+        # Real-map screened candidates currently do not carry a reliable radius
+        # estimate. Use the full configured search support so the follow-up fit
+        # is not biased toward an arbitrary default scale.
+        support_radius = float(args.max_radius_deg) + float(args.support_extra_deg)
     support = np.isfinite(patch) & (theta_grid_deg <= support_radius)
     if int(support.sum()) < 32:
         return {
@@ -212,6 +228,7 @@ def fit_one_candidate(patch, record, args):
         "candidate_glon_deg": float(center_glon),
         "candidate_glat_deg": float(center_glat),
         "candidate_radius_est_deg": candidate_radius,
+        "candidate_radius_seed_available": has_radius_seed,
         "support_radius_deg": float(support_radius),
         "support_pixels": int(support.sum()),
         "plane_null_sse": float(null_sse),

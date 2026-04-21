@@ -42,11 +42,19 @@ from phase2_generate_training import (
     split_index_pool,
 )
 from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, inject_signal_into_patch
+from phase_config import (
+    DEFAULTS,
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_MCEWEN2012,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 from phase_dataset_utils import patch_center_pixel, stable_group_id
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "validation_stratified_v1"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "validation_stratified_mixed_geometry_v1"
 
 Z0_AMP_BINS = (
     ("z0_1e-6_to_1e-5", 1e-6, 1e-5),
@@ -82,11 +90,11 @@ def parse_args():
     parser.add_argument("--split-seed", type=int, default=271828)
     parser.add_argument("--pool-size", type=int, default=9000)
     parser.add_argument("--num-cmb-realizations", type=int, default=256)
-    parser.add_argument("--geometry-mode", type=str, default="contained", choices=GEOMETRY_MODES)
+    parser.add_argument("--geometry-mode", type=str, default="mixed", choices=GEOMETRY_MODES)
     parser.add_argument(
         "--truncated-positive-fraction",
         type=float,
-        default=0.0,
+        default=0.35,
         help="Fraction of positives drawn from edge-crossing geometry when --geometry-mode=mixed.",
     )
     parser.add_argument(
@@ -104,13 +112,20 @@ def parse_args():
     parser.add_argument("--truncated-max-center-draws", type=int, default=256)
     parser.add_argument("--signal-center-edge-margin-pix", type=float, default=0.0)
     parser.add_argument("--contained-margin-deg", type=float, default=0.5)
-    parser.add_argument("--beam-fwhm-arcmin", type=float, default=15.0)
+    parser.add_argument("--beam-fwhm-arcmin", type=float, default=DEFAULTS.beam_fwhm_arcmin)
     parser.add_argument("--noise-sigma-uk-arcmin", type=float, default=30.0)
     parser.add_argument("--noise-corr-fwhm-arcmin", type=float, default=0.0)
     parser.add_argument(
+        "--injection-convention",
+        type=str,
+        default=DEFAULT_INJECTION_CONVENTION,
+        choices=INJECTION_CONVENTIONS,
+        help="Signal convention for generated positives.",
+    )
+    parser.add_argument(
         "--exclude-h5",
         type=str,
-        default=str(PROJECT_ROOT / "data" / "training_v4" / "training_data.h5"),
+        default=str(PROJECT_ROOT / "data" / "remediated_v1" / "training_data.h5"),
         help="Optional existing dataset whose coordinate pool should be avoided.",
     )
     parser.add_argument(
@@ -377,6 +392,7 @@ def main():
                 edge_sigma_deg=edge_sigma_i,
                 center_x_pix=center_x_i,
                 center_y_pix=center_y_i,
+                injection_convention=args.injection_convention,
             )
             mask_i = geometry_i["mask"]
             observed_patch = apply_observing_model_to_patch(
@@ -510,6 +526,11 @@ def main():
         "beam_fwhm_arcmin": float(args.beam_fwhm_arcmin),
         "noise_sigma_uk_arcmin": float(args.noise_sigma_uk_arcmin),
         "noise_corr_fwhm_arcmin": float(args.noise_corr_fwhm_arcmin),
+        "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+        "injection_convention": args.injection_convention,
+        "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
+        "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
+        "matched_filter_approximation_note": INJECTION_CONVENTION_NOTES[INJECTION_CONVENTION_MCEWEN2012],
         "exclude_h5": str(Path(args.exclude_h5).resolve()) if args.exclude_h5 else "",
         "exclude_radius_deg": float(args.exclude_radius_deg),
         "bin_schema": json.dumps(bin_schema, sort_keys=True),

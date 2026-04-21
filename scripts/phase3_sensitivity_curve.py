@@ -53,17 +53,22 @@ from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, bubble_collision_signal,
 from phase3_evaluate_run import load_json, resolve_checkpoint_path
 from phase_dataset_utils import make_angular_distance_grid, patch_center_pixel, stable_group_id
 from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, method_metadata
-from phase_config import DEFAULTS
+from phase3_thresholds import conformal_threshold_from_scores, threshold_tuple_from_scores
+from phase_config import (
+    DEFAULTS,
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_MCEWEN2012,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve"
 DEFAULT_MODELS = (
-    "original_v4:runs/phase3_unet/phase3_v4_full_2gpu_b64w8_cached:best",
-    "boundary_v4:runs/phase3_unet/phase3_v4_boundary_w4_ft:last",
-    "v5_consensus:runs/phase3_unet/phase3_v5_aux_hard_w3:last",
-    "v6_aux_only:runs/phase3_unet/phase3_v6_aux_only_w4:best",
-    "v6_hard_w15:runs/phase3_unet/phase3_v6_hard_w15:best",
+    "random_b64_aux:runs/phase3_unet/remediated_v1_unet_random_b64_aux:best",
+    "imagenet_b64_aux:runs/phase3_unet/remediated_v1_unet_imagenet_b64_aux:best",
 )
 DEFAULT_AMPLITUDE_GRID = (1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4)
 DEFAULT_THETA_GRID_DEG = (5.0, 10.0, 15.0, 20.0, 25.0)
@@ -114,6 +119,17 @@ def parse_args():
     parser.add_argument("--beam-fwhm-arcmin", type=float, default=DEFAULTS.beam_fwhm_arcmin)
     parser.add_argument("--noise-sigma-uk-arcmin", type=float, default=30.0)
     parser.add_argument("--noise-corr-fwhm-arcmin", type=float, default=0.0)
+    parser.add_argument(
+        "--injection-convention",
+        type=str,
+        default=DEFAULT_INJECTION_CONVENTION,
+        choices=INJECTION_CONVENTIONS,
+        help=(
+            "Signal convention for generated positives. Use "
+            "mcewen2012_first_order_additive for additive same-grid classical "
+            "benchmark products."
+        ),
+    )
     parser.add_argument(
         "--exclude-h5",
         action="append",
@@ -179,8 +195,9 @@ def validate_args(args):
 
 def default_exclusion_h5s():
     paths = [
-        PROJECT_ROOT / "data" / "training_v4" / "training_data.h5",
-        PROJECT_ROOT / "data" / "validation_stratified_v1" / "validation_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "training_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "calibration_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "test_data.h5",
     ]
     return [str(path) for path in paths if path.exists()]
 
@@ -370,6 +387,7 @@ def generate_sensitivity_dataset(args, h5_path):
                         edge_sigma_deg=0.0,
                         center_x_pix=center_x_i,
                         center_y_pix=center_y_i,
+                        injection_convention=args.injection_convention,
                     )
                     theta_grid_i = make_angular_distance_grid(
                         PATCH_PIX,
@@ -486,6 +504,11 @@ def generate_sensitivity_dataset(args, h5_path):
         "edge_sigma_deg": 0.0,
         "amplitude_definition": "|z0| = A; |zcrit|/|z0| is scanned over zcrit_ratio_grid with balanced sign quadrants",
         "signal_strength_definition": "reported amplitude grid is the absolute z0 reference amplitude, not max(|z0|, |zcrit|)",
+        "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+        "injection_convention": args.injection_convention,
+        "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
+        "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
+        "matched_filter_approximation_note": INJECTION_CONVENTION_NOTES[INJECTION_CONVENTION_MCEWEN2012],
         "beam_fwhm_arcmin": float(args.beam_fwhm_arcmin),
         "noise_sigma_uk_arcmin": float(args.noise_sigma_uk_arcmin),
         "noise_corr_fwhm_arcmin": float(args.noise_corr_fwhm_arcmin),
@@ -665,15 +688,7 @@ def score_ml_model(spec, h5_path, args, device):
 
 
 def threshold_from_negatives(scores, labels, fpr_target):
-    neg_scores = np.asarray(scores, dtype=np.float64)[np.asarray(labels) == 0]
-    if neg_scores.size == 0:
-        raise ValueError("No negative scores available for threshold calibration.")
-    try:
-        threshold = float(np.quantile(neg_scores, 1.0 - fpr_target, method="higher"))
-    except TypeError:
-        threshold = float(np.quantile(neg_scores, 1.0 - fpr_target, interpolation="higher"))
-    flagged = neg_scores > threshold
-    return threshold, int(flagged.sum()), float(flagged.mean())
+    return threshold_tuple_from_scores(scores, labels, fpr_target)
 
 
 def binomial_ci(k, n):
@@ -694,8 +709,11 @@ def summarize_sensitivity(scores_by_method, h5_path, fpr_target):
     rows = []
     thresholds = {}
     for method_name, scores in scores_by_method.items():
-        threshold, neg_fp, neg_fpr = threshold_from_negatives(scores, labels, fpr_target)
-        thresholds[method_name] = {"threshold": threshold, "negative_fp": neg_fp, "negative_fpr": neg_fpr}
+        threshold_record = conformal_threshold_from_scores(scores, labels, fpr_target)
+        threshold = float(threshold_record["threshold"])
+        neg_fp = int(threshold_record["negative_fp"])
+        neg_fpr = float(threshold_record["negative_fpr"])
+        thresholds[method_name] = threshold_record
         for amp_i, amp_value in enumerate(amplitude_grid):
             for theta_i, theta_value in enumerate(theta_grid_deg):
                 mask = (labels == 1) & (amplitude_idx == amp_i) & (theta_idx == theta_i)

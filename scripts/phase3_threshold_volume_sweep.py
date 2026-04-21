@@ -1,8 +1,10 @@
 """
-Sweep v6_aux_only thresholds against real-SMICA smoothed positives and SMICA nulls.
+Historical v6_aux_only threshold-volume sweep.
 
-This answers the deployment question directly: what recall do we get in each
-physical regime for a given tolerated full-sky false-positive volume?
+This pre-remediation diagnostic swept real-SMICA smoothed positives and SMICA
+nulls for a given tolerated full-sky false-positive volume. Current deployment
+calibration is the remediated Batch 6 tile audit; retain this script only for
+provenance or explicitly reproduced legacy analyses.
 """
 
 from __future__ import annotations

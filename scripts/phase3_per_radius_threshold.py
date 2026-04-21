@@ -34,9 +34,13 @@ from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, canonical_method_na
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_H5 = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5"
-DEFAULT_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_report.json"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "per_radius_threshold_v1"
+DEFAULT_DATA_H5 = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_data.h5"
+)
+DEFAULT_REPORT = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_report.json"
+)
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_per_radius_threshold"
 METHODS = (CIRCULAR_TEMPLATE_SCREEN, "centered_disc")
 
 

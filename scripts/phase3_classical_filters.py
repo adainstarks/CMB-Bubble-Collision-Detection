@@ -5,9 +5,10 @@ Assumptions
 * These utilities are candidate screeners. They do not compute Bayesian
   evidence for bubble collisions.
 * `wiener_feeney_matched_filter` uses an axisymmetric Feeney linear cap,
-  a Gaussian beam, and inverse covariance weighting
-  ``B_l s_l / (B_l^2 C_l + N_l)``. That name is not used for the older
-  patch-space circular correlator.
+  an effective beam transfer function, and inverse covariance weighting
+  ``B_l s_l / (B_l^2 C_l + N_l)``. For remediated synthetic skies,
+  ``B_l`` includes both the Gaussian beam and the HEALPix pixel window. That
+  name is not used for the older patch-space circular correlator.
 * The Feeney cap follows Feeney et al. Phys. Rev. D 84, 043507 (2011),
   arXiv:1012.3667. The harmonic weighting follows the standard spherical
   matched-filter construction used for azimuthal CMB features, with covariance
@@ -31,6 +32,8 @@ from phase3_method_registry import SMHW_SCREEN, WIENER_FEENEY_MATCHED_FILTER, me
 
 
 SIGN_QUADRANTS = ((1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0))
+UNIQUE_SIGN_QUADRANTS = ((1.0, 1.0), (1.0, -1.0))
+PIXEL_WINDOW_POLICIES = ("none", "synfast_pixwin_true")
 
 
 def parse_float_list(text: str) -> tuple[float, ...]:
@@ -143,6 +146,51 @@ def white_noise_cl(lmax: int, noise_sigma_uk_arcmin: float = 0.0) -> np.ndarray:
     return np.full(int(lmax) + 1, sigma_k_rad * sigma_k_rad, dtype=FLOAT_GEOMETRY_DTYPE)
 
 
+def effective_beam_l(
+    *,
+    nside: int,
+    lmax: int,
+    beam_fwhm_arcmin: float = DEFAULTS.beam_fwhm_arcmin,
+    pixel_window_policy: str = DEFAULTS.pixel_window_policy,
+) -> np.ndarray:
+    """Return the harmonic transfer function applied to sky signals.
+
+    The remediated synthetic maps are generated with a Gaussian beam and
+    ``synfast(pixwin=True)``. Matched-filter covariance and signal response
+    calculations must use the same effective transfer function,
+    ``B_l * P_l``. Set ``pixel_window_policy='none'`` only for products whose
+    map-making provenance explicitly excludes the HEALPix pixel window.
+    """
+
+    nside = int(nside)
+    lmax = int(lmax)
+    if nside <= 0 or not hp.isnsideok(nside):
+        raise ValueError("nside must be a valid positive HEALPix Nside.")
+    if lmax < 0:
+        raise ValueError("lmax must be non-negative.")
+    if float(beam_fwhm_arcmin) < 0.0:
+        raise ValueError("beam_fwhm_arcmin must be non-negative.")
+    if pixel_window_policy not in PIXEL_WINDOW_POLICIES:
+        raise ValueError(
+            f"Unknown pixel_window_policy={pixel_window_policy!r}; "
+            f"expected one of {PIXEL_WINDOW_POLICIES}."
+        )
+
+    if float(beam_fwhm_arcmin) > 0.0:
+        beam_l = hp.gauss_beam(beam_fwhm_rad(float(beam_fwhm_arcmin)), lmax=lmax)
+    else:
+        beam_l = np.ones(lmax + 1, dtype=FLOAT_GEOMETRY_DTYPE)
+    if pixel_window_policy == "synfast_pixwin_true":
+        pixwin_l = hp.pixwin(nside, pol=False, lmax=lmax)
+        beam_l = np.asarray(beam_l, dtype=FLOAT_GEOMETRY_DTYPE) * np.asarray(
+            pixwin_l,
+            dtype=FLOAT_GEOMETRY_DTYPE,
+        )
+    if not np.all(np.isfinite(beam_l)):
+        raise ValueError("Effective beam contains non-finite values.")
+    return np.asarray(beam_l, dtype=FLOAT_GEOMETRY_DTYPE)
+
+
 def matched_filter_transfer(
     *,
     template_l0: np.ndarray,
@@ -181,6 +229,7 @@ def wiener_feeney_matched_filter_maps(
     lmax: int | None = None,
     beam_fwhm_arcmin: float = DEFAULTS.beam_fwhm_arcmin,
     noise_sigma_uk_arcmin: float = 0.0,
+    pixel_window_policy: str = DEFAULTS.pixel_window_policy,
     quadrature_order: int = 4096,
 ) -> tuple[dict[str, np.ndarray], dict[str, dict]]:
     """Scan Feeney caps with a beam/covariance-weighted spherical filter."""
@@ -196,7 +245,12 @@ def wiener_feeney_matched_filter_maps(
         raise ValueError("cmb_cl does not cover lmax.")
 
     data_alm = hp.map2alm(work, lmax=lmax, iter=3)
-    beam_l = hp.gauss_beam(beam_fwhm_rad(float(beam_fwhm_arcmin)), lmax=lmax)
+    beam_l = effective_beam_l(
+        nside=nside,
+        lmax=lmax,
+        beam_fwhm_arcmin=float(beam_fwhm_arcmin),
+        pixel_window_policy=str(pixel_window_policy),
+    )
     noise_cl = white_noise_cl(lmax, noise_sigma_uk_arcmin)
     score_maps: dict[str, np.ndarray] = {}
     metadata: dict[str, dict] = {}
@@ -227,8 +281,88 @@ def wiener_feeney_matched_filter_maps(
                 "normalization": norm,
                 "beam_fwhm_arcmin": float(beam_fwhm_arcmin),
                 "noise_sigma_uk_arcmin": float(noise_sigma_uk_arcmin),
+                "pixel_window_policy": str(pixel_window_policy),
             }
     return score_maps, metadata
+
+
+def precompute_wiener_feeney_filter_bank(
+    *,
+    nside: int,
+    cmb_cl: np.ndarray,
+    theta_grid_deg: tuple[float, ...],
+    lmax: int | None = None,
+    beam_fwhm_arcmin: float = DEFAULTS.beam_fwhm_arcmin,
+    noise_sigma_uk_arcmin: float = 0.0,
+    pixel_window_policy: str = DEFAULTS.pixel_window_policy,
+    quadrature_order: int = 4096,
+    collapse_sign_pairs: bool = False,
+) -> tuple[dict[str, np.ndarray], dict[str, dict]]:
+    """Precompute Wiener matched-filter transfer weights for one map geometry.
+
+    Assumptions
+    -----------
+    * ``cmb_cl`` is a TT power spectrum in Kelvin^2 for the same cosmology used
+      to generate the maps being filtered.
+    * The beam and pixel-window policy must match the map-domain observing
+      model, otherwise the transfer weights are physically inconsistent.
+    * The returned filter bank is linear and map-independent once ``nside``,
+      ``lmax``, the covariance model, and the template bank are fixed.
+    """
+
+    nside = int(nside)
+    if nside <= 0 or not hp.isnsideok(nside):
+        raise ValueError("nside must be a valid positive HEALPix Nside.")
+    if lmax is None:
+        lmax = 3 * nside - 1
+    lmax = int(lmax)
+    if lmax < 2:
+        raise ValueError("lmax must be at least 2.")
+    if len(cmb_cl) <= lmax:
+        raise ValueError("cmb_cl does not cover lmax.")
+
+    beam_l = effective_beam_l(
+        nside=nside,
+        lmax=lmax,
+        beam_fwhm_arcmin=float(beam_fwhm_arcmin),
+        pixel_window_policy=str(pixel_window_policy),
+    )
+    noise_cl = white_noise_cl(lmax, noise_sigma_uk_arcmin)
+    weights_bank: dict[str, np.ndarray] = {}
+    metadata: dict[str, dict] = {}
+    sign_quadrants = UNIQUE_SIGN_QUADRANTS if bool(collapse_sign_pairs) else SIGN_QUADRANTS
+    for theta_deg in theta_grid_deg:
+        for z0_sign, zcrit_sign in sign_quadrants:
+            template_l0 = feeney_template_l0(
+                theta_crit_deg=float(theta_deg),
+                z0=float(z0_sign),
+                zcrit=float(zcrit_sign),
+                lmax=lmax,
+                quadrature_order=max(int(quadrature_order), lmax + 8),
+            )
+            weights, norm = matched_filter_transfer(
+                template_l0=template_l0,
+                cmb_cl=cmb_cl,
+                beam_l=beam_l,
+                noise_cl=noise_cl,
+            )
+            key = f"theta{float(theta_deg):g}_z0{int(z0_sign):+d}_zcrit{int(zcrit_sign):+d}"
+            weights_bank[key] = np.asarray(weights, dtype=FLOAT_GEOMETRY_DTYPE)
+            metadata[key] = {
+                "method": WIENER_FEENEY_MATCHED_FILTER,
+                "theta_crit_deg": float(theta_deg),
+                "z0_sign": float(z0_sign),
+                "zcrit_sign": float(zcrit_sign),
+                "collapse_sign_pairs": bool(collapse_sign_pairs),
+                "absolute_response": bool(collapse_sign_pairs),
+                "normalization": float(norm),
+                "beam_fwhm_arcmin": float(beam_fwhm_arcmin),
+                "noise_sigma_uk_arcmin": float(noise_sigma_uk_arcmin),
+                "pixel_window_policy": str(pixel_window_policy),
+                "nside": int(nside),
+                "lmax": int(lmax),
+            }
+    return weights_bank, metadata
 
 
 def smhw_screen_maps(
@@ -266,6 +400,92 @@ def smhw_screen_maps(
             "wavelet": "scale_normalized_spherical_laplacian_of_gaussian",
         }
     return maps, metadata
+
+
+def precompute_smhw_filter_bank(
+    *,
+    scales_deg: tuple[float, ...],
+    lmax: int,
+) -> tuple[dict[str, np.ndarray], dict[str, dict]]:
+    """Precompute harmonic SMHW/LoG windows for a fixed ``lmax``."""
+
+    lmax = int(lmax)
+    if lmax < 2:
+        raise ValueError("lmax must be at least 2.")
+    ells = np.arange(lmax + 1, dtype=FLOAT_GEOMETRY_DTYPE)
+    window_bank: dict[str, np.ndarray] = {}
+    metadata: dict[str, dict] = {}
+    for scale_deg in scales_deg:
+        scale_rad = (float(scale_deg) * u.deg).to_value(u.rad)
+        if scale_rad <= 0.0:
+            raise ValueError("SMHW scales must be positive.")
+        window = ells * (ells + 1.0) * scale_rad * scale_rad * np.exp(
+            -0.5 * ells * (ells + 1.0) * scale_rad * scale_rad
+        )
+        window[:2] = 0.0
+        key = f"scale{float(scale_deg):g}"
+        window_bank[key] = np.asarray(window, dtype=FLOAT_GEOMETRY_DTYPE)
+        metadata[key] = {
+            "method": SMHW_SCREEN,
+            "scale_deg": float(scale_deg),
+            "is_matched_filter": False,
+            "wavelet": "scale_normalized_spherical_laplacian_of_gaussian",
+            "lmax": int(lmax),
+        }
+    return window_bank, metadata
+
+
+def apply_precomputed_wiener_bank(
+    data_alm: np.ndarray,
+    *,
+    nside: int,
+    lmax: int,
+    weights_bank: dict[str, np.ndarray],
+    metadata: dict[str, dict],
+) -> tuple[dict[str, np.ndarray], dict[str, dict]]:
+    """Apply a precomputed Wiener filter bank to spherical harmonic data."""
+
+    nside = int(nside)
+    lmax = int(lmax)
+    score_maps: dict[str, np.ndarray] = {}
+    out_metadata: dict[str, dict] = {}
+    for key, weights in weights_bank.items():
+        row = dict(metadata[key])
+        norm = float(row.get("normalization", 0.0))
+        if not np.isfinite(norm) or norm <= 0.0:
+            raise ValueError(f"Filter bank entry {key!r} has non-physical normalization {norm}.")
+        filtered = hp.almxfl(data_alm, np.asarray(weights, dtype=FLOAT_GEOMETRY_DTYPE))
+        snr_map = hp.alm2map(filtered, nside, lmax=lmax) / np.sqrt(norm)
+        if bool(row.get("absolute_response", False)):
+            snr_map = np.abs(snr_map)
+        score_maps[key] = np.asarray(snr_map, dtype=np.float32)
+        out_metadata[key] = row
+    return score_maps, out_metadata
+
+
+def apply_precomputed_smhw_bank(
+    data_alm: np.ndarray,
+    *,
+    nside: int,
+    lmax: int,
+    window_bank: dict[str, np.ndarray],
+    metadata: dict[str, dict],
+) -> tuple[dict[str, np.ndarray], dict[str, dict]]:
+    """Apply a precomputed SMHW window bank to spherical harmonic data."""
+
+    nside = int(nside)
+    lmax = int(lmax)
+    maps: dict[str, np.ndarray] = {}
+    out_metadata: dict[str, dict] = {}
+    for key, window in window_bank.items():
+        response = hp.alm2map(
+            hp.almxfl(data_alm, np.asarray(window, dtype=FLOAT_GEOMETRY_DTYPE)),
+            nside,
+            lmax=lmax,
+        )
+        maps[key] = np.asarray(response, dtype=np.float32)
+        out_metadata[key] = dict(metadata[key])
+    return maps, out_metadata
 
 
 def load_map(path: Path) -> np.ndarray:
@@ -306,6 +526,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lmax", type=int, default=0)
     parser.add_argument("--beam-fwhm-arcmin", type=float, default=DEFAULTS.beam_fwhm_arcmin)
     parser.add_argument("--noise-sigma-uk-arcmin", type=float, default=0.0)
+    parser.add_argument(
+        "--pixel-window-policy",
+        type=str,
+        default=DEFAULTS.pixel_window_policy,
+        choices=PIXEL_WINDOW_POLICIES,
+        help="Effective beam pixel-window policy for maps being filtered.",
+    )
     return parser.parse_args()
 
 
@@ -327,6 +554,7 @@ def main() -> None:
         lmax=lmax,
         beam_fwhm_arcmin=float(args.beam_fwhm_arcmin),
         noise_sigma_uk_arcmin=float(args.noise_sigma_uk_arcmin),
+        pixel_window_policy=str(args.pixel_window_policy),
     )
     smhw_maps, smhw_metadata = smhw_screen_maps(input_map, scales_deg=smhw_scales, lmax=lmax)
     payload = {
@@ -344,6 +572,9 @@ def main() -> None:
             WIENER_FEENEY_MATCHED_FILTER: method_metadata(WIENER_FEENEY_MATCHED_FILTER),
             SMHW_SCREEN: method_metadata(SMHW_SCREEN),
         },
+        "beam_fwhm_arcmin": float(args.beam_fwhm_arcmin),
+        "noise_sigma_uk_arcmin": float(args.noise_sigma_uk_arcmin),
+        "pixel_window_policy": str(args.pixel_window_policy),
         "matched_filter_maps": matched_metadata,
         "smhw_maps": smhw_metadata,
     }

@@ -25,15 +25,28 @@ from phase3_sensitivity_curve import threshold_from_negatives
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SENS_H5 = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5"
-DEFAULT_SENS_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_scores.npz"
-DEFAULT_REAL_H5 = PROJECT_ROOT / "runs" / "phase3_unet" / "real_sky_injection_v1" / "smica_real_sky_injection.h5"
-DEFAULT_REAL_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "real_sky_injection_v1" / "real_sky_scores.npz"
-DEFAULT_NULL_H5 = PROJECT_ROOT / "data" / "training_v4" / "smica_null_controls_all.h5"
-DEFAULT_NULL_MATCHED = (
-    PROJECT_ROOT / "runs" / "phase3_unet" / "real_sky_recalibration_v1" / "score_cache" / "null_matched_template_scores.npz"
+DEFAULT_SENS_H5 = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_data.h5"
+DEFAULT_SENS_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_scores.npz"
+DEFAULT_REAL_H5 = (
+    PROJECT_ROOT
+    / "runs"
+    / "phase3_unet"
+    / "remediated_v1_real_sky_injection_smica_mask090"
+    / "smica_real_sky_injection.h5"
 )
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "single_model_recalibrated_v1"
+DEFAULT_REAL_SCORES = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_real_sky_injection_smica_mask090" / "real_sky_scores.npz"
+)
+DEFAULT_NULL_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "null_controls_smica_mask090.h5"
+DEFAULT_NULL_MATCHED = (
+    PROJECT_ROOT
+    / "runs"
+    / "phase3_unet"
+    / "remediated_v1_real_sky_recalibration"
+    / "score_cache"
+    / "null_matched_template_scores.npz"
+)
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_single_model_recalibrated"
 POLICIES = ("model_only", "matched_template", "either_model_or_matched", "both_model_and_matched")
 REGIMES = (
     ("dead_A_le_2e-6", None, 2e-6),

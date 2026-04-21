@@ -27,17 +27,19 @@ import numpy as np
 
 from phase_config import (
     DEFAULTS,
+    DEFAULT_INJECTION_CONVENTION,
     FLOAT_GEOMETRY_DTYPE,
     FLOAT_STORAGE_DTYPE,
+    INJECTION_CONVENTION_NOTES,
     NSIDE_WORKING,
     PATCH_PIX,
     PLANCK_CMB_BEAM_FWHM,
+    PROVENANCE_SCHEMA_VERSION,
     RESO_ARCMIN,
-    T_CMB,
     beam_fwhm_rad,
     validate_patch_temperature_scale,
 )
-from phase2_signal_model import bubble_collision_signal
+from phase2_signal_model import add_fractional_signal_to_patch, bubble_collision_signal
 
 
 PLANCK_2018_BASE_PARAMS = {
@@ -200,8 +202,13 @@ def inject_signal_on_sphere(
     edge_sigma_deg: float = 0.0,
     center_x_pix: float | None = None,
     center_y_pix: float | None = None,
+    injection_convention: str = DEFAULT_INJECTION_CONVENTION,
 ) -> np.ndarray:
-    """Inject a Feeney fractional-temperature signal on the HEALPix sphere."""
+    """Inject a Feeney fractional-temperature signal on the HEALPix sphere.
+
+    The default convention is the Feeney et al. (2011) full-temperature
+    modulation recorded by ``DEFAULT_INJECTION_CONVENTION``.
+    """
 
     out = np.asarray(base_map, dtype=FLOAT_GEOMETRY_DTYPE).copy()
     validate_patch_temperature_scale(out, name="base_map")
@@ -227,8 +234,11 @@ def inject_signal_on_sphere(
         radius,
         edge_sigma_deg=float(edge_sigma_deg),
     )
-    t_cmb_k = T_CMB.to_value("K")
-    out[pix] = (1.0 + signal) * (t_cmb_k + out[pix]) - t_cmb_k
+    out[pix] = add_fractional_signal_to_patch(
+        out[pix],
+        signal,
+        injection_convention=injection_convention,
+    )
     validate_patch_temperature_scale(out, name="injected_map")
     return out.astype(FLOAT_STORAGE_DTYPE)
 
@@ -254,8 +264,22 @@ def smooth_map_harmonic(
     return np.asarray(smoothed, dtype=FLOAT_STORAGE_DTYPE)
 
 
-def project_patch(hp_map: np.ndarray, glon_deg: float, glat_deg: float) -> np.ndarray:
-    """Extract a gnomonic patch using the canonical project geometry."""
+def project_patch(
+    hp_map: np.ndarray,
+    glon_deg: float,
+    glat_deg: float,
+    *,
+    validate_temperature_scale: bool = True,
+) -> np.ndarray:
+    """Extract a gnomonic patch using the canonical projection geometry.
+
+    Parameters
+    ----------
+    validate_temperature_scale:
+        Keep enabled for physical CMB-temperature patches. Disable only for
+        derived auxiliary channels, such as matched-filter or Wiener-response
+        fields, whose values are not thermodynamic temperatures.
+    """
 
     patch = hp.gnomview(
         hp_map,
@@ -265,7 +289,8 @@ def project_patch(hp_map: np.ndarray, glon_deg: float, glat_deg: float) -> np.nd
         return_projected_map=True,
         no_plot=True,
     )
-    validate_patch_temperature_scale(patch, name="projected_patch")
+    if bool(validate_temperature_scale):
+        validate_patch_temperature_scale(patch, name="projected_patch")
     return np.asarray(patch, dtype=FLOAT_STORAGE_DTYPE)
 
 
@@ -293,5 +318,8 @@ def write_observing_model_provenance(path: str | Path, provenance: dict[str, Any
         "HEALPix_synfast": "https://healpix.sourceforge.io/html/fac_synfast.htm",
         "HEALPix_pixel_window": "https://healpix.sourceforge.io/doc/html/sub_pixel_window.htm",
     }
+    payload["provenance_schema_version"] = PROVENANCE_SCHEMA_VERSION
+    payload["injection_convention"] = DEFAULT_INJECTION_CONVENTION
+    payload["injection_convention_note"] = INJECTION_CONVENTION_NOTES[DEFAULT_INJECTION_CONVENTION]
     with Path(path).open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, sort_keys=True)

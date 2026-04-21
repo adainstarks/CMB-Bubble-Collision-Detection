@@ -2,16 +2,16 @@
 Inject Feeney Eq. 1 signals into real Planck cleaned-map patches and compare
 deployment-policy sensitivity against the CAMB-background sensitivity grid.
 
-This is the real-background validation gate before full Phase 5 sky screening.
+This is the real-background validation gate before full sky screening.
 It does not train. It:
 
     1. Samples clean, mask-buffered real-map patch centers independent of prior
        train/validation/sensitivity coordinate pools.
     2. Extracts real cleaned-map background patches.
     3. Injects hard-boundary Feeney Eq. 1 signals over the sensitivity grid.
-    4. Scores the frozen Phase 3 policy:
-           v5_consensus AND (score_avg OR circular_template_screen)
-    5. Compares P_det(A, theta_c) to the existing CAMB sensitivity curve.
+    4. Scores the configured remediated ML branches plus
+       circular_template_screen.
+    5. Compares P_det(A, theta_c) to the matching CAMB sensitivity curve.
 
 Default map is Planck 2018 SMICA. Other cleaned maps can be selected if already
 supported by phase2_extract_smica_null_controls.py.
@@ -42,7 +42,15 @@ from scipy.stats import binomtest
 import phase3_train_unet as p3
 from phase2_extract_smica_null_controls import PLANCK_CLEANED_MAPS, ensure_map_input
 from phase2_generate_stratified_validation import filter_excluded_coordinates, load_exclusion_vectors
-from phase_config import CANONICAL_MASK_THRESHOLD, DEFAULTS
+from phase_config import (
+    CANONICAL_MASK_THRESHOLD,
+    DEFAULTS,
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_MCEWEN2012,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 from phase2_generate_training import (
     GEOMETRY_MODE_CODES,
     GEOMETRY_MODES,
@@ -57,7 +65,7 @@ from phase2_generate_training import (
     sample_signal_geometry,
 )
 from phase2_observing_model import remove_real_map_low_modes
-from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, T_CMB_K, bubble_collision_signal
+from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, bubble_collision_signal, fractional_signal_delta
 from phase3_ensemble_evaluate import DEFAULT_MODELS, load_model, parse_model_spec
 from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, method_metadata
 from phase3_sensitivity_curve import (
@@ -69,11 +77,17 @@ from phase_dataset_utils import patch_center_pixel, stable_group_id
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "real_sky_injection_v1"
-DEFAULT_SENS_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_report.json"
-DEFAULT_SENS_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_scores.npz"
-DEFAULT_SENS_H5 = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5"
-DEFAULT_ENSEMBLE_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "ensemble_eval_v1" / "ensemble_eval.json"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_real_sky_injection_smica_mask090"
+DEFAULT_SENS_REPORT = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_report.json"
+)
+DEFAULT_SENS_SCORES = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_scores.npz"
+)
+DEFAULT_SENS_H5 = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_data.h5"
+)
+DEFAULT_ENSEMBLE_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_ensemble_eval" / "ensemble_eval.json"
 DEFAULT_AMPLITUDE_GRID = (1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4)
 DEFAULT_THETA_GRID_DEG = (5.0, 10.0, 15.0, 20.0, 25.0)
 DEFAULT_ZCRIT_RATIO_GRID = (0.0, 0.5, 1.0, 2.0)
@@ -85,7 +99,7 @@ POLICIES = (
     "all_candidates",
     "union_or",
 )
-ML_METHODS = ("original_v4", "boundary_v4", "v5_consensus", "v6_aux_only", "v6_hard_w15")
+ML_METHODS = ("random_b64_aux", "imagenet_b64_aux")
 
 
 def parse_float_list(text):
@@ -126,6 +140,16 @@ def parse_args():
     parser.add_argument("--contained-margin-deg", type=float, default=0.5)
     parser.add_argument("--edge-sigma-deg", type=float, default=0.0)
     parser.add_argument(
+        "--injection-convention",
+        type=str,
+        default=DEFAULT_INJECTION_CONVENTION,
+        choices=INJECTION_CONVENTIONS,
+        help=(
+            "Signal convention for generated positives. Use the McEwen additive "
+            "branch only when building explicit additive benchmark products."
+        ),
+    )
+    parser.add_argument(
         "--signal-beam-fwhm-arcmin",
         type=float,
         default=0.0,
@@ -140,7 +164,12 @@ def parse_args():
     parser.add_argument("--sensitivity-scores", type=str, default=str(DEFAULT_SENS_SCORES))
     parser.add_argument("--sensitivity-h5", type=str, default=str(DEFAULT_SENS_H5))
     parser.add_argument("--ensemble-report", type=str, default=str(DEFAULT_ENSEMBLE_REPORT))
-    parser.add_argument("--model", action="append", default=[], help="Optional model specs; defaults to Phase 3 five-branch set.")
+    parser.add_argument(
+        "--model",
+        action="append",
+        default=[],
+        help="Optional model specs; defaults to the remediated random/ImageNet branches.",
+    )
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument(
@@ -220,9 +249,10 @@ def validate_args(args):
 
 def default_exclusion_h5s():
     paths = [
-        PROJECT_ROOT / "data" / "training_v4" / "training_data.h5",
-        PROJECT_ROOT / "data" / "validation_stratified_v1" / "validation_data.h5",
-        PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "training_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "calibration_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "test_data.h5",
+        PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_data.h5",
     ]
     return [str(path) for path in paths if path.exists()]
 
@@ -474,7 +504,14 @@ def generate_dataset(args, h5_path):
                             np.radians(float(theta_deg)),
                             edge_sigma_deg=args.edge_sigma_deg,
                         )
-                        signal_delta = np.asarray(signal * (T_CMB_K + base_patches[bg_idx]), dtype=np.float32)
+                        signal_delta = np.asarray(
+                            fractional_signal_delta(
+                                base_patches[bg_idx],
+                                signal,
+                                injection_convention=args.injection_convention,
+                            ),
+                            dtype=np.float32,
+                        )
                         if signal_beam_sigma_pix > 0.0:
                             signal_delta = gaussian_filter(signal_delta, sigma=signal_beam_sigma_pix, mode="reflect")
                         injected_batch[bg_idx] = (base_patches[bg_idx] + signal_delta).astype(np.float32)
@@ -558,6 +595,11 @@ def generate_dataset(args, h5_path):
             "theta_grid_deg": json.dumps(tuple(float(x) for x in args.theta_grid_deg)),
             "zcrit_ratio_grid": json.dumps(tuple(float(x) for x in args.zcrit_ratio_grid)),
             "amplitude_definition": "|z0| = A; |zcrit|/|z0| is scanned over zcrit_ratio_grid with balanced sign quadrants",
+            "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+            "injection_convention": args.injection_convention,
+            "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
+            "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
+            "matched_filter_approximation_note": INJECTION_CONVENTION_NOTES[INJECTION_CONVENTION_MCEWEN2012],
             "geometry_mode": args.geometry_mode,
             "truncated_positive_fraction_requested": float(args.truncated_positive_fraction),
             "truncated_visible_fraction_min": float(args.truncated_visible_fraction_min),

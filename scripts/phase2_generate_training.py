@@ -14,7 +14,7 @@ Assumptions
 
 The generator builds synthetic Planck-era patch observables from three pieces:
     1. CAMB CMB realizations at the working resolution
-    2. Feeney et al. (2011) collision templates with multiplicative injection
+    2. Feeney et al. (2011) collision templates with full-temperature modulation
     3. A remediated observing model with source-backed beam/pixel-window policy
 
 This version makes three policy choices explicit:
@@ -42,11 +42,19 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 from phase1_explore import DATA_DIR, MASK_FILE, MASK_URL, download_file
-from phase_config import DEFAULTS, CANONICAL_MASK_THRESHOLD
+from phase_config import (
+    DEFAULTS,
+    CANONICAL_MASK_THRESHOLD,
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_MCEWEN2012,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 from phase2_observing_model import synthesize_cmb_maps, write_observing_model_provenance
 from phase2_physics_checks import (
     check_eq1_special_cases,
-    check_multiplicative_injection,
+    check_injection_conventions,
     check_patch_geometry,
     check_smooth_window_bounds,
 )
@@ -156,6 +164,17 @@ def parse_args():
         type=float,
         default=0.0,
         help="Optional Gaussian correlation scale for the noise field. Set 0 for white noise.",
+    )
+    parser.add_argument(
+        "--injection-convention",
+        type=str,
+        default=DEFAULT_INJECTION_CONVENTION,
+        choices=INJECTION_CONVENTIONS,
+        help=(
+            "Signal injection convention. Use the Feeney full-temperature "
+            "modulation for remediated products and McEwen first-order additive "
+            "products for same-grid classical benchmark generation."
+        ),
     )
     parser.add_argument(
         "--skip-post-audit",
@@ -999,7 +1018,7 @@ def main():
         print("\n=== Running pre-generation physics checks ===")
         check_eq1_special_cases()
         check_smooth_window_bounds()
-        check_multiplicative_injection()
+        check_injection_conventions()
         check_patch_geometry()
         print("  Physics checks: pass")
 
@@ -1207,6 +1226,7 @@ def main():
                     edge_sigma_deg=edge_sigma_i,
                     center_x_pix=center_x_i,
                     center_y_pix=center_y_i,
+                    injection_convention=args.injection_convention,
                 )
                 mask_i = geometry_i["mask"]
                 touches_edge = int(geometry_i["target_touches_edge"])
@@ -1332,6 +1352,11 @@ def main():
         "theta_distribution_note": "Eq. 2-motivated training design choice; not the downstream inference prior.",
         "z0_sign_sampling": "balanced",
         "zcrit_sign_sampling": "balanced",
+        "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+        "injection_convention": args.injection_convention,
+        "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
+        "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
+        "matched_filter_approximation_note": INJECTION_CONVENTION_NOTES[INJECTION_CONVENTION_MCEWEN2012],
         "split_method": "healpix_coordinate_cluster_and_realization_disjoint_train_calibration_test",
         "beam_fwhm_arcmin": float(args.beam_fwhm_arcmin),
         "beam_domain": "harmonic_sphere" if not args.legacy_patch_beam else "legacy_patch_space",

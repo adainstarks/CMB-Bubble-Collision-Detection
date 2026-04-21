@@ -20,20 +20,33 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-from scipy.signal import fftconvolve
 
 import phase3_train_unet as p3
 from phase_config import DEFAULTS
+from phase3_circular_template_features import (
+    circular_template_kernels,
+    circular_template_response_maps_scipy,
+)
 from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, method_metadata
-from phase3_sensitivity_curve import SIGN_QUADRANTS, make_feeney_template_kernel, standardize_patch
+from phase3_sensitivity_curve import SIGN_QUADRANTS
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASETS = (
-    PROJECT_ROOT / "data" / "training_v4" / "training_data.h5",
-    PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5",
-    PROJECT_ROOT / "runs" / "phase3_unet" / "real_sky_injection_v1" / "smica_real_sky_injection.h5",
-    PROJECT_ROOT / "data" / "training_v4" / "smica_null_controls_all.h5",
+    PROJECT_ROOT / "data" / "remediated_v1" / "training_data.h5",
+    PROJECT_ROOT / "data" / "remediated_v1" / "calibration_data.h5",
+    PROJECT_ROOT / "data" / "remediated_v1" / "test_data.h5",
+    PROJECT_ROOT
+    / "runs"
+    / "phase3_unet"
+    / "remediated_v1_sensitivity_curve"
+    / "sensitivity_data.h5",
+    PROJECT_ROOT
+    / "runs"
+    / "phase3_unet"
+    / "remediated_v1_real_sky_injection_smica_mask090"
+    / "smica_real_sky_injection.h5",
+    PROJECT_ROOT / "data" / "remediated_v1" / "null_controls_smica_mask090.h5",
 )
 DEFAULT_RADII = (5.0, 8.0, 12.0, 16.0, 20.0, 25.0)
 
@@ -47,7 +60,12 @@ def parse_args() -> argparse.Namespace:
         description="Cache circular-template response maps into HDF5 feature datasets.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--h5", action="append", default=[], help="HDF5 file to update. Can be repeated.")
+    parser.add_argument(
+        "--h5",
+        action="append",
+        default=[],
+        help="HDF5 file to update. Can be repeated.",
+    )
     parser.add_argument("--dataset", type=str, default="features/circular_template_response")
     parser.add_argument("--radii-deg", type=str, default=",".join(f"{x:g}" for x in DEFAULT_RADII))
     parser.add_argument("--beam-fwhm-arcmin", type=float, default=DEFAULTS.beam_fwhm_arcmin)
@@ -78,24 +96,13 @@ def validate_args(args: argparse.Namespace) -> None:
         raise FileNotFoundError(f"Missing HDF5 input(s): {missing}")
 
 
-def make_kernels(radii_deg: tuple[float, ...], beam_fwhm_arcmin: float) -> list[np.ndarray]:
-    return [
-        make_feeney_template_kernel(radius, z0_sign, zcrit_sign, beam_fwhm_arcmin=beam_fwhm_arcmin)
-        for radius in radii_deg
-        for z0_sign, zcrit_sign in SIGN_QUADRANTS
-    ]
+def make_kernels(radii_deg: tuple[float, ...], beam_fwhm_arcmin: float) -> np.ndarray:
+    return circular_template_kernels(radii_deg, beam_fwhm_arcmin)
 
 
-def response_map_for_patch(patch: np.ndarray, kernels: list[np.ndarray]) -> np.ndarray:
-    patch = standardize_patch(np.asarray(patch, dtype=np.float32))
-    best = None
-    for kernel in kernels:
-        response = fftconvolve(patch, kernel[::-1, ::-1], mode="same").astype(np.float32, copy=False)
-        if best is None:
-            best = response
-        else:
-            np.maximum(best, response, out=best)
-    return best.astype(np.float32, copy=False)
+def response_map_for_patch(patch: np.ndarray, kernels: np.ndarray) -> np.ndarray:
+    patch_batch = np.asarray(patch, dtype=np.float32)[None, :, :]
+    return circular_template_response_maps_scipy(patch_batch, kernels)[0]
 
 
 def compression_kwargs(name: str) -> dict:
@@ -112,7 +119,7 @@ def ensure_parent_group(h5: h5py.File, dataset_path: str) -> None:
         h5.require_group(parent)
 
 
-def cache_one(path: Path, args: argparse.Namespace, kernels: list[np.ndarray]) -> dict:
+def cache_one(path: Path, args: argparse.Namespace, kernels: np.ndarray) -> dict:
     dataset_path = args.dataset.strip("/")
     with h5py.File(path, "r+") as h5:
         patches = h5["patches"]
@@ -120,7 +127,10 @@ def cache_one(path: Path, args: argparse.Namespace, kernels: list[np.ndarray]) -
         if dataset_path in h5 and not args.overwrite:
             existing = h5[dataset_path]
             if existing.shape != patches.shape:
-                raise RuntimeError(f"{path}:{dataset_path} exists with wrong shape {existing.shape}; expected {patches.shape}.")
+                raise RuntimeError(
+                    f"{path}:{dataset_path} exists with wrong shape "
+                    f"{existing.shape}; expected {patches.shape}."
+                )
             print(f"Reusing existing feature channel: {path}:{dataset_path}")
             return {
                 "h5": str(path),
@@ -151,8 +161,13 @@ def cache_one(path: Path, args: argparse.Namespace, kernels: list[np.ndarray]) -
             **compression_kwargs(args.compression),
         )
         out.attrs["created_utc"] = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-        out.attrs["description"] = "Per-pixel max Feeney circular-template response over radius and sign bank."
-        out.attrs["method_metadata"] = json.dumps(method_metadata(CIRCULAR_TEMPLATE_SCREEN), sort_keys=True)
+        out.attrs["description"] = (
+            "Per-pixel max Feeney circular-template response over radius and sign bank."
+        )
+        out.attrs["method_metadata"] = json.dumps(
+            method_metadata(CIRCULAR_TEMPLATE_SCREEN),
+            sort_keys=True,
+        )
         out.attrs["radii_deg"] = json.dumps([float(x) for x in args.radii_deg])
         out.attrs["beam_fwhm_arcmin"] = float(args.beam_fwhm_arcmin)
         out.attrs["sign_quadrants"] = json.dumps([[float(a), float(b)] for a, b in SIGN_QUADRANTS])
@@ -196,7 +211,17 @@ def main() -> None:
     rows = []
     for path in args.h5_paths:
         rows.append(cache_one(path, args, kernels))
-    print(json.dumps({"dataset": args.dataset, "radii_deg": args.radii_deg, "beam_fwhm_arcmin": args.beam_fwhm_arcmin, "outputs": rows}, indent=2))
+    print(
+        json.dumps(
+            {
+                "dataset": args.dataset,
+                "radii_deg": args.radii_deg,
+                "beam_fwhm_arcmin": args.beam_fwhm_arcmin,
+                "outputs": rows,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

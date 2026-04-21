@@ -1,4 +1,9 @@
-# Nside=512 Probe Decision
+# Historical Nside=512 Probe Decision
+
+This note is retained for provenance only. It predates the remediated-v1
+transfer-function, observing-model, normalization, and calibration cleanup.
+Do not treat it as a final statement that `Nside=512` is physically
+uninformative.
 
 The focused Nside=512 probe does not justify a full 512 retrain.
 

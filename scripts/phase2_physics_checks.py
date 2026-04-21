@@ -7,7 +7,8 @@ interpreting:
     - Feeney Eq. 1 evaluates to z0 at the disc center
     - Feeney Eq. 1 evaluates to zcrit at the causal boundary
     - hard-window templates vanish outside the causal disc
-    - multiplicative injection is implemented exactly
+    - Feeney full-temperature modulation is implemented exactly
+    - McEwen first-order additive approximation differences are quantified
     - patch angular geometry is internally consistent
 """
 
@@ -19,10 +20,21 @@ from pathlib import Path
 
 import numpy as np
 
-from phase2_signal_model import RESO_ARCMIN, T_CMB_K, bubble_collision_signal, inject_signal_into_patch
+from phase_config import (
+    INJECTION_CONVENTION_FEENEY2011,
+    INJECTION_CONVENTION_MCEWEN2012,
+)
+from phase2_signal_model import (
+    RESO_ARCMIN,
+    T_CMB_K,
+    add_fractional_signal_to_patch,
+    bubble_collision_signal,
+    inject_signal_into_patch,
+)
 from phase_dataset_utils import (
     DEFAULT_PATCH_PIX,
     make_angular_distance_grid,
+    patch_center_pixel,
     patch_offsets_deg_to_pixel,
     pixel_to_patch_offsets_deg,
 )
@@ -82,7 +94,7 @@ def check_smooth_window_bounds():
     }
 
 
-def check_multiplicative_injection():
+def check_injection_conventions():
     y, x = np.mgrid[0:DEFAULT_PATCH_PIX, 0:DEFAULT_PATCH_PIX]
     patch = ((x - x.mean()) * 1.0e-7 + (y - y.mean()) * 0.5e-7).astype(np.float32)
     injected, signal = inject_signal_into_patch(
@@ -96,20 +108,120 @@ def check_multiplicative_injection():
     )
 
     patch64 = patch.astype(np.float64)
-    expected = (1.0 + signal) * (T_CMB_K + patch64) - T_CMB_K
-    assert_close("multiplicative injection", injected, expected, atol=1e-12, rtol=1e-10)
+    expected = patch64 + signal * (T_CMB_K + patch64)
+    assert_close("Feeney full-temperature modulation", injected, expected, atol=1e-12, rtol=1e-10)
 
-    additive_shortcut = patch64 + signal * T_CMB_K
-    delta = injected - additive_shortcut
+    additive = add_fractional_signal_to_patch(
+        patch64,
+        signal,
+        injection_convention=INJECTION_CONVENTION_MCEWEN2012,
+    )
+    delta = injected - additive
     expected_delta = signal * patch
-    assert_close("multiplicative additive difference", delta, expected_delta, atol=1e-12, rtol=1e-10)
+    assert_close("Feeney-vs-additive cross term", delta, expected_delta, atol=1e-12, rtol=1e-10)
 
     if float(np.max(np.abs(delta))) <= 0.0:
-        raise AssertionError("multiplicative-vs-additive difference is unexpectedly zero")
+        raise AssertionError("Feeney-vs-additive difference is unexpectedly zero")
+
+    grid_report = check_injection_convention_grid()
 
     return {
+        "default_injection_convention": INJECTION_CONVENTION_FEENEY2011,
+        "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
         "max_abs_signal": float(np.max(np.abs(signal))),
-        "max_abs_multiplicative_minus_additive_k": float(np.max(np.abs(delta))),
+        "max_abs_feeney_minus_additive_k": float(np.max(np.abs(delta))),
+        "grid": grid_report,
+    }
+
+
+def check_multiplicative_injection():
+    """Backward-compatible wrapper for older callers."""
+
+    return check_injection_conventions()
+
+
+def check_injection_convention_grid():
+    """Quantify Feeney-vs-first-order additive differences on production scales."""
+
+    y, x = np.mgrid[0:DEFAULT_PATCH_PIX, 0:DEFAULT_PATCH_PIX]
+    patch = (
+        np.sin(2.0 * np.pi * x / DEFAULT_PATCH_PIX)
+        + 0.75 * np.cos(2.0 * np.pi * y / DEFAULT_PATCH_PIX)
+        + 0.25 * np.sin(2.0 * np.pi * (x + y) / DEFAULT_PATCH_PIX)
+    ).astype(np.float64)
+    patch *= 1.0e-4 / max(float(np.std(patch)), 1.0e-30)
+
+    amplitudes = (1.0e-6, 2.0e-6, 5.0e-6, 1.0e-5, 2.0e-5, 5.0e-5, 1.0e-4)
+    radii_deg = (5.0, 10.0, 15.0, 20.0, 25.0)
+    zcrit_ratios = (0.0, 0.5, 1.0)
+    worst = {
+        "max_abs_cross_term_k": 0.0,
+        "rms_cross_term_k": 0.0,
+        "max_abs_cross_over_primary": 0.0,
+        "rms_cross_over_primary": 0.0,
+        "amplitude": None,
+        "theta_crit_deg": None,
+        "zcrit_ratio": None,
+    }
+
+    for amplitude in amplitudes:
+        for theta_crit_deg in radii_deg:
+            theta_grid = make_angular_distance_grid(
+                DEFAULT_PATCH_PIX,
+                RESO_ARCMIN,
+                center_x_pix=patch_center_pixel(DEFAULT_PATCH_PIX),
+                center_y_pix=patch_center_pixel(DEFAULT_PATCH_PIX),
+            )
+            for zcrit_ratio in zcrit_ratios:
+                signal = bubble_collision_signal(
+                    theta_grid,
+                    amplitude,
+                    amplitude * zcrit_ratio,
+                    np.radians(theta_crit_deg),
+                    edge_sigma_deg=0.0,
+                )
+                exact = add_fractional_signal_to_patch(
+                    patch,
+                    signal,
+                    injection_convention=INJECTION_CONVENTION_FEENEY2011,
+                )
+                additive = add_fractional_signal_to_patch(
+                    patch,
+                    signal,
+                    injection_convention=INJECTION_CONVENTION_MCEWEN2012,
+                )
+                cross = exact - additive
+                primary = signal * T_CMB_K
+                support = np.abs(primary) > 0.0
+                if not bool(np.any(support)):
+                    continue
+                max_ratio = float(
+                    np.max(np.abs(cross[support]))
+                    / max(float(np.max(np.abs(primary[support]))), 1.0e-30)
+                )
+                rms_ratio = float(
+                    np.sqrt(np.mean(cross[support] ** 2))
+                    / max(float(np.sqrt(np.mean(primary[support] ** 2))), 1.0e-30)
+                )
+                max_cross = float(np.max(np.abs(cross[support])))
+                rms_cross = float(np.sqrt(np.mean(cross[support] ** 2)))
+                if max_ratio > float(worst["max_abs_cross_over_primary"]):
+                    worst = {
+                        "max_abs_cross_term_k": max_cross,
+                        "rms_cross_term_k": rms_cross,
+                        "max_abs_cross_over_primary": max_ratio,
+                        "rms_cross_over_primary": rms_ratio,
+                        "amplitude": float(amplitude),
+                        "theta_crit_deg": float(theta_crit_deg),
+                        "zcrit_ratio": float(zcrit_ratio),
+                    }
+
+    return {
+        "patch_rms_k": float(np.std(patch)),
+        "amplitudes": [float(value) for value in amplitudes],
+        "radii_deg": [float(value) for value in radii_deg],
+        "zcrit_ratios": [float(value) for value in zcrit_ratios],
+        "worst_case": worst,
     }
 
 
@@ -143,7 +255,7 @@ def main():
     report = {
         "eq1_special_cases": check_eq1_special_cases(),
         "smooth_window": check_smooth_window_bounds(),
-        "multiplicative_injection": check_multiplicative_injection(),
+        "injection_conventions": check_injection_conventions(),
         "patch_geometry": check_patch_geometry(),
         "status": "pass",
     }

@@ -39,8 +39,8 @@ from phase2_signal_model import PATCH_PIX, RESO_ARCMIN
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_H5 = PROJECT_ROOT / "data" / "validation_stratified_v1" / "validation_data.h5"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "stratified_external_classical_v1"
+DEFAULT_DATA_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "test_data.h5"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_classical_baselines" / "test"
 
 
 def parse_float_list(text):

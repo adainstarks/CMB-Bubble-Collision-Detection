@@ -1,10 +1,13 @@
 """
-Evaluate a loose-ML proposal plus circular-template verifier policy.
+Historical loose-ML proposal plus circular-template verifier policy.
 
 Pass 1 keeps real-SMICA positive injections and SMICA nulls whose
 `v6_aux_only` score exceeds a loose proposal threshold. Pass 2 applies a
 circular-template threshold calibrated on marginal null activation over all
 null rows, then also reports the conditional rate among ML-kept nulls.
+
+The default paths are pre-remediation products. The current deployment baseline
+is the remediated-v1 / Batch 6 calibration path documented in PROJECT_HANDOFF.md.
 """
 
 from __future__ import annotations
@@ -23,8 +26,14 @@ from scipy.ndimage import gaussian_filter
 from scipy.stats import binomtest
 
 import phase3_train_unet as p3
+from phase_config import (
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 from phase2_generate_training import fwhm_arcmin_to_sigma_pixels
-from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, T_CMB_K, bubble_collision_signal
+from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, bubble_collision_signal, fractional_signal_delta
 from phase3_sensitivity_curve import (
     SIGN_QUADRANTS,
     make_feeney_template_kernel,
@@ -94,6 +103,13 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Optional legacy patch-space smoothing for reconstructed injected signals. Keep 0 for remediated products.",
     )
+    parser.add_argument(
+        "--injection-convention",
+        type=str,
+        default=DEFAULT_INJECTION_CONVENTION,
+        choices=INJECTION_CONVENTIONS,
+        help="Signal convention for reconstructed positives.",
+    )
     parser.add_argument("--workers", type=int, default=min(16, os.cpu_count() or 1))
     parser.add_argument("--chunk-size", type=int, default=128)
     parser.add_argument("--reuse-scores", action="store_true")
@@ -156,6 +172,7 @@ def reconstruct_patch(
     zcrit: float,
     edge_sigma_deg: float,
     beam_sigma_pix: float,
+    injection_convention: str,
 ) -> np.ndarray:
     theta_dist = make_angular_distance_grid(
         PATCH_PIX,
@@ -170,7 +187,14 @@ def reconstruct_patch(
         np.radians(float(theta_crit_deg)),
         edge_sigma_deg=float(edge_sigma_deg),
     )
-    signal_delta = np.asarray(signal * (T_CMB_K + base), dtype=np.float32)
+    signal_delta = np.asarray(
+        fractional_signal_delta(
+            base,
+            signal,
+            injection_convention=injection_convention,
+        ),
+        dtype=np.float32,
+    )
     if beam_sigma_pix > 0.0:
         signal_delta = gaussian_filter(signal_delta, sigma=beam_sigma_pix, mode="reflect")
     return (base + signal_delta).astype(np.float32)
@@ -228,6 +252,7 @@ def score_circular_template_positives(args: argparse.Namespace, positives: dict,
                         zcrit=float(zcrit[source_row]),
                         edge_sigma_deg=float(edge_sigma[local_pos_idx]),
                         beam_sigma_pix=beam_sigma_pix,
+                        injection_convention=args.injection_convention,
                     )
                 )
             patches = np.asarray(patches, dtype=np.float32)
@@ -539,6 +564,9 @@ def main() -> None:
                 "ml_threshold": float(args.ml_threshold),
                 "classical_beam_fwhm_arcmin": float(args.classical_beam_fwhm_arcmin),
                 "signal_beam_fwhm_arcmin": float(args.signal_beam_fwhm_arcmin),
+                "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+                "injection_convention": args.injection_convention,
+                "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
                 "injection_reconstruction_policy": (
                     "no_patch_space_injection_smoothing"
                     if args.signal_beam_fwhm_arcmin == 0.0

@@ -44,7 +44,7 @@ from phase3_real_sky_v7_gate import DEFAULT_V7_SPEC, DEFAULT_V6_SPEC
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-NULL_H5 = PROJECT_ROOT / "data" / "training_v4" / "smica_null_controls_all.h5"
+NULL_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "null_controls_smica_mask090.h5"
 
 DEFAULT_SMOOTH_SIGMAS_PIX = (4.0, 8.0, 16.0)
 THETA_GRID_DEG = (5.0, 10.0, 15.0, 20.0, 25.0)

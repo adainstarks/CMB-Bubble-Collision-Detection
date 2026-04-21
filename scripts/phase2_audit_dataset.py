@@ -15,11 +15,19 @@ look valid while being scientifically compromised:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 from pathlib import Path
 
 import h5py
 import numpy as np
+
+from phase_config import (
+    INJECTION_METADATA_REQUIRED_AFTER_UTC,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_FEENEY2011,
+    PROVENANCE_SCHEMA_VERSION,
+)
 
 
 TRUTH_FIELD_NAMES = {
@@ -438,6 +446,80 @@ def audit_coordinate_pool(h5, audit):
         )
 
 
+def parse_utc_datetime(value):
+    """Parse repository UTC timestamp strings."""
+
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def injection_metadata_required(summary):
+    """Return True when missing injection metadata must fail closed."""
+
+    if summary.get("provenance_schema_version") == PROVENANCE_SCHEMA_VERSION:
+        return True
+    created = parse_utc_datetime(summary.get("created_utc"))
+    cutoff = parse_utc_datetime(INJECTION_METADATA_REQUIRED_AFTER_UTC)
+    return created is not None and cutoff is not None and created >= cutoff
+
+
+def audit_injection_convention(h5, audit):
+    """Validate source-generation convention metadata when signals are present."""
+
+    if "labels" not in h5 or "summary" not in h5:
+        return
+    labels = np.asarray(h5["labels"][:], dtype=np.uint8)
+    if not bool(np.any(labels == 1)):
+        return
+    summary = get_summary_attrs(h5)
+    convention = summary.get("injection_convention")
+    audit.add_metric("injection_convention", convention)
+    audit.add_metric("provenance_schema_version", summary.get("provenance_schema_version"))
+    require_metadata = injection_metadata_required(summary)
+    if convention is None:
+        message = (
+            "Missing summary/injection_convention. Existing artifacts may be "
+            "pre-provenance remediated products; regenerated products must set it."
+        )
+        if require_metadata:
+            audit.require(False, message)
+        else:
+            audit.warn(message)
+        return
+    audit.require(
+        convention in INJECTION_CONVENTIONS,
+        f"Unknown injection convention {convention!r}; expected one of {sorted(INJECTION_CONVENTIONS)}",
+    )
+    audit.require(
+        "injection_convention_note" in summary,
+        "Injection metadata needs injection_convention_note.",
+    )
+    if require_metadata:
+        audit.require(
+            summary.get("provenance_schema_version") == PROVENANCE_SCHEMA_VERSION,
+            f"Regenerated artifact needs provenance_schema_version={PROVENANCE_SCHEMA_VERSION!r}.",
+        )
+    if convention == INJECTION_CONVENTION_FEENEY2011:
+        audit.require(
+            "injection_convention_note" in summary,
+            "Feeney full-temperature modulation metadata needs injection_convention_note.",
+        )
+
+
 def run_audit(data_h5, allow_legacy=False, sample_patch_count=256):
     audit = Audit(allow_legacy=allow_legacy)
     data_h5 = Path(data_h5).resolve()
@@ -455,6 +537,7 @@ def run_audit(data_h5, allow_legacy=False, sample_patch_count=256):
         audit_truth_and_masks(h5, audit)
         audit_patch_values(h5, audit, sample_patch_count)
         audit_coordinate_pool(h5, audit)
+        audit_injection_convention(h5, audit)
         audit.add_metric("summary", get_summary_attrs(h5))
 
     return audit.report()

@@ -33,6 +33,27 @@ LEGACY_CLEAN_MASK_THRESHOLD = 0.95
 FLOAT_GEOMETRY_DTYPE = np.float64
 FLOAT_STORAGE_DTYPE = np.float32
 
+INJECTION_CONVENTION_FEENEY2011 = "feeney2011_full_temperature_modulation"
+INJECTION_CONVENTION_MCEWEN2012 = "mcewen2012_first_order_additive"
+INJECTION_CONVENTIONS = (
+    INJECTION_CONVENTION_FEENEY2011,
+    INJECTION_CONVENTION_MCEWEN2012,
+)
+DEFAULT_INJECTION_CONVENTION = INJECTION_CONVENTION_FEENEY2011
+PROVENANCE_SCHEMA_VERSION = "injection_convention_v1"
+INJECTION_METADATA_REQUIRED_AFTER_UTC = "2026-04-20T00:00:00Z"
+INJECTION_CONVENTION_NOTES = {
+    INJECTION_CONVENTION_FEENEY2011: (
+        "Apply the Feeney et al. (2011, PRD 84, 043507) full-temperature "
+        "modulation: deltaT = (1 + f(n)) * (T_CMB + deltaT_cmb) - T_CMB."
+    ),
+    INJECTION_CONVENTION_MCEWEN2012: (
+        "Apply the McEwen et al. (2012, PRD 85, 103502) first-order additive "
+        "template used for harmonic-space matched-filter construction: "
+        "deltaT = deltaT_cmb + f(n) * T_CMB."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class RemediationDefaults:

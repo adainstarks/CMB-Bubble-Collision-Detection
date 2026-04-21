@@ -26,9 +26,11 @@ from phase3_sensitivity_curve import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_NULL_H5 = PROJECT_ROOT / "data" / "training_v4" / "smica_null_controls_all.h5"
-DEFAULT_SENSITIVITY_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_report.json"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "null_burden_matched_fpr_v1"
+DEFAULT_NULL_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "null_controls_smica_mask090.h5"
+DEFAULT_SENSITIVITY_REPORT = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_report.json"
+)
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_null_burden_matched_fpr"
 
 
 def parse_args():

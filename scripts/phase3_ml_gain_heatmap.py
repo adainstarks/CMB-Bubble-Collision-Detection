@@ -25,10 +25,16 @@ from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, method_metadata
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_report.json"
-DEFAULT_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_scores.npz"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "ml_gain_heatmap_v1"
-ML_METHODS = ("original_v4", "boundary_v4", "v5_consensus", "v6_aux_only", "v6_hard_w15")
+DEFAULT_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_report.json"
+DEFAULT_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_scores.npz"
+DEFAULT_OUTPUT_DIR = (
+    PROJECT_ROOT
+    / "runs"
+    / "phase3_unet"
+    / "remediated_v1_sensitivity_curve"
+    / "ml_gain_heatmap_imagenet_preselected"
+)
+ML_METHODS = ("random_b64_aux", "imagenet_b64_aux")
 ANALYSIS_MODES = ("preselected", "best_per_cell")
 
 
@@ -56,7 +62,7 @@ def parse_args():
     parser.add_argument(
         "--primary-method",
         type=str,
-        default="v6_aux_only",
+        default="imagenet_b64_aux",
         help="Pre-specified ML method used when --analysis-mode=preselected.",
     )
     return parser.parse_args()

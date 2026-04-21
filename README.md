@@ -1,335 +1,685 @@
-# CMB Bubble Collision Detection
+# CMB Bubble Collision Screening
 
-Planck-era machine-learning candidate screening for localized bubble-collision signatures in the Cosmic Microwave Background.
+Planck-era machine-learning and classical candidate screening for localized
+bubble-collision signatures in the Cosmic Microwave Background.
 
-This repository is not claiming a cosmological detection. It implements and audits a reproducible screening front end: generate physically motivated candidates, rank them, emit structured outputs, and hand promising regions to classical or Bayesian follow-up. That framing is deliberate. Feeney et al.'s WMAP pipeline did candidate localization, edge checks, Bayesian parameter estimation, model comparison against LambdaCDM, and interpretation in terms of the expected detectable collision count. This project currently covers the candidate-screening and handoff layer.
+## Assumptions
 
-Working claim:
+- This repository implements a **candidate-screening front end**, not a
+  cosmological detection claim.
+- It does not compute a Feeney-style Bayesian evidence ratio, a posterior over
+  collision parameters, or a constraint on the expected number of detectable
+  collisions.
+- Paper-facing wording guardrails live in
+  `docs/manuscript_framing_candidate_screening.md`.
+- Signal amplitudes are dimensionless fractional temperature modulations
+  (`Delta T / T`); stored patch tensors are CMB anisotropies in Kelvin.
+- Current science artifacts use `Nside=256`, `256 x 256` gnomonic patches,
+  Planck `5 arcmin` beam handling, `synfast(pixwin=True)`, and mixed
+  contained/truncated signal geometry.
+- All operating thresholds are screening thresholds. They are valid only for
+  the calibration distribution named with the result.
 
-> A reproducible Planck-era ML candidate-screening method for localized bubble-collision signatures, intended to accelerate or supplement classical follow-up.
+## Current Directive
 
-## Calibration Caveat
+The active claim is deliberately narrow:
 
-The Phase 3 operating-point numbers below are retained as historical audit context, not as deployment-ready thresholds. The current null-control pool was built with `MASK_THRESHOLD = 0.95`, while full-sky deployment tiling uses mask-adjacent patches down to `MASK_THRESHOLD = 0.5`. Batch 5 measured deployment-tile FPR inflation of `1.96x` on SMICA, `2.01x` on NILC, `3.64x` on SEVEM, and `5.78x` on Commander relative to that clean null pool. All FPR-calibrated thresholds, candidate-volume estimates, real-SMICA recalibration numbers, and router lifts must be recomputed on per-map deployment-representative null pools before being used for science claims.
+> A reproducible Planck-era candidate-screening method for localized
+> bubble-collision signatures, intended to accelerate or supplement
+> classical/Bayesian follow-up.
 
-Historical `matched_template` outputs are circular disc/ring correlation screens, not Wiener-whitened Feeney matched filters. New reports use `circular_template_screen` for that comparator and reserve `wiener_feeney_matched_filter` for the harmonic-space Feeney template with beam and CMB/noise inverse-covariance weighting. Any ML-vs-matched-filter claim still requires regeneration and re-benchmarking on remediated artifacts.
+Framing rule for any manuscript or talk built from this repo: describe outputs
+as candidate screening, sensitivity calibration, candidate-volume accounting,
+or screening-derived handoff products. Do not describe the current artifacts as
+standalone cosmological detection evidence.
 
-The `8 / 35` sensitivity-cell gain claim was computed after selecting the best learned branch per cell. That post-hoc winner selection does not control family-wise error across model variants, so the count is provisional until recomputed for a pre-specified model or a corrected max-statistic test.
+Use `remediated_v1` as the current artifact family. Treat `training_v4`,
+`validation_stratified_v1`, old `matched_template` reports, and the old
+best-branch `8 / 35` heatmap as historical development artifacts.
 
-## Current State
+## Remediated v1
 
-- Phase 1 defines the observable domain: Planck 2018 cleaned maps, mask-aware sky coordinates, and gnomonic patch geometry.
-- Phase 2 builds the current synthetic generator: Feeney Eq. 1 disc templates, multiplicative injection, CAMB backgrounds, Planck mask geometry, beam/noise realism, provenance-clean splits, and real-map null controls.
-- Phase 3 contains the current screening stack: U-Net branches, boundary-aware variants, circular-template and centered-disc baselines, sensitivity curves, real-SMICA recalibration, threshold-volume analysis, and machine-readable candidate outputs.
-- The best current interpretation is operational, not triumphant: ML improves screening and morphology relative to simple classical screens in several regimes, but recall remains limited for low-amplitude, small-radius, weak-edge cases.
-- A focused Nside=512 probe did not justify a full 512 retrain under the then-current setup. That probe predates the current transfer-function and calibration audit, so it should not be treated as a final physics conclusion about Nside=512.
+Primary products:
 
-## Remediated v1 Status
-
-The remediated artifact family is now written under `data/remediated_v1/` and `runs/phase3_unet/remediated_v1_*`. It uses `Nside=256`, `256 x 256` patches, Planck-mask threshold `0.9` for the science product, Planck `5 arcmin` harmonic beam, `synfast(pixwin=True)`, mixed contained/truncated signal geometry, coordinate-cluster split accounting, and `float64` geometry/harmonic work with `float32` stored tensors after finite/range checks.
-
-Primary generated products:
-
-| product | rows | split/accounting |
+| product | rows | role |
 |---|---:|---|
-| `data/remediated_v1/training_data.h5` | `20000` | `16000/2000/2000` train/calibration/test, balanced labels |
-| `data/remediated_v1/calibration_data.h5` | `2000` | calibration split copy with dataset hash |
-| `data/remediated_v1/test_data.h5` | `2000` | test split copy with dataset hash |
-| `data/remediated_v1/null_controls_{map}_{mask}.h5` | `16000` each | map in `smica,nilc,sevem,commander`; mask in `mask090,mask050`; cluster-split nulls |
+| `data/remediated_v1/training_data.h5` | `20000` | train/calibration/test source, split `16000/2000/2000` |
+| `data/remediated_v1/calibration_data.h5` | `2000` | threshold calibration copy |
+| `data/remediated_v1/test_data.h5` | `2000` | held-out final synthetic test copy |
+| `data/remediated_v1/null_controls_{map}_{mask}.h5` | `16000` each | real-map null controls for `smica,nilc,sevem,commander` and `mask090,mask050` |
 
-The current remediated ML comparison is an EfficientNet-B0 U-Net ablation with random and ImageNet encoder initialization. At calibration-selected thresholds and held-out test evaluation, the best single operating point is:
+The current generator/audit contract is:
 
-| model | score mode | threshold | precision | recall | FPR | F1 |
+- Feeney-style linear-cap disc template with full-temperature modulation
+  (`feeney2011_full_temperature_modulation`). McEwen/OSS matched-filter
+  benchmarks use the first-order additive approximation and must record that
+  convention separately.
+- `mask_threshold = 0.9` for canonical science products.
+- `mask_threshold = 0.5` null controls retained for deployment stress tests.
+- Planck cleaned-map beam modeled as `5 arcmin`.
+- Beam/pixel-window transfer handled in harmonic space for current synthetic
+  products.
+- Geometry and harmonic work use `float64`; stored tensors use `float32` after
+  finite/range checks.
+- Splits are train/calibration/test and coordinate-cluster/CAMB-realization
+  disjoint.
+
+Run the lightweight artifact-flow audit:
+
+```bash
+python scripts/audit_remediated_flow.py
+```
+
+Run the broader quality gate:
+
+```bash
+python scripts/run_quality_gates.py \
+  --data-h5 data/remediated_v1/training_data.h5 \
+  --skip-train-dry-run
+```
+
+Write a compact reproducibility manifest:
+
+```bash
+python scripts/create_reproducibility_manifest.py
+```
+
+## Current Results
+
+Held-out remediated synthetic test, thresholds selected on the calibration
+split:
+
+| method | score mode | threshold | precision | recall | FPR | F1 |
 |---|---|---:|---:|---:|---:|---:|
-| ImageNet encoder | `component_score` | `0.96` | `0.888` | `0.396` | `0.050` | `0.548` |
-| random encoder | `component_score` | `0.99` | `0.819` | `0.362` | `0.080` | `0.502` |
+| ImageNet EfficientNet-B0 U-Net | `component_score` | `0.96` | `0.888` | `0.396` | `0.050` | `0.548` |
+| random-init EfficientNet-B0 U-Net | `component_score` | `0.99` | `0.819` | `0.362` | `0.080` | `0.502` |
 | `circular_template_screen` | fixed from calibration | `65.0217` | `0.921` | `0.267` | `0.023` | `0.414` |
 
-Real-map null controls show that the ImageNet `component_score` threshold is close on the held-out null-test clusters (`0.0556-0.0589` FPR across maps/masks) but unstable on the null-calibration clusters (`0.2427-0.2483` FPR at the same frozen threshold). That cluster split dependence is a live calibration warning, not a detection result.
+The preselected ImageNet-vs-`circular_template_screen` sensitivity heatmap uses
+paired bootstrap tests with Holm and Benjamini-Hochberg correction. It reports:
 
-The remediated real-SMICA injection gate (`runs/phase3_unet/remediated_v1_real_sky_injection_smica_mask090/`) compares SMICA real-map backgrounds against the CAMB sensitivity grid. For the comparison policy `imagenet_b64_aux_only`, real-map recall/FPR is `0.372/0.185` while CAMB recall/FPR is `0.349/0.050`. Because the real-background negative set has only 200 backgrounds and the FPR inflation is material, these numbers are a transfer/calibration diagnostic only.
+- ImageNet wins `30 / 35` amplitude-radius cells.
+- `14` cells are Holm-significant at family-wise alpha `0.05`.
+- `17` cells are BH-significant at FDR `0.05`.
 
-The preselected ImageNet-vs-`circular_template_screen` sensitivity heatmap uses paired tests with Holm/FDR correction. It reports `14` Holm-significant and `17` BH-significant amplitude-radius cells, with the ImageNet model winning `30 / 35` cells. This replaces the older post-hoc `8 / 35` best-branch count for remediated-v1 discussions.
+This replaces the historical post-hoc best-branch `8 / 35` number.
 
-## Signal Model
+## Noise-Floor Diagnostic
 
-Bubble-collision signatures are modeled as localized, azimuthally symmetric CMB temperature modulations confined to a causal disc. Following Feeney, Johnson, Mortlock, and Peiris, the leading-order template is
+The remediated sensitivity grid now has an empirical signal-scale diagnostic:
 
-```math
-\frac{\delta T}{T} =
-\left[
-\frac{z_{\rm crit} - z_0 \cos\theta_{\rm crit}}{1 - \cos\theta_{\rm crit}}
-+
-\frac{z_0 - z_{\rm crit}}{1 - \cos\theta_{\rm crit}}\cos\theta
-\right]\Theta(\theta_{\rm crit}-\theta).
+```bash
+python scripts/phase3_noise_floor_analysis.py
 ```
 
-Key parameters:
+Current output:
 
-- `z0`: central modulation amplitude.
-- `zcrit`: boundary amplitude/discontinuity term.
-- `theta_crit`: angular radius of the affected disc, currently sampled over `5 deg` to `25 deg`.
-- `theta0, phi0`: sky position of the disc center.
+- Median negative-patch RMS is about `99.8 uK`.
+- The configured instrument white-noise term is only about `2.3 uK/pixel`, so
+  CMB structure, foreground/domain transfer, and mask effects dominate.
+- For `A = 1e-6`, support RMS is only about `1.6-2.1 uK`, or `0.016-0.021`
+  of the empirical CMB patch RMS.
+- For `A = 5e-6`, support RMS is about `7.8-10.4 uK`, still below `0.11` of
+  the empirical CMB patch RMS.
 
-The generator uses the multiplicative injection form, not an additive shortcut:
+Interpretation: low-amplitude recall is expected to remain poor for patch-level
+screeners unless the next stage uses stronger priors, full covariance weighting,
+or Bayesian/template-fit likelihoods. This is a diagnostic, not an impossibility
+proof; a real bound needs the full CMB covariance and foreground residual model.
 
-```math
-T_{\rm injected} = (1 + f)(T_{\rm CMB}) .
+## Matched-Filter SNR Curves
+
+The ideal harmonic-space Feeney matched-filter SNR diagnostic is:
+
+```bash
+python scripts/phase3_matched_filter_snr_curve.py
 ```
 
-The `sin(theta_crit)` sampling law in this repository is a training-design choice motivated by the Feeney geometry discussion. It is not a Bayesian inference prior.
+Default output:
 
-## Data And Geometry
+- `runs/phase3_unet/remediated_v1_matched_filter_snr/matched_filter_snr_report.json`
+- `runs/phase3_unet/remediated_v1_matched_filter_snr/matched_filter_snr_report.md`
+- `runs/phase3_unet/remediated_v1_matched_filter_snr/matched_filter_snr_cells.csv`
+- `runs/phase3_unet/remediated_v1_matched_filter_snr/matched_filter_snr_profiles.csv`
+- `runs/phase3_unet/remediated_v1_matched_filter_snr/matched_filter_snr_curves.png`
 
-The observable domain is Planck-era, patch-based, and mask-aware.
+The calculation uses the McEwen/OSS first-order additive template convention,
+CAMB TT covariance, the repo beam/noise assumptions, and a rough `f_sky` scaling.
+It does not close the masked-sky Wiener/SMHW same-grid benchmark by itself.
+Current results show `A <= 2e-6` is low-SNR under the fsky proxy, while several
+`A >= 1e-5` cells have high ideal matched-filter recall but low current ML
+recall. Those higher-SNR cells are algorithmic targets, not physics-impossibility
+claims.
 
-![Planck 2018 SMICA full-sky CMB map](plots/01_smica_fullsky.png)
+## Upper-Limit Calculator
 
-**Figure 1.** Planck 2018 SMICA CMB map. SMICA is the primary real-map target for the current screening and null-control tests.
+The remediated sensitivity grid now has a source-backed post-processing
+calculator for detectable-collision upper limits:
 
-![SMICA with galactic mask](plots/03_smica_masked.png)
+```bash
+python scripts/phase3_upper_limit_calculator.py
+```
 
-**Figure 2.** Planck common mask applied to the cleaned CMB map. The coordinate pool is drawn from clean unmasked regions with mask-fraction checks, not only center-pixel checks.
+Default output:
 
-![Gnomonic patch near Cold Spot](plots/04_gnomonic_cold_spot.png)
+- `runs/phase3_unet/remediated_v1_upper_limits/upper_limits.json`
+- `runs/phase3_unet/remediated_v1_upper_limits/upper_limits.md`
+- `runs/phase3_unet/remediated_v1_upper_limits/upper_limits.csv`
+- `runs/phase3_unet/remediated_v1_upper_limits/upper_limit_cell_weights.csv`
+- `runs/phase3_unet/remediated_v1_upper_limits/upper_limits.png`
 
-**Figure 3.** Example gnomonic patch. The current working product uses `256 x 256` patches at `13 arcmin/pixel`, covering roughly `55 deg` across.
+Under the default `log_uniform` amplitude prior and `sin_theta` radius prior,
+with zero credible detections at 95% confidence:
 
-## Phase 2 Generator
+| method | mean efficiency | exposure | `Nbar_s^95` |
+|---|---:|---:|---:|
+| `centered_disc` | `0.2201` | `0.1699` | `17.6292` |
+| `circular_template_screen` | `0.3189` | `0.2462` | `12.1677` |
+| `imagenet_b64_aux` | `0.3780` | `0.2918` | `10.2674` |
+| `random_b64_aux` | `0.3388` | `0.2615` | `11.4544` |
 
-The current generator is intentionally stricter than an early ML demo:
+This is an efficiency-weighted Poisson upper limit on the detectable-collision
+rate parameter `Nbar_s`. It uses the no-blob form from Feeney et al. Appendix A
+and can optionally convert to `lambda H_F^-4` using Feeney et al. Eq. 1 when
+`Omega_k` and `H_F/H_I` are supplied. It reports `lambda/B` only when an
+explicit model-specific exposure factor is supplied; no universal `lambda/B`
+mapping is hard-coded.
 
-- It uses independent CAMB CMB realizations rather than repeatedly training on one real SMICA sky.
-- It injects Feeney-style disc templates multiplicatively.
-- It balances sign quadrants for `z0` and `zcrit`.
-- It randomizes signal centers within patches to remove center-bias shortcut learning.
-- It enforces provenance-clean train/validation splits by coordinate and CMB realization.
-- It supports beam smoothing, instrumental noise, real-map null controls, and stratified validation products.
-- It stores metadata needed to trace patches back to sky coordinates and generation settings.
+Interpretation guardrail: this is a screening-derived detectable-collision
+upper-limit proxy built from the synthetic efficiency table. It is not a
+masked-sky Bayesian evidence result and should not be framed as a competitive
+cosmological constraint.
 
-![Phase 2 signal profiles](plots/06_phase2_signal_profiles.png)
+## Deployment Calibration
 
-**Figure 4.** Representative Feeney-template profiles. The generator preserves the long-wavelength disc modulation and causal-boundary structure instead of using generic circular blobs.
+Batch 6 reran the full-sky tile audit at `Nside=32`, giving about `11200`
+patches per cleaned map and reducing FPR-calibration uncertainty to about
+`0.003`.
 
-![Phase 2 validation](plots/07_phase2_validation.png)
+Tile-recalibrated mixed recall at FPR `0.08`:
 
-**Figure 5.** Phase 2 distribution checks. These checks exist to prevent the model from learning hidden generator shortcuts such as one sign quadrant, one radius band, or a narrow amplitude slice.
-
-<img src="plots/08_phase2_examples.png" alt="Phase 2 training examples" width="760">
-
-**Figure 6.** Example synthetic training patches. The lower visual salience of many examples is intentional: the data include weak amplitudes, mixed signs, off-center discs, beam/noise effects, and smoothed boundaries, all of which are closer to the Feeney search problem than centered high-SNR toy discs.
-
-## Phase 3 Screening Results
-
-Phase 3 is now evaluated against classical baselines on the same audited splits. The five learned/model-policy variants below were important investigative controls: they tested whether boundary-aware losses, consensus policies, auxiliary heads, and branch averaging produced materially different behavior. The current working path is narrower. Historical runs focused on the two-model pair `v6_aux_only + matched_template`; under the remediated naming contract that means `v6_aux_only + circular_template_screen`, not a Wiener matched filter.
-
-At matched synthetic FPR `0.08` on the independent stratified validation set:
-
-| method | AUROC | AUPRC | recall | weak recall | positive Dice |
-|---|---:|---:|---:|---:|---:|
-| matched template | `0.712` | `0.881` | `0.401` | `0.282` | `0.295` |
-| centered disc | `0.639` | `0.833` | `0.252` | `0.176` | `0.046` |
-| original V4 | `0.775` | `0.914` | `0.541` | `0.425` | `0.344` |
-| boundary V4 | `0.774` | `0.914` | `0.540` | `0.420` | `0.377` |
-| V5 consensus | `0.774` | `0.913` | `0.536` | `0.422` | `0.396` |
-| V6 aux only | `0.773` | `0.913` | `0.539` | `0.422` | `0.401` |
-
-![Phase 3 method comparison](plots/09_phase3_method_comparison.png)
-
-**Figure 7.** Current Phase 3 comparison at matched FPR. The metrics are lower than early high-SNR baselines because the current data intentionally removes shortcuts: off-center injection, provenance-clean splits, weak amplitudes, smoothed causal boundaries, beam/noise effects, and real-map null calibration. That is the right direction scientifically even when it makes headline recall less flattering.
-
-## Sensitivity Versus Matched Template
-
-At matched synthetic FPR `0.05`, the historical best-branch analysis reported ML gains in `8 / 35` amplitude-radius cells. This count is provisional because it selected the best learned branch per cell and used the current circular-template baseline.
-
-Representative significant cells:
-
-| amplitude `A` | `theta_crit` | matched template `P_det` | best ML `P_det` |
-|---:|---:|---:|---:|
-| `1e-5` | `25 deg` | `0.065` | `0.175` |
-| `2e-5` | `20 deg` | `0.235` | `0.555` |
-| `2e-5` | `25 deg` | `0.375` | `0.710` |
-| `5e-5` | `5 deg` | `0.065` | `0.295` |
-| `5e-5` | `10 deg` | `0.490` | `0.980` |
-| `1e-4` | `5 deg` | `0.500` | `0.980` |
-
-![Phase 3 ML gain heatmap](plots/10_phase3_ml_gain_heatmap.png)
-
-**Figure 8.** Historical gain over the circular-template screen. Gray cells are not ML failures; they are cells where the confidence interval overlaps parity. The lower-left region remains hard because low amplitude and small angular radius give limited integrated signal-to-noise, especially after Feeney-faithful smoothing and realistic background structure.
-
-## Real-SMICA Calibration
-
-A real-SMICA injection gate initially looked like a domain-gap failure. These historical recalibration numbers are provisional until rebuilt against deployment-representative per-map null pools:
-
-| method | CAMB threshold | SMICA-null threshold | real recall at CAMB threshold | real recall after SMICA recalibration |
+| map | `v6_only` | `gbt_6` | `gbt_14` | `gbt_6 - v6` |
 |---|---:|---:|---:|---:|
-| `v6_aux_only` | `0.992082` | `0.888469` | `0.262` | `0.353` |
-| `matched_template` | `76.977921` | `61.829514` | `0.238` | `0.323` |
+| SMICA | `0.347` | `0.337` | `0.329` | `-0.010` |
+| NILC | `0.296` | `0.307` | `0.320` | `+0.011` |
+| SEVEM | `0.173` | `0.237` | `0.192` | `+0.065` |
+| Commander | `0.161` | `0.230` | `0.193` | `+0.070` |
+| mean | `0.244` | `0.278` | `0.258` | `+0.034` |
 
-Interpretation: thresholds calibrated on CAMB negatives were too strict on real SMICA. The model transfers better than the first gate suggested, but recall is still a candidate-volume tradeoff rather than a solved detection problem.
+Interpretation:
 
-## Threshold And Candidate Volume
+- `gbt_6` survives as a **cross-map score-ensemble lever**.
+- On SMICA alone, `gbt_6` is marginally worse than `v6_only`.
+- `gbt_14` is archived; its geometry features overfit the clean-null
+  distribution and do not survive deployment calibration.
+- Per-map calibration is mandatory. Do not quote cross-map means as SMICA
+  claims.
 
-The current detector can recover more contested positives by lowering the threshold, but the false-positive volumes in this historical table use now-suspect calibration products and must be recomputed.
+## Deployment Candidate Burden
 
-| threshold | contested recall | solved recall | expected FP over 3000 independent patches |
-|---:|---:|---:|---:|
-| `0.75` | `0.654` | `0.976` | `1631` |
-| `0.80` | `0.442` | `0.954` | `895` |
-| `0.85` | `0.278` | `0.940` | `401` |
-| `0.90` | `0.150` | `0.922` | `106` |
+The current full-sky candidate-volume table is generated from cached Batch 6
+tile features:
 
-![Phase 3 threshold tradeoff](plots/11_phase3_threshold_tradeoff.png)
+```bash
+python scripts/phase3_deployment_burden_table.py
+```
 
-**Figure 9.** Recall versus expected candidate burden. The numbers are lower than a toy segmentation benchmark because the operating point is being treated in the Feeney spirit: thresholds must be fixed against null controls before real-map use, rather than tuned after looking at candidates. High recall is available, but it costs hundreds to thousands of follow-up candidates.
+Default output:
 
-<img src="plots/12_phase3_smoothed_examples.png" alt="Phase 3 smoothed positive examples" width="760">
+- `runs/phase3_unet/remediated_v1_deployment_burden/deployment_burden.json`
+- `runs/phase3_unet/remediated_v1_deployment_burden/deployment_burden.md`
+- `runs/phase3_unet/remediated_v1_deployment_burden/deployment_patch_burden.csv`
+- `runs/phase3_unet/remediated_v1_deployment_burden/deployment_cluster_burden.csv`
 
-**Figure 10.** Diagnostic real-SMICA injection examples. The failures are informative: small-radius or low-amplitude discs often produce diffuse probability maps just below threshold, while larger or stronger discs are recovered cleanly. This is consistent with an integrated-SNR limitation, not simple model blindness.
+Tile-recalibrated patch burden is about `896` eligible tile candidates per map
+at FPR `0.08`, by construction. At `15 deg` greedy peak clustering, mean
+clustered burden across the four cleaned maps is:
 
-## Current Operating Direction
+| method | mean patch candidates | mean recall | mean clusters at `15 deg` |
+|---|---:|---:|---:|
+| `v6_only` | `896.25` | `0.2440` | `55.00` |
+| `gbt_6` | `897.75` | `0.2779` | `69.25` |
+| `gbt_14` | `915.50` | `0.2583` | `68.50` |
 
-Current Phase 3 should be treated as a two-score screening system, not a five-model deployment stack.
+Interpretation: `gbt_6` remains the best cross-map recall policy after
+deployment calibration, but it carries a higher clustered follow-up burden than
+`v6_only`. The shipped clean-null thresholds are retained only as drift
+diagnostics; on SEVEM and Commander they produce thousands of patch candidates
+and must not be used as deployment thresholds.
 
-- Run `v6_aux_only` as the current ML morphology and candidate-score branch for contained positives.
-- Run `v7_mixed_ft` as the complementary ML branch for truncated / edge-crossing positives. See the 2026-04-17 portfolio-decision update below.
-- Run `circular_template_screen` as the simple classical Feeney-template correlation reference, fallback, and independent ranking score; reserve `wiener_feeney_matched_filter` for covariance-weighted harmonic filtering.
-- Calibrate all thresholds on real-map null controls, not CAMB negatives alone.
-- Preserve the ML score, matched-template score, threshold decisions, mask, estimated radius, sky metadata, and template-fit artifacts in each candidate record.
-- Keep the older learned branches as documented ablation evidence and regression checks, not as the preferred operating stack.
+## Policy Pareto Search
 
-The earlier multi-branch policies remain useful as investigative benchmarks. They showed that consensus-style verification can be very clean, but they did not justify the added complexity as the default deployment path:
+The current recall-vs-FP policy search over existing remediated scores is:
 
-| policy | precision | recall | FPR | F1 |
+```bash
+python scripts/phase3_policy_pareto_search.py
+```
+
+Default output:
+
+- `runs/phase3_unet/remediated_v1_policy_pareto/policy_pareto.json`
+- `runs/phase3_unet/remediated_v1_policy_pareto/policy_pareto.md`
+- `runs/phase3_unet/remediated_v1_policy_pareto/policy_pareto_top.csv`
+
+Best diagnostic policies under selected constraints:
+
+| constraints | best policy | CAMB FPR | real FPR | CAMB recall | real recall | gain vs exact single |
+|---|---|---:|---:|---:|---:|---:|
+| CAMB `<=0.05`, real `<=0.02` | `2-of-3(random>=0.987007, imagenet>=0.947194, circular>=68.79)` | `0.0498` | `0.0200` | `0.3288` | `0.2520` | `+0.0289` |
+| CAMB `<=0.05`, real `<=0.05` | `random>=0.994006 OR imagenet>=0.998799` | `0.0398` | `0.0500` | `0.3163` | `0.2671` | `+0.0441` |
+| CAMB `<=0.08`, real `<=0.08` | `2-of-3(random>=0.946233, imagenet>=0.947194, circular>=75.0896)` | `0.0706` | `0.0750` | `0.3596` | `0.3028` | `+0.0490` |
+
+Interpretation: there are composite-score policies that recover more recall
+than exact-threshold single-score choices under the same diagnostic FPR
+budgets. They are not deployment thresholds by themselves.
+
+## Composite-Policy Audits
+
+The Policy-Pareto winners have now been stress-tested two ways:
+
+```bash
+python scripts/phase3_remediated_null_policy_audit.py
+python scripts/phase3_remediated_policy_tile_audit.py
+python scripts/phase3_tile_constrained_policy_search.py
+python scripts/phase3_emit_tile_constrained_candidates.py
+python scripts/phase3_calibrate_candidate_scores.py
+```
+
+Default outputs:
+
+- `runs/phase3_unet/remediated_v1_null_policy_audit/null_policy_audit.json`
+- `runs/phase3_unet/remediated_v1_null_policy_audit/null_policy_audit.md`
+- `runs/phase3_unet/remediated_v1_policy_tile_audit/policy_tile_audit.json`
+- `runs/phase3_unet/remediated_v1_policy_tile_audit/policy_tile_audit.md`
+- `runs/phase3_unet/remediated_v1_deployment_policy_decision/deployment_policy_decision.json`
+- `runs/phase3_unet/remediated_v1_deployment_policy_decision/deployment_policy_decision.md`
+- `runs/phase3_unet/remediated_v1_tile_constrained_policy_search/tile_constrained_policy_search.json`
+- `runs/phase3_unet/remediated_v1_tile_constrained_policy_search/tile_constrained_policy_search.md`
+- `runs/phase3_unet/remediated_v1_tile_constrained_candidates/candidate_emission_summary.json`
+- `runs/phase3_unet/remediated_v1_tile_constrained_candidates/candidate_records.jsonl`
+- `runs/phase3_unet/remediated_v1_tile_constrained_candidates/cluster_representatives_15deg.jsonl`
+- `runs/phase3_unet/remediated_v1_projection_clustering_audit/projection_clustering_audit.md`
+- `runs/phase3_unet/remediated_v1_template_fit_handoff/template_fit_summary.json`
+- `runs/phase3_unet/remediated_v1_candidate_score_calibration/candidate_score_calibration.json`
+- `runs/phase3_unet/remediated_v1_candidate_score_calibration/calibrated_candidates.jsonl`
+
+On `5976` held-out real-map null-control patches, pooled FPRs remain at a few
+percent:
+
+| policy budget | recall diag | null FP | null FPR | 95% CI |
 |---|---:|---:|---:|---:|
-| `v5_only` | `0.969` | `0.501` | `0.041` | `0.660` |
-| `score_avg_only` | `0.975` | `0.495` | `0.032` | `0.656` |
-| `matched_template_only` | `0.948` | `0.348` | `0.049` | `0.509` |
-| `normal_candidate` | `0.980` | `0.474` | `0.025` | `0.639` |
+| CAMB `<=0.05`, real `<=0.02` | `0.2520` | `168 / 5976` | `0.0281` | `[0.0241, 0.0326]` |
+| CAMB `<=0.05`, real `<=0.05` | `0.2671` | `147 / 5976` | `0.0246` | `[0.0208, 0.0288]` |
+| CAMB `<=0.08`, real `<=0.05` | `0.2778` | `78 / 5976` | `0.0131` | `[0.0103, 0.0163]` |
+| CAMB `<=0.08`, real `<=0.08` | `0.3028` | `205 / 5976` | `0.0343` | `[0.0298, 0.0392]` |
 
-On the `5000`-patch SMICA null-control set, `matched_template`, `v5_consensus`, `score_avg`, `normal_candidate`, and `all_candidates` each produced `0 / 5000` null candidates at their frozen thresholds. That result is retained because it verifies the investigation, not because all five branches should be run by default.
+The full-sky overlapping-tile audit is more restrictive. At `15 deg` greedy
+peak clustering, selected cluster burdens are:
 
-## 2026-04-17 Update: Mixed Geometry And The Portfolio Decision
+| map | `0.05/0.02` | `0.05/0.05` | `0.08/0.05` | `0.08/0.08` |
+|---|---:|---:|---:|---:|
+| SMICA | `41` | `41` | `46` | `53` |
+| NILC | `34` | `28` | `33` | `39` |
+| SEVEM | `64` | `68` | `64` | `72` |
+| Commander | `82` | `101` | `71` | `83` |
 
-Recent work identified and corrected a physical-correctness limitation and produced a real-SMICA gate result that shifted the operating path to a two-model portfolio. Full detail in `PROJECT_HANDOFF.md` Section 21 and `work/v7_real_sky_gate.md`.
+Interpretation: the larger null-control split does not reproduce the extreme
+Commander/SEVEM full-sky tile burden. Do not promote the high-recall
+Policy-Pareto winners until candidate-volume criteria are chosen jointly with
+cross-map tile burden. In particular, the `0.05/0.05` pair-OR policy has low
+SMICA/NILC burden but too many Commander clusters.
 
-Summary:
+The default deployment-decision rule uses `15 deg` clustering, at most `70`
+clusters on every cleaned map, at most `0.15` trigger fraction on every map,
+and pooled held-out null-control FPR upper CI at most `0.04`. Under that rule,
+`0 / 5` composite policies are promotable. The highest-recall row
+(`0.08/0.08`) reaches recall `0.3028`, but has `83` Commander clusters and
+Commander trigger fraction `0.1772`, so it remains a recall-boost candidate
+only.
 
-- The Phase 2 positive generator previously produced only fully contained discs. Real full-sky patch tiling will observe clipped and edge-crossing bubbles. The generator and validation harness were extended to produce mixed and truncated geometries with explicit truth fields (`fully_contained`, `target_touches_edge`, `visible_target_fraction`, `signal_center_in_patch`).
-- A mixed-geometry stratified validation set (`validation_stratified_mixed_geometry_v1`) and a mixed-geometry training set (`training_v5_mixed_geometry`, 30% truncated) were built with the same provenance discipline as the contained v1 products.
-- Evaluating `v6_aux_only` on the mixed-geometry validation confirmed a center-framed shortcut: truncated recall collapsed relative to contained recall. The branch `v7_mixed_ft` was produced by fine-tuning `v6_aux_only` on `training_v5_mixed_geometry`. On the synthetic CAMB mixed-geometry benchmark, `v7_mixed_ft` Pareto-dominated `v6_aux_only`.
-- A dedicated real-SMICA validation gate then scored both branches on 500 SMICA backgrounds × 7 amplitudes × 5 θ × 4 sign-quadrants = 17500 positives per geometry, with thresholds calibrated on 5000 real-SMICA null patches at FPR 0.05, 0.08, 0.10.
-- On real SMICA the story reversed for contained geometry. At FPR 0.05 the contained recall was `v7_mixed_ft 0.286` vs `v6_aux_only 0.348`. At FPR 0.08 the gap narrowed to `0.357` vs `0.372`. The synthetic contained-geometry advantage did not survive the CAMB-to-SMICA domain shift.
-- On truncated and edge-crossing positives `v7_mixed_ft` won by the margins it was designed to win by: truncated recall `0.246` vs `0.205`, center-outside-patch `0.207` vs `0.163`, low-visibility `0.196` vs `0.145`.
-- The initial response was a two-model portfolio routed by geometry. Subsequent Batch 3 evaluation (`work/batch3_geometry_router.md`) showed that simple portfolio policies (OR, AND, rank-max, heuristic geometry router) all underperform `v6_only` at our deployment FPR of 0.08 because v6 and v7 false positives are strongly correlated. A 200-tree gradient-boosted classifier on six frozen-mask features (v6 / v7 baseline, v6 / v7 mf_on_mask, v6 / v7 smooth_multi) does beat `v6_only` by +3.1 to +4.5 points recall in every (geometry, FPR target) cell we measured, with cross-geometry training and a disjoint null train/eval split.
-- Batch 4 (`work/batch4_router_features.md`) extended the router feature set with 4 truth-free geometry proxies per model, taking the GBT from 6 to 14 features. Under clean-null calibration the 14-feature router appeared to lift the gate-cell recall by +0.043. Batch 5 (`work/batch5_fullsky_calibration_gap.md`) then ran a full-sky Nside=8 tiling audit of all four Planck cleaned maps and found that the calibration pool used by PR #6-9 systematically excludes mask-adjacent sky (`MASK_THRESHOLD = 0.95`). Under deployment-representative tile calibration the 14-feature router's lift evaporates on SMICA (−0.001), survives weakly on NILC (+0.023), and *reverses* on SEVEM (−0.045) and Commander (−0.036). The geometry features specifically overfit the clean-pool mask-fraction distribution. The 14-feature router is therefore **no longer recommended as the primary deployment policy**. The shipped 6-feature GBT (PR #8) and `v6_aux_only` (baseline) are also pending deployment-representative recalibration — their PR-reported recall numbers are on the same biased pool. See `PROJECT_HANDOFF.md` Sections 22, 26, and 27 for the full sequence.
+The broader tile-constrained search uses the same default burden rule but
+searches beyond the original Policy-Pareto winners. Current best feasible row:
 
-Negative and corrective findings worth citing:
+| policy | real recall | gain vs feasible single | real FPR | pooled null FPR CI high | max clusters | max trigger fraction |
+|---|---:|---:|---:|---:|---:|---:|
+| `2-of-3(random>=0.999983, imagenet>=0.983177, circular>=51.0957)` | `0.2620` | `+0.0403` | `0.0650` | `0.0290` | `62` Commander | `0.0899` SEVEM |
 
-- D4 test-time augmentation on `v7_mixed_ft` delivered a marginal Dice improvement (+0.7 points) with recall flat. The theoretical √8 SNR argument for TTA does not apply to a model already trained with rotation and flip augmentation.
-- A naive multi-model average of `v7_mixed_ft` with contained-only siblings hurt mixed-geometry AUROC and truncated recall, because the siblings re-introduce the center-framed shortcut `v7_mixed_ft` was trained to remove.
-- The `phase3_scale_radius_head_w02` branch failed the external stratified gate. Post-mortem is recorded in `work/radius_head_post_mortem.md`. Attributed cause: cold-started auxiliary head at full weight, no warmup, permissive checkpoint metric.
-- A silent zero-key load in `scripts/phase3_train_unet.load_model_state_dict` under DataParallel was identified and fixed. Any prior fine-tunes that printed a "loaded" message with zero matched keys were silently training from random weights.
+The best feasible single-score baseline in that same constrained search is
+`circular_template_screen >= 73.3128` with recall `0.2216`. The exhaustive
+search evaluated all `9582` policies that passed the cheap FPR, pooled-null,
+and trigger-fraction filters; no cluster-evaluation cap is active in the
+current report. This is the current deployment-safe composite candidate, not a
+cosmological detection statistic.
 
-## What Is Not Solved
+The candidate emitter applies that frozen policy to cached full-sky tile scores
+on the canonical science footprint `mask_fraction >= 0.9`. Current emitted
+volume:
 
-- This is not yet a Feeney-style Bayesian detection framework.
-- It does not estimate a posterior over bubble-collision parameters.
-- It does not perform model selection against LambdaCDM.
-- It does not constrain the expected detectable collision count.
-- Weak-family recall remains the central blocker. At FPR 0.08 on real SMICA, none of our models exceed 0.10 recall at `A <= 5e-6`. The weak-amplitude bins are genuinely at or below the Planck SMICA noise floor; this is a physical limit, not an engineering gap.
-- Nside=512 is not justified by the current focused probe alone; the probe should be revisited only after the pixel-window, observing-model, normalization, and null-calibration fixes.
+| map | eligible tiles | tile candidates | eligible trigger frac | cluster reps |
+|---|---:|---:|---:|---:|
+| SMICA | `5298` | `41` | `0.0077` | `9` |
+| NILC | `5298` | `19` | `0.0036` | `5` |
+| SEVEM | `5298` | `17` | `0.0032` | `5` |
+| Commander | `5298` | `25` | `0.0047` | `5` |
 
-Current engineering targets:
+Use `cluster_representatives_15deg.jsonl` for first-pass HM sign-flip or
+template-fit follow-up; `candidate_records.jsonl` preserves all overlapping
+tile triggers for provenance.
+Projection/clustering systematics for that frozen candidate set live in
+`runs/phase3_unet/remediated_v1_projection_clustering_audit/`.
 
-- **Blocker (as of 2026-04-17):** rebuild the null calibration pool per map at `MASK_THRESHOLD = 0.5` (5000 patches each), re-run `phase3_postprocess_ablation.py`, re-run `phase3_geometry_router.py`, and report deployment-representative recall for `v6_only`, `gbt_6`, and `gbt_14`. All FPR-calibrated thresholds in the repo are under-stated by 2-6x depending on map until this is done. See `PROJECT_HANDOFF.md` Section 27.
-- After recalibration: ship the honest deployment policy (likely `v6_aux_only` per-map) and rerun the full-sky tiling audit with candidate clustering (Nside=8, 15-25 deg angular-distance linkage) to report real-sky deployment FP burden.
-- Keep matched-template scores in every candidate record as a classical sanity check.
-- Add isotonic score calibration on the new per-map null pools for clean candidate-volume statistics in the paper.
-- A retrain with a circular-template response map as a second input channel on mixed geometry remains on the roadmap as a potential training-signal lever. The earlier legacy MF-channel experiment on contained data (`phase3_v7_mf_channel_aux_w4`) gave only +0.013 contested recall, so expected gain is unclear; a cheap cross-map tile audit of that existing checkpoint should be done before any new retrain.
-- Feed candidate records into a classical template-fit or Bayesian follow-up stage.
-
-## Quick Start
-
-Create the environment:
+Candidate score calibration uses the real-map null-control calibration split,
+not the held-out test split:
 
 ```bash
-conda env create -f environment.yml
-conda activate cmb
+python scripts/phase3_remediated_null_policy_audit.py \
+  --split calibration \
+  --output-dir runs/phase3_unet/remediated_v1_null_policy_calibration
+python scripts/phase3_calibrate_candidate_scores.py
 ```
 
-Generate or inspect Phase 1 products:
+Current calibrated candidate set: `24` cluster representatives scored against
+`5768` pooled calibration-null margins. The most extreme representatives have
+plus-one empirical pooled null-survival `p = 0.000173` and BH q-value
+`0.000693`. These are screening-tail scores for follow-up prioritization, not
+global detection probabilities.
+
+Corrected template-fit and Bayesian handoff artifacts now live in:
+
+- `runs/phase3_unet/remediated_v1_template_fit_handoff/`
+- `runs/phase3_unet/remediated_v1_bayesian_template_handoff/`
+
+These package deterministic local Feeney-template seeds plus projection-aware
+follow-up guardrails. They are handoff artifacts, not Bayesian evidence.
+
+## Matched-Filter-Channel Recall Candidate
+
+The legacy two-channel v7 U-Net branch now has a full-sky tile-burden audit:
 
 ```bash
-python scripts/phase1_explore.py
+python scripts/phase3_mf_channel_tile_audit.py
 ```
 
-Run Phase 2 checks and generate the current training set:
+Default output:
+
+- `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/mf_channel_tile_audit.json`
+- `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/mf_channel_tile_audit.md`
+- `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/mf_channel_tile_audit.csv`
+
+At the SMICA-recalibrated model threshold for nominal FPR `0.05`, the legacy
+checkpoint reaches diagnostic real-SMICA recall `0.3526` at FPR `0.0440`.
+The hard regimes remain difficult: recall is `0.0466` for `A <= 2e-6`,
+`0.1724` for `5e-6 <= A <= 2e-5`, and `0.9288` for `A >= 5e-5`.
+
+Canonical-footprint full-sky burden is manageable but larger than the frozen
+tile-constrained composite:
+
+| map | eligible tiles | eligible triggers | eligible trigger frac | clusters |
+|---|---:|---:|---:|---:|
+| SMICA | `5298` | `285` | `0.0538` | `20` |
+| NILC | `5298` | `307` | `0.0579` | `21` |
+| SEVEM | `5298` | `290` | `0.0547` | `22` |
+| Commander | `5298` | `422` | `0.0797` | `23` |
+
+Do not promote this checkpoint as current science. It was trained on the older
+`training_v4` feature contract with a legacy `15 arcmin` circular-template
+response channel. The result is a strong engineering target for the next
+remediated-v1 retrain: cache `features/circular_template_response` with the
+current `5 arcmin` beam contract, retrain a two-channel U-Net, then rerun the
+same real-null, tile-burden, candidate-calibration, and HM preflight gates.
+
+## Classical Comparators
+
+Historical `matched_template` reports are not true Wiener matched filters. They
+are now named `circular_template_screen`.
+
+Current naming contract:
+
+- `circular_template_screen`: patch-space circular disc/ring correlation
+  screen; useful as a simple classical comparator and candidate sanity check.
+- `wiener_feeney_matched_filter`: harmonic-space Feeney template with beam,
+  HEALPix pixel-window, and CMB/noise inverse-covariance weighting.
+- `smhw_screen`: spherical Mexican-hat / scale-space context screen.
+
+The true Wiener/SMHW full-sky score-map implementation lives in
+`scripts/phase3_classical_filters.py`. Any headline ML-vs-classical claim must
+state exactly which comparator was used.
+
+The same-grid true-classical status report is:
 
 ```bash
-python scripts/phase2_physics_checks.py
+python scripts/phase3_classical_same_grid_status.py
+```
+
+A small, non-claim pilot that exercises the full-sky benchmark path is:
+
+```bash
+python scripts/phase3_same_grid_fullsky_benchmark.py \
+  --max-rows 64 \
+  --skip-ml
+```
+
+Current output is `complete` for the stratified same-grid manifest in
+`runs/phase3_unet/remediated_v1_same_grid_fullsky_manifest/`.
+
+Current same-grid summary on that fixed manifest:
+
+- mean recall: Wiener `0.3841`, ImageNet U-Net `0.3517`, random-init U-Net
+  `0.2994`, SMHW `0.2734`
+- ImageNet beats Wiener in `17 / 35` raw cells, loses in `16 / 35`, ties in `2`
+- under non-overlapping exact 95% CIs, ImageNet is better in `7` cells and
+  worse in `8`
+
+Interpretation: the true Wiener/Feeney matched filter is the strongest average
+screener on the closed same-grid benchmark, but the ImageNet U-Net keeps
+localized wins in selected amplitude/radius cells. That supports a
+complementary-screening claim, not uniform ML superiority over the true
+Wiener/SMHW comparators. For remediated synthetic products, keep
+`--pixel-window-policy synfast_pixwin_true` aligned with
+`synfast(pixwin=True)`.
+
+For the benchmark-design fork, generators expose `--injection-convention`.
+Use `feeney2011_full_temperature_modulation` for remediated products and
+`mcewen2012_first_order_additive` for explicit additive full-sky benchmark
+products. If Feeney-modulated products are scored with additive filters instead,
+quote the `phase2_physics_checks.py` cross-term report as a direction-specific
+approximation check; do not treat it as a universal bound.
+
+## Not Solved
+
+- Weak-family recall remains unsolved. The matched-filter SNR report supports a
+  CMB-confusion explanation for `A <= 2e-6`, but it also exposes algorithmic
+  headroom in higher-SNR cells where ideal recall is high and ML recall is low.
+- The noise-floor diagnostic is still useful as a patch-RMS scale check, but it
+  should not be phrased as the central physical limit without the matched-filter
+  and same-grid classical results.
+- The real-SMICA injection diagnostic still has material FPR inflation for the
+  ImageNet branch (`0.372` recall / `0.185` FPR), so it is a transfer diagnostic,
+  not a deployment result.
+- The same-grid Wiener/SMHW benchmark is now closed on the stratified manifest
+  and shows Wiener as the strongest average screener. What remains open is how
+  to use that result in deployment: score fusion, the now-completed
+  true-Wiener two-stream branch, and projection-robust follow-up still need
+  final policy decisions.
+- The legacy matched-filter-channel checkpoint improves diagnostic recall, but
+  is not promoted because it was trained before `remediated_v1`. It now has a
+  tile-burden audit and should be replaced by a remediated two-channel retrain
+  before paper-facing claims.
+- Half-mission sign-flip calibration is implemented as a Phase 5 downstream
+  CLI. The preflight report validates the frozen `24` cluster representatives,
+  policy slug, model checkpoints, and common mask, but is currently `blocked`
+  because HM1/HM2 cleaned-map paths have not been provided.
+- There is no Bayesian parameter inference or model comparison against
+  LambdaCDM.
+- Candidate-volume accounting exists, but the paper-facing deployment section
+  still needs a final cluster radius and score-calibration convention.
+
+## Next Work
+
+1. Decide how to use the completed remediated true-Wiener two-stream branch in
+   the active comparison set.
+   Status update:
+   the corrected full-cache rerun is complete. `true_wiener_ft` raises mean
+   sensitivity from `0.34875` to `0.36839` overall (`+0.01964`), helps
+   moderate/high-amplitude cells (`+0.03881` mean delta) and large-radius cells
+   (`+0.02226`), but still hurts the hardest low-amplitude subset
+   (`-0.00592`). Treat it as a promising secondary branch, not a default
+   replacement, until deployment burden or score-fusion tests are closed.
+2. Select/provide Planck HM1/HM2 component-separated map paths, rerun the Phase
+   5 preflight, then run HM sign-flip calibration on the frozen cluster
+   representatives.
+3. Choose and justify the paper-facing cluster radius for deployment burden
+   using the completed projection/clustering audit, rather than the old fixed
+   `15 deg` convention by default.
+4. Promote the deterministic template-fit and Bayesian handoff into the
+   follow-up narrative for the frozen `24` cluster representatives, then add
+   native-sphere or projection-robust follow-up for the `17` projection-caution
+   candidates.
+5. Prioritize real-map null backgrounds over another CAMB-only branch.
+6. Feed screened candidates into template fitting, Bayesian follow-up, and
+   `scripts/phase5_half_mission_signflip_null.py` when HM inputs are available.
+
+## Key Commands
+
+Generate current training data:
+
+```bash
 python scripts/phase2_generate_training.py \
-  --num-samples 10000 \
-  --pool-size 5000 \
-  --num-cmb-realizations 192 \
-  --output-dir data/training_v4
+  --num-samples 20000 \
+  --pool-size 16000 \
+  --num-cmb-realizations 384 \
+  --geometry-mode mixed \
+  --truncated-positive-fraction 0.35 \
+  --mask-threshold 0.9 \
+  --beam-fwhm-arcmin 5.0 \
+  --output-dir data/remediated_v1
+```
+
+Audit the dataset:
+
+```bash
 python scripts/phase2_audit_dataset.py \
-  --data-h5 data/training_v4/training_data.h5 \
-  --output-json data/training_v4/audit_report.json
+  --data-h5 data/remediated_v1/training_data.h5 \
+  --output-json data/remediated_v1/audit_report.json
 ```
 
-Train and evaluate a Phase 3 branch:
+Evaluate a trained branch on the held-out test split:
 
 ```bash
-python scripts/phase3_train_unet.py \
-  --data-h5 data/training_v4/training_data.h5 \
-  --epochs 20 \
-  --batch-size 16 \
-  --threshold 0.92
-
 python scripts/phase3_evaluate_run.py \
-  --run-dir runs/phase3_unet/phase3_v6_aux_only_w4 \
+  --run-dir runs/phase3_unet/remediated_v1_unet_imagenet_b64_aux \
   --checkpoint best \
-  --split val
+  --split test \
+  --score-mode component_score \
+  --image-rule connected_component
 ```
 
-Run key evaluation harnesses:
+Rebuild the preselected heatmap from existing remediated scores:
 
 ```bash
-python scripts/phase3_sensitivity_curve.py
-python scripts/phase3_eval_stratified_external.py
-python scripts/phase3_eval_classical_stratified_external.py
-python scripts/phase3_real_sky_recalibration.py
-python scripts/phase3_threshold_volume_sweep.py
-python scripts/phase3_screen_and_verify.py
+python scripts/phase3_ml_gain_heatmap.py \
+  --analysis-mode preselected \
+  --primary-method imagenet_b64_aux \
+  --bootstrap-resamples 2000
+```
+
+Update reproducibility and noise-floor reports:
+
+```bash
+python scripts/create_reproducibility_manifest.py
+python scripts/phase3_noise_floor_analysis.py
+python scripts/phase3_matched_filter_snr_curve.py
+python scripts/phase3_upper_limit_calculator.py
+python scripts/phase3_deployment_burden_table.py
+python scripts/phase3_policy_pareto_search.py
+python scripts/phase3_remediated_null_policy_audit.py
+python scripts/phase3_remediated_policy_tile_audit.py
+python scripts/phase3_deployment_policy_decision.py
+python scripts/phase3_tile_constrained_policy_search.py
+python scripts/phase3_emit_tile_constrained_candidates.py
+python scripts/phase3_calibrate_candidate_scores.py
+python scripts/phase3_classical_same_grid_status.py
+python scripts/phase5_half_mission_signflip_null.py \
+  --preflight-only \
+  --candidate-jsonl runs/phase3_unet/remediated_v1_tile_constrained_candidates/cluster_representatives_15deg.jsonl
+```
+
+Run the Nside=32 deployment audit:
+
+```bash
+bash scripts/batch6_overnight_orchestrator.sh
+python scripts/batch6_overnight_analysis.py
 ```
 
 ## Repository Layout
 
-- `scripts/phase1_explore.py`: Planck map loading, masking, and patch geometry.
-- `scripts/phase2_signal_model.py`: Feeney-template implementation and signal checks.
-- `scripts/phase2_generate_training.py`: current CAMB/Planck-mask training generator.
-- `scripts/phase2_audit_dataset.py`: provenance, split, and leakage audit.
+- `scripts/phase_config.py`: canonical physical constants and remediated
+  defaults.
+- `scripts/phase2_signal_model.py`: Feeney-style signal template,
+  full-temperature modulation, and first-order additive benchmark utilities.
+- `scripts/phase2_observing_model.py`: CAMB/synfast observing-model utilities.
+- `scripts/phase2_generate_training.py`: current synthetic generator.
+- `scripts/phase2_extract_smica_null_controls.py`: per-map real-null extraction.
+- `scripts/phase2_audit_dataset.py`: split/provenance/data sanity checks.
 - `scripts/phase3_train_unet.py`: U-Net training harness.
-- `scripts/phase3_evaluate_run.py`: validation/evaluation harness.
-- `scripts/phase3_template_baseline.py`: matched-template and classical baseline support.
-- `scripts/phase3_screen_and_verify.py`: candidate-output CLI.
-- `docs/project_structure.md`: artifact policy and source organization.
-- `docs/nside512_probe_decision.md`: focused Nside=512 probe verdict.
+- `scripts/phase3_evaluate_run.py`: primary held-out evaluator.
+- `scripts/phase3_template_baseline.py`: circular-template patch baseline.
+- `scripts/phase3_classical_filters.py`: full-sky Wiener Feeney and SMHW
+  classical filters.
+- `scripts/phase3_sensitivity_curve.py`: remediated sensitivity grid.
+- `scripts/phase3_ml_gain_heatmap.py`: paired ML-vs-circular-template heatmap.
+- `scripts/phase3_noise_floor_analysis.py`: empirical CMB-confusion diagnostic.
+- `scripts/phase3_matched_filter_snr_curve.py`: ideal harmonic-space Feeney
+  matched-filter SNR diagnostic under repo beam/noise/CAMB assumptions.
+- `scripts/phase3_upper_limit_calculator.py`: efficiency-weighted
+  detectable-collision upper limits.
+- `scripts/phase3_deployment_burden_table.py`: full-sky patch and clustered
+  candidate-volume accounting from Batch 6 tile caches.
+- `scripts/phase3_policy_pareto_search.py`: composite-policy recall-vs-FP
+  search over existing remediated score caches.
+- `scripts/phase3_deployment_policy_decision.py`: reproducible promotion/
+  rejection rule for composite policies.
+- `scripts/phase3_tile_constrained_policy_search.py`: exhaustive constrained
+  search for deployable composite policies.
+- `scripts/phase3_emit_tile_constrained_candidates.py`: frozen full-sky
+  candidate and cluster-representative emitter.
+- `scripts/phase3_calibrate_candidate_scores.py`: calibration-split
+  empirical null-survival scores for emitted representatives.
+- `scripts/phase3_classical_same_grid_status.py`: guard report for true
+  Wiener/SMHW same-grid benchmark claims.
+- `scripts/phase3_same_grid_fullsky_benchmark.py`: guarded full-sky
+  same-grid pilot/production driver for Wiener/SMHW and optional ML scoring.
+- `scripts/phase3_remediated_null_policy_audit.py`: larger held-out real-null
+  audit for composite policies.
+- `scripts/phase3_remediated_policy_tile_audit.py`: full-sky overlapping-tile
+  burden audit for composite policies.
+- `scripts/phase3_fullsky_tile.py`: full-sky tile audit.
+- `scripts/phase5_half_mission_signflip_null.py`: downstream HM1/HM2
+  sign-flip null calibration and preflight checks for emitted candidates.
+- `scripts/audit_remediated_flow.py`: lightweight artifact graph audit.
+- `scripts/create_reproducibility_manifest.py`: compact source/artifact
+  manifest.
+- `work/`: historical decision notes and batch reports.
+- `docs/evaluation_inventory.md`: active/deferred/historical evaluation map.
+- `docs/phase5_half_mission_signflip_null.md`: HM sign-flip null design and
+  usage notes.
 
-Generated datasets, Planck FITS maps, checkpoints, and run artifacts are intentionally ignored by git. The repository tracks source, documentation, compact figures, and reproducibility metadata, not multi-GB intermediates.
+Generated datasets, Planck FITS maps, checkpoints, score caches, and large run
+artifacts are local products and should remain out of git unless explicitly
+promoted as compact metadata.
 
-## Hardware
+## References
 
-The current local workstation has 2 NVIDIA RTX 3090 GPUs. The code supports multi-GPU training through PyTorch `DataParallel`.
-
-## Key References
-
-- Feeney, Johnson, Mortlock, and Peiris. *First Observational Tests of Eternal Inflation.* arXiv:1012.1995.
-- Feeney, Johnson, Mortlock, and Peiris. *First Observational Tests of Eternal Inflation: Analysis Methods and WMAP 7-Year Results.* arXiv:1012.3667.
-- Gorski et al. *HEALPix: A Framework for High-Resolution Discretization and Fast Analysis of Data Distributed on the Sphere.* Astrophysical Journal, 2005.
-- Lewis, Challinor, and Lasenby. *Efficient Computation of Cosmic Microwave Background Anisotropies in Closed Friedmann-Robertson-Walker Models.* Astrophysical Journal, 2000. CAMB.
-- Planck Collaboration. *Planck 2018 results. IV. Diffuse component separation.* Astronomy & Astrophysics, 2020.
+- Feeney, Johnson, Mortlock, and Peiris. *First Observational Tests of Eternal
+  Inflation.* arXiv:1012.1995.
+- Feeney, Johnson, Mortlock, and Peiris. *First Observational Tests of Eternal
+  Inflation: Analysis Methods and WMAP 7-Year Results.* arXiv:1012.3667.
+- McEwen, Feeney, Johnson, and Peiris. *Optimal filters for detecting cosmic
+  bubble collisions.* arXiv:1202.2861.
+- HEALPix: Gorski et al., Astrophysical Journal, 2005.
+- CAMB: Lewis, Challinor, and Lasenby, Astrophysical Journal, 2000.
+- Planck Collaboration. *Planck 2018 results. IV. Diffuse component
+  separation.* Astronomy & Astrophysics, 2020.
 
 ## License
 

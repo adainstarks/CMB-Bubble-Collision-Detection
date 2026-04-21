@@ -40,7 +40,14 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from scipy.special import erf
 
-from phase_config import PATCH_PIX, RESO_ARCMIN, T_CMB
+from phase_config import (
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTION_FEENEY2011,
+    INJECTION_CONVENTION_MCEWEN2012,
+    PATCH_PIX,
+    RESO_ARCMIN,
+    T_CMB,
+)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
@@ -146,6 +153,49 @@ def make_angular_distance_grid(npix, reso_arcmin, center_x_pix=None, center_y_pi
     return np.arccos(cos_theta)
 
 
+def fractional_signal_delta(
+    patch,
+    signal,
+    injection_convention=DEFAULT_INJECTION_CONVENTION,
+):
+    """Return the Kelvin signal delta for a fractional bubble profile.
+
+    ``feeney2011_full_temperature_modulation`` keeps the exact Feeney et al.
+    (2011, PRD 84, 043507) full-temperature modulation. Algebraically it is
+    ``f*T_CMB + f*patch`` for CMB anisotropy patches. The
+    ``mcewen2012_first_order_additive`` branch returns the first-order additive
+    approximation used by McEwen et al. (2012, PRD 85, 103502) for spherical
+    matched-filter construction.
+    """
+
+    patch = np.asarray(patch, dtype=np.float64)
+    signal = np.asarray(signal, dtype=np.float64)
+    if patch.shape != signal.shape:
+        raise ValueError("patch and signal must have matching shapes.")
+    if not np.all(np.isfinite(patch)) or not np.all(np.isfinite(signal)):
+        raise ValueError("patch and signal must be finite.")
+    if injection_convention == INJECTION_CONVENTION_FEENEY2011:
+        return signal * (T_CMB_K + patch)
+    if injection_convention == INJECTION_CONVENTION_MCEWEN2012:
+        return signal * T_CMB_K
+    raise ValueError(f"Unknown injection convention: {injection_convention!r}")
+
+
+def add_fractional_signal_to_patch(
+    patch,
+    signal,
+    injection_convention=DEFAULT_INJECTION_CONVENTION,
+):
+    """Add a fractional bubble profile to a Kelvin CMB-anisotropy patch."""
+
+    patch = np.asarray(patch, dtype=np.float64)
+    return patch + fractional_signal_delta(
+        patch,
+        signal,
+        injection_convention=injection_convention,
+    )
+
+
 def inject_signal_into_patch(
     patch,
     z0,
@@ -154,15 +204,17 @@ def inject_signal_into_patch(
     edge_sigma_deg=0.0,
     center_x_pix=None,
     center_y_pix=None,
+    injection_convention=DEFAULT_INJECTION_CONVENTION,
 ):
     """
     Inject a bubble collision signal into a flat-sky patch.
-    
-    Uses multiplicative injection with a Feeney-style fractional modulation:
-        δT = (1 + f(n̂)) * (T0 + δT_cmb) - T0
 
-    The Planck SMICA patch is a temperature-anisotropy map, so we reconstruct the
-    full temperature as T0 + δT_cmb, apply the modulation, and subtract T0 again.
+    The default uses the Feeney et al. (2011) full-temperature modulation:
+        deltaT = (1 + f(n_hat)) * (T0 + deltaT_cmb) - T0
+
+    ``mcewen2012_first_order_additive`` is available for benchmark products
+    matched to the harmonic-space filter approximation:
+        deltaT = deltaT_cmb + f(n_hat) * T0
     """
     patch = np.asarray(patch, dtype=np.float64)
     theta_grid = make_angular_distance_grid(
@@ -179,7 +231,11 @@ def inject_signal_into_patch(
         theta_crit,
         edge_sigma_deg=edge_sigma_deg,
     )
-    injected = (1.0 + signal) * (T_CMB_K + patch) - T_CMB_K
+    injected = add_fractional_signal_to_patch(
+        patch,
+        signal,
+        injection_convention=injection_convention,
+    )
     return injected, signal
 
 
