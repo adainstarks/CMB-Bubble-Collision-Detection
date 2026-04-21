@@ -1,4 +1,4 @@
-# CMB Bubble Collision Screening
+# CMB Bubble Collision Screener
 
 Planck-era machine-learning and classical candidate screening for localized
 bubble-collision signatures in the Cosmic Microwave Background.
