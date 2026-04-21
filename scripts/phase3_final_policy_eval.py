@@ -1,5 +1,9 @@
 """
-Evaluate the concrete Phase 3 deployment policy from cached scores.
+Evaluate the historical Phase 3 deployment policy from cached scores.
+
+This script is retained for provenance of the pre-remediation composite policy.
+It is not the current remediated-v1 deployment path; see PROJECT_HANDOFF.md and
+the Batch 6 Nside=32 reports for the active policy interpretation.
 
 Policy definitions:
     normal_candidate:

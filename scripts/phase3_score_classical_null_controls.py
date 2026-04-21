@@ -25,7 +25,12 @@ def parse_args():
     )
     parser.add_argument("--classical-dir", type=str, required=True)
     parser.add_argument("--null-h5", type=str, required=True)
-    parser.add_argument("--split", type=str, default="all", choices=["all", "train", "val"])
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="all",
+        choices=["all", "train", "val", "calibration", "test"],
+    )
     parser.add_argument("--output-json", type=str, required=True)
     parser.add_argument("--chunk-size", type=int, default=128)
     return parser.parse_args()
@@ -40,7 +45,15 @@ def load_null_indices(null_h5, split):
     with h5py.File(null_h5, "r") as h5:
         if split == "all":
             return np.arange(h5["patches"].shape[0], dtype=np.int64)
-        return np.asarray(h5["splits"][f"{split}_idx"][:], dtype=np.int64)
+        split_keys = [f"{split}_idx"]
+        if split == "calibration":
+            split_keys.append("val_idx")
+        if split == "val":
+            split_keys.append("calibration_idx")
+        for key in split_keys:
+            if key in h5["splits"]:
+                return np.asarray(h5["splits"][key][:], dtype=np.int64)
+        raise KeyError(f"Null-control HDF5 missing any split key in {split_keys}.")
 
 
 def score_method(patches, indices, kernels, threshold, centered_only):

@@ -21,6 +21,7 @@ import json
 import math
 import os
 import random
+import hashlib
 from pathlib import Path
 
 import h5py
@@ -32,9 +33,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from phase2_audit_dataset import run_audit
+from phase_config import min_component_area_pixels
 from phase_dataset_utils import load_predefined_split_indices, load_signal_strength
 
 try:
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -59,9 +62,12 @@ else:
     SMP_IMPORT_ERROR = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_H5 = PROJECT_ROOT / "data" / "training_v4" / "training_data.h5"
+DEFAULT_DATA_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "training_data.h5"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "runs" / "phase3_unet"
 EPS = 1e-6
+DICE_SMOOTH = 1.0
+MODEL_ARCHITECTURES = ("unet", "unetplusplus", "deeplabv3plus", "manet", "fpn")
+PIXEL_LOSS_CHOICES = ("bce", "focal")
 
 
 def parse_args():
@@ -94,19 +100,56 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--min-positive-amplitude", type=float, default=0.0)
+    parser.add_argument(
+        "--model-architecture",
+        type=str,
+        default="unet",
+        choices=MODEL_ARCHITECTURES,
+        help=(
+            "Segmentation architecture. Keep all other training settings fixed when "
+            "comparing architectures so recall/FPR differences remain interpretable."
+        ),
+    )
     parser.add_argument("--encoder-name", type=str, default="efficientnet-b0")
-    parser.add_argument("--encoder-weights", type=str, default="imagenet")
+    parser.add_argument("--encoder-weights", type=str, default="none")
     parser.add_argument(
         "--extra-channel-dataset",
         action="append",
         default=[],
         help=(
             "Optional HDF5 dataset path to append as an input channel, e.g. "
+            "`features/circular_template_response`. Legacy files may still contain "
             "`features/matched_filter_response`. Can be repeated."
         ),
     )
     parser.add_argument("--bce-weight", type=float, default=1.0)
     parser.add_argument("--dice-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--pixel-loss",
+        type=str,
+        default="bce",
+        choices=PIXEL_LOSS_CHOICES,
+        help=(
+            "Pixelwise segmentation loss combined with Dice. `bce` preserves the "
+            "current remediated baseline; `focal` applies the Lin et al. (2017) "
+            "focal modulation to hard pixels."
+        ),
+    )
+    parser.add_argument(
+        "--focal-gamma",
+        type=float,
+        default=2.0,
+        help="Focal-loss gamma exponent when --pixel-loss focal.",
+    )
+    parser.add_argument(
+        "--focal-alpha",
+        type=float,
+        default=-1.0,
+        help=(
+            "Optional positive-class alpha in [0, 1] when --pixel-loss focal. "
+            "Set a negative value to disable alpha-balancing and rely on pos_weight only."
+        ),
+    )
     parser.add_argument(
         "--aux-head-weight",
         type=float,
@@ -160,10 +203,49 @@ def parse_args():
         help="Sampling weight multiplier for hard-positive bins when --hard-positive-mining-json is set.",
     )
     parser.add_argument(
+        "--snr-sample-weight-json",
+        type=str,
+        default="",
+        help=(
+            "Optional matched-filter SNR report JSON used to importance-sample "
+            "positive training cells with high learnable recall headroom."
+        ),
+    )
+    parser.add_argument(
+        "--snr-sample-weight-method",
+        type=str,
+        default="algorithmic_gap",
+        choices=("algorithmic_gap", "inverse_snr"),
+        help=(
+            "algorithmic_gap upweights cells where ideal matched-filter recall "
+            "exceeds current ML recall; inverse_snr upweights eligible lower-SNR "
+            "cells after excluding physically low-recall cells."
+        ),
+    )
+    parser.add_argument(
+        "--snr-sample-weight-ml-method",
+        type=str,
+        default="imagenet_b64_aux",
+        help="Observed ML method prefix in the SNR report, e.g. imagenet_b64_aux.",
+    )
+    parser.add_argument("--snr-sample-weight-strength", type=float, default=2.0)
+    parser.add_argument("--snr-sample-weight-max", type=float, default=4.0)
+    parser.add_argument("--snr-sample-weight-min-ideal-recall", type=float, default=0.2)
+    parser.add_argument(
         "--threshold",
         type=float,
         default=0.5,
         help="Monitoring threshold used for training-time metrics and preview panels. Deployment thresholds are chosen later.",
+    )
+    parser.add_argument(
+        "--image-min-positive-pixels",
+        type=int,
+        default=min_component_area_pixels(theta_min_deg=5.0, fraction=0.01),
+        help=(
+            "Minimum thresholded pixels required before a patch counts as image-positive "
+            "for training-time image metrics. This prevents single-pixel activations from "
+            "driving checkpoint selection."
+        ),
     )
     parser.add_argument("--preview-count", type=int, default=6)
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
@@ -179,7 +261,10 @@ def parse_args():
         "--normalization-config",
         type=str,
         default="",
-        help="Optional previous run_config.json to reuse train normalization and positive-pixel statistics.",
+        help=(
+            "Optional previous run_config.json to reuse train normalization and "
+            "positive-sample-only positive-pixel statistics."
+        ),
     )
     parser.add_argument("--grad-clip", type=float, default=0.0)
     parser.add_argument("--max-translate-pixels", type=int, default=48)
@@ -236,6 +321,15 @@ def seed_everything(seed):
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 def validate_args(args):
@@ -247,6 +341,8 @@ def validate_args(args):
         raise ValueError("--train-fraction must be between 0 and 1.")
     if not (0.0 < args.threshold < 1.0):
         raise ValueError("--threshold must be between 0 and 1.")
+    if args.image_min_positive_pixels < 1:
+        raise ValueError("--image-min-positive-pixels must be at least 1.")
     if args.preview_count <= 0:
         raise ValueError("--preview-count must be positive.")
     if args.max_train_samples < 0 or args.max_val_samples < 0:
@@ -259,6 +355,10 @@ def validate_args(args):
         raise ValueError("--boundary-weight must be non-negative.")
     if args.boundary_width_pixels < 0:
         raise ValueError("--boundary-width-pixels must be non-negative.")
+    if args.focal_gamma < 0.0:
+        raise ValueError("--focal-gamma must be non-negative.")
+    if args.focal_alpha >= 0.0 and not (0.0 <= args.focal_alpha <= 1.0):
+        raise ValueError("--focal-alpha must be in [0, 1] or negative to disable.")
     if args.aux_head_weight < 0.0:
         raise ValueError("--aux-head-weight must be non-negative.")
     if args.radius_head_weight < 0.0:
@@ -270,6 +370,12 @@ def validate_args(args):
         raise ValueError("--aux-head-dropout must be in [0, 1).")
     if args.hard_positive_weight < 1.0:
         raise ValueError("--hard-positive-weight must be >= 1.")
+    if args.snr_sample_weight_strength < 0.0:
+        raise ValueError("--snr-sample-weight-strength must be non-negative.")
+    if args.snr_sample_weight_max < 1.0:
+        raise ValueError("--snr-sample-weight-max must be >= 1.")
+    if not (0.0 <= args.snr_sample_weight_min_ideal_recall <= 1.0):
+        raise ValueError("--snr-sample-weight-min-ideal-recall must be in [0, 1].")
     if len(parse_extra_channel_datasets(args.extra_channel_dataset)) != len(set(parse_extra_channel_datasets(args.extra_channel_dataset))):
         raise ValueError("--extra-channel-dataset contains duplicate dataset paths.")
     if args.gpu_ids.strip():
@@ -321,6 +427,17 @@ def load_dataset_summary(h5_path):
 def load_labels(h5_path):
     with h5py.File(h5_path, "r") as h5:
         return np.asarray(h5["labels"][:], dtype=np.uint8)
+
+
+def file_sha256(path, chunk_size=8 * 1024 * 1024):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while True:
+            chunk = handle.read(chunk_size)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_positive_signal_strength(h5_path):
@@ -398,6 +515,7 @@ def model_args_from_run_config(run_config):
     train_args = run_config["args"]
     input_config = input_config_from_run_config(run_config)
     return argparse.Namespace(
+        model_architecture=train_args.get("model_architecture", "unet"),
         encoder_name=train_args["encoder_name"],
         encoder_weights=train_args["encoder_weights"],
         aux_head_weight=float(train_args.get("aux_head_weight", 0.0) or 0.0),
@@ -699,13 +817,22 @@ def compute_positive_pixel_fraction(h5_path, indices, chunk_size=256):
 
     with h5py.File(h5_path, "r") as h5:
         masks = h5["masks"]
+        labels = h5["labels"]
         for chunk in iter_index_chunks(indices, chunk_size):
-            batch = np.asarray(masks[chunk], dtype=np.float64)
+            chunk_labels = np.asarray(labels[chunk], dtype=np.uint8)
+            positive_rows = chunk[chunk_labels == 1]
+            if len(positive_rows) == 0:
+                processed += len(chunk)
+                progress.update(processed)
+                continue
+            batch = np.asarray(masks[positive_rows], dtype=np.float64)
             total_positive += float(batch.sum())
             total_pixels += int(batch.size)
             processed += len(chunk)
             progress.update(processed)
 
+    if total_pixels == 0:
+        raise ValueError("Cannot compute positive-pixel fraction: training split has no positive samples.")
     fraction = total_positive / max(total_pixels, 1)
     return float(fraction)
 
@@ -872,6 +999,16 @@ class H5BubbleDataset(Dataset):
                     read_h5_rows(h5[dataset_path], self.indices).astype(np.float32, copy=False)
                     for dataset_path in self.extra_channel_datasets
                 ]
+                for dataset_path, channel in zip(self.extra_channel_datasets, self._extra_channels):
+                    if not np.all(np.isfinite(channel)):
+                        bad = np.argwhere(~np.isfinite(channel))
+                        first_bad = bad[0] if bad.size else np.asarray((0, 0, 0))
+                        bad_item = int(first_bad[0])
+                        bad_index = int(self.indices[bad_item])
+                        raise ValueError(
+                            f"Extra input channel dataset {dataset_path} contains non-finite values "
+                            f"for row {bad_index} in {self.h5_path}."
+                        )
                 self._masks = read_h5_rows(h5["masks"], self.indices).astype(np.float32, copy=False)
                 self._labels = read_h5_rows(h5["labels"], self.indices).astype(np.float32, copy=False)
                 if self.radius_bin_edges is not None:
@@ -921,6 +1058,22 @@ class H5BubbleDataset(Dataset):
             mask = np.asarray(h5["masks"][index], dtype=np.float32)
             label = float(h5["labels"][index])
             theta_crit = None if self.radius_bin_edges is None else float(h5["truth/theta_crit_deg"][index])
+
+        if not np.all(np.isfinite(patch)):
+            raise ValueError(f"Patch index {index} contains non-finite values.")
+        if float(np.max(np.abs(patch))) > 1.0:
+            raise ValueError(
+                f"Patch index {index} is outside Kelvin anisotropy scale; "
+                "check microkelvin/Kelvin conversion."
+            )
+        if not np.all(np.isfinite(mask)):
+            raise ValueError(f"Mask index {index} contains non-finite values.")
+        for dataset_path, channel in zip(self.extra_channel_datasets, extra_channels):
+            if not np.all(np.isfinite(channel)):
+                raise ValueError(
+                    f"Extra input channel dataset {dataset_path} contains non-finite values "
+                    f"at row {index} in {self.h5_path}."
+                )
 
         if extra_channels:
             patch = np.stack([patch, *extra_channels], axis=0).astype(np.float32, copy=False)
@@ -1082,7 +1235,20 @@ def build_model(args):
             "activation": None,
             "classes": image_aux_count + radius_bin_count,
         }
-    return smp.Unet(
+    architecture = str(getattr(args, "model_architecture", "unet")).lower()
+    model_cls_map = {
+        "unet": smp.Unet,
+        "unetplusplus": smp.UnetPlusPlus,
+        "deeplabv3plus": smp.DeepLabV3Plus,
+        "manet": smp.MAnet,
+        "fpn": smp.FPN,
+    }
+    if architecture not in model_cls_map:
+        raise ValueError(
+            f"Unsupported --model-architecture={architecture!r}. "
+            f"Expected one of {MODEL_ARCHITECTURES}."
+        )
+    return model_cls_map[architecture](
         encoder_name=args.encoder_name,
         encoder_weights=encoder_weights,
         in_channels=input_channels,
@@ -1121,8 +1287,45 @@ def dice_loss_from_logits(logits, targets):
     dims = (1, 2, 3)
     intersection = (probs * targets).sum(dim=dims)
     denominator = probs.sum(dim=dims) + targets.sum(dim=dims)
-    dice = (2.0 * intersection + EPS) / (denominator + EPS)
+    dice = (2.0 * intersection + DICE_SMOOTH) / (denominator + DICE_SMOOTH)
     return 1.0 - dice.mean()
+
+
+class BinaryFocalWithLogitsLoss(nn.Module):
+    """Binary focal loss for dense segmentation masks.
+
+    This implements the standard focal modulation from Lin et al.,
+    "Focal Loss for Dense Object Detection" (arXiv:1708.02002), while keeping
+    the existing positive-class reweighting used by the repo's BCE baseline.
+    """
+
+    def __init__(self, *, pos_weight, gamma=2.0, alpha=None):
+        super().__init__()
+        if gamma < 0.0:
+            raise ValueError("gamma must be non-negative.")
+        if alpha is not None and not (0.0 <= float(alpha) <= 1.0):
+            raise ValueError("alpha must be in [0, 1].")
+        pos_weight_tensor = torch.as_tensor(pos_weight, dtype=torch.float32).reshape(1)
+        self.register_buffer("pos_weight", pos_weight_tensor)
+        self.gamma = float(gamma)
+        self.alpha = None if alpha is None else float(alpha)
+
+    def forward(self, logits, targets, weight=None):
+        ce = F.binary_cross_entropy_with_logits(
+            logits,
+            targets,
+            pos_weight=self.pos_weight,
+            reduction="none",
+        )
+        probs = torch.sigmoid(logits)
+        pt = probs * targets + (1.0 - probs) * (1.0 - targets)
+        loss = ce * (1.0 - pt).pow(self.gamma)
+        if self.alpha is not None:
+            alpha_factor = self.alpha * targets + (1.0 - self.alpha) * (1.0 - targets)
+            loss = loss * alpha_factor
+        if weight is not None:
+            loss = loss * weight
+        return loss.mean()
 
 
 def target_boundary_band(targets, width_pixels):
@@ -1136,21 +1339,35 @@ def target_boundary_band(targets, width_pixels):
     return (dilated - eroded).clamp_(0.0, 1.0)
 
 
-def weighted_bce_with_logits(logits, targets, base_pos_weight, boundary_weight, boundary_width_pixels):
+def boundary_pixel_weights(targets, boundary_weight, boundary_width_pixels):
     if boundary_weight <= 0.0 or boundary_width_pixels <= 0:
-        return F.binary_cross_entropy_with_logits(logits, targets, pos_weight=base_pos_weight)
+        return None
 
     boundary = target_boundary_band(targets, boundary_width_pixels)
-    pixel_weights = 1.0 + float(boundary_weight) * boundary
+    return 1.0 + float(boundary_weight) * boundary
+
+
+def weighted_binary_loss_with_logits(
+    logits,
+    targets,
+    loss_fn,
+    boundary_weight,
+    boundary_width_pixels,
+):
+    pixel_weights = boundary_pixel_weights(targets, boundary_weight, boundary_width_pixels)
+    if isinstance(loss_fn, BinaryFocalWithLogitsLoss):
+        return loss_fn(logits, targets, weight=pixel_weights)
+    if pixel_weights is None:
+        return loss_fn(logits, targets)
     return F.binary_cross_entropy_with_logits(
         logits,
         targets,
         weight=pixel_weights,
-        pos_weight=base_pos_weight,
+        pos_weight=loss_fn.pos_weight,
     )
 
 
-def batch_metrics_from_logits(logits, targets, threshold):
+def batch_metrics_from_logits(logits, targets, threshold, image_min_positive_pixels=1):
     probs = torch.sigmoid(logits)
     preds = probs >= threshold
     truths = targets >= 0.5
@@ -1173,7 +1390,7 @@ def batch_metrics_from_logits(logits, targets, threshold):
         (intersection + EPS) / (union + EPS),
     )
 
-    image_pred = pred_sum > 0
+    image_pred = pred_sum >= int(image_min_positive_pixels)
     image_true = truth_sum > 0
 
     return {
@@ -1275,6 +1492,140 @@ def build_hard_positive_sample_weights(h5_path, train_idx, error_mining_json, ha
         "selection_rule": (
             "upweight train positives in documented weak families: amplitude < 3e-5, "
             "|zcrit| < 3e-5, theta_crit < 15 deg, or off-center distance >= 10 deg"
+        ),
+    }
+
+
+def nearest_cell_indices(values, grid, *, log_space=False):
+    values = np.asarray(values, dtype=np.float64)
+    grid = np.asarray(grid, dtype=np.float64)
+    if grid.size == 0:
+        raise ValueError("SNR weight grid is empty.")
+    if log_space:
+        if np.any(values <= 0.0) or np.any(grid <= 0.0):
+            raise ValueError("Log-space nearest-cell lookup requires positive values.")
+        values = np.log10(values)
+        grid = np.log10(grid)
+    distances = np.abs(values[:, None] - grid[None, :])
+    return np.argmin(distances, axis=1)
+
+
+def build_snr_sample_weights(
+    h5_path,
+    train_idx,
+    snr_report_json,
+    *,
+    method,
+    ml_method,
+    strength,
+    max_weight,
+    min_ideal_recall,
+):
+    """Return positive-sample weights from ideal matched-filter headroom.
+
+    This is a training-only importance sampler. It does not alter labels or
+    evaluation thresholds. Cells below ``min_ideal_recall`` are treated as
+    likely CMB-confusion dominated and are not upweighted.
+    """
+
+    if not snr_report_json:
+        return None, {}
+
+    report_path = Path(snr_report_json).expanduser().resolve()
+    report = load_json(report_path)
+    cell_rows = report.get("cell_rows", [])
+    if not cell_rows:
+        raise ValueError(f"SNR report has no cell_rows: {report_path}")
+
+    amplitude_grid = sorted({float(row["amplitude"]) for row in cell_rows})
+    theta_grid = sorted({float(row["theta_crit_deg"]) for row in cell_rows})
+    cell_lookup = {
+        (float(row["amplitude"]), float(row["theta_crit_deg"])): row
+        for row in cell_rows
+    }
+    ml_key = f"{ml_method}_p_det"
+
+    with h5py.File(h5_path, "r") as h5:
+        labels = read_h5_rows(h5["labels"], train_idx).astype(np.uint8, copy=False)
+        truth = h5["truth"]
+        theta = read_h5_rows(truth["theta_crit_deg"], train_idx).astype(np.float64, copy=False)
+        if "amplitude" in truth:
+            amplitude = read_h5_rows(truth["amplitude"], train_idx).astype(np.float64, copy=False)
+        else:
+            z0 = read_h5_rows(truth["z0"], train_idx).astype(np.float64, copy=False)
+            amplitude = np.abs(z0)
+
+    weights = np.ones(len(train_idx), dtype=np.float64)
+    positive = labels == 1
+    if not bool(np.any(positive)):
+        raise ValueError("SNR sample weighting requires at least one positive training sample.")
+
+    amp_idx = nearest_cell_indices(np.maximum(amplitude[positive], 1e-30), amplitude_grid, log_space=True)
+    theta_idx = nearest_cell_indices(theta[positive], theta_grid, log_space=False)
+    positive_weights = np.ones(int(np.count_nonzero(positive)), dtype=np.float64)
+    positive_eligible = np.zeros_like(positive_weights, dtype=bool)
+
+    eligible_count = 0
+    cell_counts: dict[tuple[float, float], int] = {}
+    raw_snr_values = []
+    for pos_i, (a_idx, t_idx) in enumerate(zip(amp_idx, theta_idx)):
+        cell_key = (float(amplitude_grid[int(a_idx)]), float(theta_grid[int(t_idx)]))
+        row = cell_lookup[cell_key]
+        ideal_recall = float(row.get("ideal_recall_fsky_scaled_median", 0.0))
+        snr_value = float(row.get("snr_fsky_scaled_median", 0.0))
+        if ideal_recall < float(min_ideal_recall):
+            continue
+        eligible_count += 1
+        positive_eligible[pos_i] = True
+        cell_counts[cell_key] = cell_counts.get(cell_key, 0) + 1
+        raw_snr_values.append(max(snr_value, 1e-12))
+        if method == "algorithmic_gap":
+            observed_recall = float(row.get(ml_key, 0.0))
+            gap = max(0.0, ideal_recall - observed_recall)
+            positive_weights[pos_i] = 1.0 + float(strength) * gap
+        elif method == "inverse_snr":
+            # Filled after the median eligible SNR is known.
+            positive_weights[pos_i] = max(snr_value, 1e-12)
+        else:
+            raise ValueError(f"Unknown SNR sample-weight method: {method!r}")
+
+    if method == "inverse_snr" and raw_snr_values:
+        median_snr = float(np.median(np.asarray(raw_snr_values, dtype=np.float64)))
+        positive_weights[positive_eligible] = np.maximum(
+            1.0,
+            median_snr / positive_weights[positive_eligible],
+        )
+
+    positive_weights = np.clip(positive_weights, 1.0, float(max_weight))
+    weights[positive] = positive_weights
+    sorted_cells = sorted(
+        (
+            {
+                "amplitude": float(key[0]),
+                "theta_crit_deg": float(key[1]),
+                "train_positive_samples": int(count),
+            }
+            for key, count in cell_counts.items()
+        ),
+        key=lambda row: (-row["train_positive_samples"], row["amplitude"], row["theta_crit_deg"]),
+    )
+    return weights, {
+        "source": str(report_path),
+        "method": str(method),
+        "ml_method": str(ml_method),
+        "strength": float(strength),
+        "max_weight": float(max_weight),
+        "min_ideal_recall": float(min_ideal_recall),
+        "eligible_train_positive_samples": int(eligible_count),
+        "weighted_train_positive_samples": int(np.count_nonzero(weights[positive] > 1.0)),
+        "weight_min": float(np.min(weights)),
+        "weight_median": float(np.median(weights)),
+        "weight_max": float(np.max(weights)),
+        "top_matched_cells": sorted_cells[:12],
+        "scientific_note": (
+            "Weights are deterministic functions of matched-filter SNR diagnostics "
+            "and training truth cells. They are used only for training-sample "
+            "importance sampling; calibration/test thresholds remain external."
         ),
     }
 
@@ -1405,11 +1756,21 @@ def load_normalization_config(path):
     normalization = payload.get("normalization", {})
     loss_reweighting = payload.get("loss_reweighting", {})
     required_norm = ("train_mean", "train_std")
-    required_loss = ("positive_pixel_fraction", "bce_pos_weight")
+    required_loss = (
+        "positive_pixel_fraction",
+        "positive_pixel_fraction_denominator",
+        "bce_pos_weight",
+    )
     missing = [key for key in required_norm if key not in normalization]
     missing += [key for key in required_loss if key not in loss_reweighting]
     if missing:
         raise RuntimeError(f"Normalization config is missing fields: {missing}")
+    denominator = str(loss_reweighting["positive_pixel_fraction_denominator"])
+    if denominator != "positive_samples_only":
+        raise RuntimeError(
+            "Normalization config uses an obsolete positive-pixel denominator "
+            f"({denominator!r}); recompute normalization/loss statistics."
+        )
     result = {
         "train_mean": float(normalization["train_mean"]),
         "train_std": float(normalization["train_std"]),
@@ -1431,6 +1792,7 @@ def run_one_epoch(
     loss_fn,
     device,
     threshold,
+    image_min_positive_pixels,
     bce_weight,
     dice_weight,
     aux_head_weight,
@@ -1473,16 +1835,13 @@ def run_one_epoch(
                     use_image_aux=aux_head_weight > 0.0,
                     radius_bin_count=radius_bin_count,
                 )
-                if boundary_weight > 0.0 and boundary_width_pixels > 0:
-                    bce = weighted_bce_with_logits(
-                        logits=logits,
-                        targets=masks,
-                        base_pos_weight=loss_fn.pos_weight,
-                        boundary_weight=boundary_weight,
-                        boundary_width_pixels=boundary_width_pixels,
-                    )
-                else:
-                    bce = loss_fn(logits, masks)
+                bce = weighted_binary_loss_with_logits(
+                    logits=logits,
+                    targets=masks,
+                    loss_fn=loss_fn,
+                    boundary_weight=boundary_weight,
+                    boundary_width_pixels=boundary_width_pixels,
+                )
                 dice = dice_loss_from_logits(logits, masks)
                 loss = bce_weight * bce + dice_weight * dice
                 if aux_head_weight > 0.0 and image_logits is not None:
@@ -1506,7 +1865,12 @@ def run_one_epoch(
                 scaler.step(optimizer)
                 scaler.update()
 
-        metrics = batch_metrics_from_logits(logits.detach(), masks.detach(), threshold)
+        metrics = batch_metrics_from_logits(
+            logits.detach(),
+            masks.detach(),
+            threshold,
+            image_min_positive_pixels=image_min_positive_pixels,
+        )
         if radius_head_weight > 0.0 and radius_logits is not None and radius_loss is not None:
             valid_radius = radius_bins >= 0
             if bool(valid_radius.any()):
@@ -1598,9 +1962,16 @@ def main():
         max_val_samples=args.max_val_samples,
         split_source=args.split_source,
     )
+    predefined_splits = load_predefined_split_indices(h5_path)
+    test_idx = None
+    if predefined_splits is not None and "test_idx" in predefined_splits:
+        test_idx = np.asarray(predefined_splits["test_idx"], dtype=np.int64)
 
     train_pos, train_neg = count_class_balance(labels, train_idx)
     val_pos, val_neg = count_class_balance(labels, val_idx)
+    test_pos = test_neg = 0
+    if test_idx is not None:
+        test_pos, test_neg = count_class_balance(labels, test_idx)
     normalization_source = None
     channel_means = None
     channel_stds = None
@@ -1637,15 +2008,23 @@ def main():
     run_config = {
         "created_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
         "data_h5": str(h5_path.resolve()),
+        "data_h5_sha256": file_sha256(h5_path),
         "summary": summary,
         "args": vars(args),
         "split": {
             "train_samples": int(len(train_idx)),
+            "calibration_samples": int(len(val_idx)),
             "val_samples": int(len(val_idx)),
+            "test_samples": int(len(test_idx)) if test_idx is not None else 0,
             "train_positive": train_pos,
             "train_negative": train_neg,
+            "calibration_positive": val_pos,
+            "calibration_negative": val_neg,
             "val_positive": val_pos,
             "val_negative": val_neg,
+            "test_positive": test_pos,
+            "test_negative": test_neg,
+            "calibration_alias": "val",
         },
         "normalization": {
             "train_mean": train_mean,
@@ -1656,6 +2035,7 @@ def main():
         },
         "loss_reweighting": {
             "positive_pixel_fraction": positive_fraction,
+            "positive_pixel_fraction_denominator": "positive_samples_only",
             "bce_pos_weight": pos_weight,
         },
         "candidate_selection": candidate_summary,
@@ -1685,13 +2065,18 @@ def main():
         run_config["hard_positive_mining"] = hard_positive_summary
 
     save_json(run_dir / "run_config.json", run_config)
-    np.savez_compressed(run_dir / "split_indices.npz", train_idx=train_idx, val_idx=val_idx)
+    split_payload = {"train_idx": train_idx, "val_idx": val_idx, "calibration_idx": val_idx}
+    if test_idx is not None:
+        split_payload["test_idx"] = test_idx
+    np.savez_compressed(run_dir / "split_indices.npz", **split_payload)
 
     print("\n=== Phase 3 dataset summary ===")
     print(f"  HDF5:            {h5_path}")
     print(f"  Split source:    {candidate_summary['split_source']}")
     print(f"  Train samples:   {len(train_idx)} ({train_pos} pos / {train_neg} neg)")
-    print(f"  Val samples:     {len(val_idx)} ({val_pos} pos / {val_neg} neg)")
+    print(f"  Calibration:     {len(val_idx)} ({val_pos} pos / {val_neg} neg)")
+    if test_idx is not None:
+        print(f"  Test samples:    {len(test_idx)} ({test_pos} pos / {test_neg} neg)")
     if args.min_positive_amplitude > 0.0:
         if candidate_summary["split_source"] == "predefined":
             train_summary = candidate_summary["train"]
@@ -1721,9 +2106,14 @@ def main():
         print(f"  Norm source:     {normalization_source}")
     print(f"  Positive pixels: {positive_fraction:.3%}")
     print(f"  BCE pos_weight:  {pos_weight:.3f}")
+    if args.pixel_loss == "focal":
+        alpha_text = "disabled" if args.focal_alpha < 0.0 else f"{args.focal_alpha:.3f}"
+        print(f"  Pixel loss:      focal(gamma={args.focal_gamma:.3f}, alpha={alpha_text})")
+    else:
+        print("  Pixel loss:      bce")
     if args.boundary_weight > 0.0:
         print(
-            f"  Boundary loss:   +{args.boundary_weight:.2f}x BCE weight "
+            f"  Boundary loss:   +{args.boundary_weight:.2f}x pixel weight "
             f"within {args.boundary_width_pixels} px of target edge"
         )
     if args.radius_head_weight > 0.0:
@@ -1787,6 +2177,8 @@ def main():
         "num_workers": args.num_workers,
         "pin_memory": device.type == "cuda",
         "persistent_workers": args.num_workers > 0,
+        "worker_init_fn": seed_worker if args.num_workers > 0 else None,
+        "generator": torch.Generator().manual_seed(int(args.seed)),
     }
     sampler = None
     if sample_weights is not None:
@@ -1818,9 +2210,16 @@ def main():
             patience=3,
         )
     scaler = torch.amp.GradScaler(device.type, enabled=use_amp)
-    loss_fn = nn.BCEWithLogitsLoss(
-        pos_weight=torch.tensor([pos_weight], dtype=torch.float32, device=device)
-    )
+    loss_pos_weight = torch.tensor([pos_weight], dtype=torch.float32, device=device)
+    if args.pixel_loss == "focal":
+        focal_alpha = None if args.focal_alpha < 0.0 else float(args.focal_alpha)
+        loss_fn = BinaryFocalWithLogitsLoss(
+            pos_weight=loss_pos_weight,
+            gamma=float(args.focal_gamma),
+            alpha=focal_alpha,
+        )
+    else:
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=loss_pos_weight)
 
     history = []
     best_val_score = -float("inf")
@@ -1870,6 +2269,7 @@ def main():
             loss_fn=loss_fn,
             device=device,
             threshold=args.threshold,
+            image_min_positive_pixels=args.image_min_positive_pixels,
             bce_weight=args.bce_weight,
             dice_weight=args.dice_weight,
             aux_head_weight=args.aux_head_weight,
@@ -1891,6 +2291,7 @@ def main():
                 loss_fn=loss_fn,
                 device=device,
                 threshold=args.threshold,
+                image_min_positive_pixels=args.image_min_positive_pixels,
                 bce_weight=args.bce_weight,
                 dice_weight=args.dice_weight,
                 aux_head_weight=args.aux_head_weight,

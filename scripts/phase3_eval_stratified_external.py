@@ -24,11 +24,8 @@ from phase3_evaluate_run import load_json, resolve_checkpoint_path
 
 
 DEFAULT_MODELS = (
-    "original_v4:runs/phase3_unet/phase3_v4_full_2gpu_b64w8_cached:best:mask_max",
-    "boundary_v4:runs/phase3_unet/phase3_v4_boundary_w4_ft:last:mask_max",
-    "v5_consensus:runs/phase3_unet/phase3_v5_aux_hard_w3:last:aux_mask_min:0.98",
-    "v6_aux_only:runs/phase3_unet/phase3_v6_aux_only_w4:best:mask_max",
-    "v6_hard_w15:runs/phase3_unet/phase3_v6_hard_w15:best:mask_max",
+    "random_b64_aux:runs/phase3_unet/remediated_v1_unet_random_b64_aux:best:mask_max",
+    "imagenet_b64_aux:runs/phase3_unet/remediated_v1_unet_imagenet_b64_aux:best:mask_max",
 )
 
 
@@ -46,7 +43,7 @@ def parse_args():
         description="Matched-FPR, bootstrap-CI evaluation on an external stratified validation HDF5.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--data-h5", type=str, default="data/validation_stratified_v1/validation_data.h5")
+    parser.add_argument("--data-h5", type=str, default="data/remediated_v1/test_data.h5")
     parser.add_argument(
         "--model",
         action="append",
@@ -57,7 +54,7 @@ def parse_args():
             "mask_threshold is optional and only affects pixel-mask Dice."
         ),
     )
-    parser.add_argument("--output-dir", type=str, default="runs/phase3_unet/stratified_external_eval_v1")
+    parser.add_argument("--output-dir", type=str, default="runs/phase3_unet/remediated_v1_stratified_external_eval")
     parser.add_argument("--matched-fpr", type=float, default=0.08)
     parser.add_argument("--bootstrap-resamples", type=int, default=1000)
     parser.add_argument("--bootstrap-seed", type=int, default=12345)

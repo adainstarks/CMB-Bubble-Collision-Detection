@@ -1,11 +1,14 @@
 """
-Evaluate v6_aux_only on real-SMICA injections with training-matched edge smoothing.
+Historical v6_aux_only real-SMICA smoothed-edge sensitivity diagnostic.
 
 This tests whether the hard-edge sensitivity grid is artificially depressing
 contested-regime recall. It reuses the existing real-SMICA injection HDF5 for
 background patches, coordinates, amplitudes, radii, signs, and centers, but
 replaces the hard Feeney boundary with edge_sigma sampled uniformly from the
 training distribution.
+
+The default paths are pre-remediation v6 artifacts. The current active flow is
+remediated-v1 plus Batch 6 deployment calibration.
 """
 
 from __future__ import annotations
@@ -22,8 +25,14 @@ from scipy.ndimage import gaussian_filter
 from scipy.stats import binomtest
 
 import phase3_train_unet as p3
+from phase_config import (
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 from phase2_generate_training import fwhm_arcmin_to_sigma_pixels
-from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, T_CMB_K, bubble_collision_signal
+from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, bubble_collision_signal, fractional_signal_delta
 from phase3_evaluate_run import load_json, resolve_checkpoint_path
 from phase_dataset_utils import make_angular_distance_grid
 
@@ -58,6 +67,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--edge-sigma-min-deg", type=float, default=0.3)
     parser.add_argument("--edge-sigma-max-deg", type=float, default=1.0)
     parser.add_argument("--signal-beam-fwhm-arcmin", type=float, default=15.0)
+    parser.add_argument(
+        "--injection-convention",
+        type=str,
+        default=DEFAULT_INJECTION_CONVENTION,
+        choices=INJECTION_CONVENTIONS,
+        help="Signal convention for reconstructed positives.",
+    )
     parser.add_argument("--fpr-targets", type=str, default="0.05,0.10")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=20260421)
@@ -189,7 +205,14 @@ def score_smoothed(args: argparse.Namespace, output_dir: Path):
                     np.radians(float(theta_crit_deg[row])),
                     edge_sigma_deg=float(edge_sigma[start + local]),
                 )
-                signal_delta = np.asarray(signal * (T_CMB_K + base), dtype=np.float32)
+                signal_delta = np.asarray(
+                    fractional_signal_delta(
+                        base,
+                        signal,
+                        injection_convention=args.injection_convention,
+                    ),
+                    dtype=np.float32,
+                )
                 if beam_sigma_pix > 0.0:
                     signal_delta = gaussian_filter(signal_delta, sigma=beam_sigma_pix, mode="reflect")
                 patches[local] = (base + signal_delta).astype(np.float32)
@@ -297,6 +320,9 @@ def summarize(args: argparse.Namespace, scores: dict, thresholds: dict[float, fl
         "edge_sigma_min_deg": float(args.edge_sigma_min_deg),
         "edge_sigma_max_deg": float(args.edge_sigma_max_deg),
         "signal_beam_fwhm_arcmin": float(args.signal_beam_fwhm_arcmin),
+        "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+        "injection_convention": args.injection_convention,
+        "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
         "score_npz": str((output_dir / "smoothed_v6_aux_only_scores.npz").resolve()),
         "global_rows": global_rows,
         "regime_rows": regime_rows,

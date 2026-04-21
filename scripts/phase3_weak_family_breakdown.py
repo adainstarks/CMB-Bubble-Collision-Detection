@@ -1,9 +1,12 @@
 """
-3D weak-family recall breakdown on the stratified external validation set.
+Historical 3D weak-family recall breakdown on the stratified external set.
 
 Rows are amplitude bin x radius bin x edge-smoothing bin, reported for each ML
 checkpoint and classical baseline at the matched-FPR thresholds already selected
 by the stratified external evaluators.
+
+This script is retained for the pre-remediation stratified validation products.
+The remediated-v1 sensitivity grid supersedes it for current claims.
 """
 
 from __future__ import annotations

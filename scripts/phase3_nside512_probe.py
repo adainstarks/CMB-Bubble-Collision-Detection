@@ -1,10 +1,14 @@
 """
-Nside=512 probe utilities for the Phase 3 small-radius question.
+Historical Nside=512 probe utilities for the small-radius question.
 
 This is intentionally isolated from the production Nside=256 pipeline. It
 generates a small 512x512 CAMB training dataset, a focused real-SMICA contested
 cell evaluation dataset, and scores that evaluation dataset with a trained
 fully-convolutional U-Net checkpoint.
+
+The current remediated-v1 baseline remains Nside=256. Use this script only as
+provenance or for a new focused resolution probe, not as the active pipeline
+default.
 """
 
 from __future__ import annotations
@@ -27,6 +31,13 @@ import matplotlib.pyplot as plt
 
 import phase3_train_unet as p3
 from phase1_explore import DATA_DIR, MASK_FILE, MASK_URL, SMICA_FILE, download_file
+from phase_config import (
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_MCEWEN2012,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 from phase2_generate_training import (
     MASK_THRESHOLD,
     SPLIT_TRAIN,
@@ -42,7 +53,7 @@ from phase2_generate_training import (
     stable_group_id,
     target_touches_patch_edge,
 )
-from phase2_signal_model import T_CMB_K, bubble_collision_signal
+from phase2_signal_model import bubble_collision_signal, fractional_signal_delta
 from phase3_evaluate_run import load_json, resolve_checkpoint_path
 from phase_dataset_utils import make_angular_distance_grid, patch_center_pixel
 
@@ -84,6 +95,7 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--edge-sigma-min-deg", type=float, default=0.3)
     train.add_argument("--edge-sigma-max-deg", type=float, default=1.0)
     train.add_argument("--preview-count", type=int, default=6)
+    train.add_argument("--injection-convention", type=str, default=DEFAULT_INJECTION_CONVENTION, choices=INJECTION_CONVENTIONS)
 
     evalp = sub.add_parser("generate-eval", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     add_common_geometry_args(evalp)
@@ -96,6 +108,7 @@ def parse_args() -> argparse.Namespace:
     evalp.add_argument("--theta-crit-deg", type=float, default=5.0)
     evalp.add_argument("--edge-sigma-min-deg", type=float, default=0.3)
     evalp.add_argument("--edge-sigma-max-deg", type=float, default=1.0)
+    evalp.add_argument("--injection-convention", type=str, default=DEFAULT_INJECTION_CONVENTION, choices=INJECTION_CONVENTIONS)
 
     score = sub.add_parser("score-eval", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     score.add_argument("--eval-h5", type=str, default=str(DEFAULT_EVAL_H5))
@@ -266,6 +279,7 @@ def inject_signal(
     edge_sigma_deg: float,
     center_x_pix: float,
     center_y_pix: float,
+    injection_convention: str,
 ) -> tuple[np.ndarray, np.ndarray]:
     theta_grid = make_angular_distance_grid(
         patch_pix,
@@ -280,7 +294,11 @@ def inject_signal(
         np.radians(theta_crit_deg),
         edge_sigma_deg=edge_sigma_deg,
     )
-    injected = (1.0 + signal) * (T_CMB_K + np.asarray(patch, dtype=np.float64)) - T_CMB_K
+    injected = np.asarray(patch, dtype=np.float64) + fractional_signal_delta(
+        patch,
+        signal,
+        injection_convention=injection_convention,
+    )
     mask = (theta_grid <= np.radians(theta_crit_deg)).astype(np.uint8)
     return injected.astype(np.float32), mask
 
@@ -506,6 +524,7 @@ def generate_train(args: argparse.Namespace) -> None:
                     edge_sigma,
                     center_x,
                     center_y,
+                    args.injection_convention,
                 )
                 if target_touches_patch_edge(mask_i):
                     raise RuntimeError("Contained 512 training target touches patch edge.")
@@ -551,6 +570,11 @@ def generate_train(args: argparse.Namespace) -> None:
         "edge_sigma_min_deg": float(args.edge_sigma_min_deg),
         "edge_sigma_max_deg": float(args.edge_sigma_max_deg),
         "theta_training_distribution": "sin(theta_crit)",
+        "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+        "injection_convention": args.injection_convention,
+        "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
+        "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
+        "matched_filter_approximation_note": INJECTION_CONVENTION_NOTES[INJECTION_CONVENTION_MCEWEN2012],
         "split_method": "coordinate_and_realization_disjoint",
         "camb_params": json.dumps(camb_params, sort_keys=True),
         "created_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
@@ -614,6 +638,7 @@ def generate_eval(args: argparse.Namespace) -> None:
                 edge_sigma,
                 center_x,
                 center_y,
+                args.injection_convention,
             )
             if target_touches_patch_edge(mask_i):
                 raise RuntimeError("Contained 512 eval target touches patch edge.")
@@ -621,7 +646,14 @@ def generate_eval(args: argparse.Namespace) -> None:
             # the real map background; smooth only the injected signal delta.
             theta_grid = make_angular_distance_grid(args.patch_pix, args.reso_arcmin, center_x_pix=center_x, center_y_pix=center_y)
             signal = bubble_collision_signal(theta_grid, z0, zcrit, np.radians(float(args.theta_crit_deg)), edge_sigma_deg=edge_sigma)
-            signal_delta = np.asarray(signal * (T_CMB_K + clean), dtype=np.float32)
+            signal_delta = np.asarray(
+                fractional_signal_delta(
+                    clean,
+                    signal,
+                    injection_convention=args.injection_convention,
+                ),
+                dtype=np.float32,
+            )
             beam_sigma = fwhm_arcmin_to_sigma_pixels(args.beam_fwhm_arcmin, args.reso_arcmin)
             if beam_sigma > 0.0:
                 signal_delta = gaussian_filter(signal_delta, sigma=beam_sigma, mode="reflect")
@@ -670,6 +702,11 @@ def generate_eval(args: argparse.Namespace) -> None:
         "edge_sigma_min_deg": float(args.edge_sigma_min_deg),
         "edge_sigma_max_deg": float(args.edge_sigma_max_deg),
         "beam_fwhm_arcmin": float(args.beam_fwhm_arcmin),
+        "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+        "injection_convention": args.injection_convention,
+        "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
+        "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
+        "matched_filter_approximation_note": INJECTION_CONVENTION_NOTES[INJECTION_CONVENTION_MCEWEN2012],
         "sky_fraction": float(sky_fraction),
         "created_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
     }

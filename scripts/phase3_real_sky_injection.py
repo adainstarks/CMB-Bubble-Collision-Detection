@@ -2,16 +2,16 @@
 Inject Feeney Eq. 1 signals into real Planck cleaned-map patches and compare
 deployment-policy sensitivity against the CAMB-background sensitivity grid.
 
-This is the real-background validation gate before full Phase 5 sky screening.
+This is the real-background validation gate before full sky screening.
 It does not train. It:
 
     1. Samples clean, mask-buffered real-map patch centers independent of prior
        train/validation/sensitivity coordinate pools.
     2. Extracts real cleaned-map background patches.
     3. Injects hard-boundary Feeney Eq. 1 signals over the sensitivity grid.
-    4. Scores the frozen Phase 3 policy:
-           v5_consensus AND (score_avg OR matched_template)
-    5. Compares P_det(A, theta_c) to the existing CAMB sensitivity curve.
+    4. Scores the configured remediated ML branches plus
+       circular_template_screen.
+    5. Compares P_det(A, theta_c) to the matching CAMB sensitivity curve.
 
 Default map is Planck 2018 SMICA. Other cleaned maps can be selected if already
 supported by phase2_extract_smica_null_controls.py.
@@ -24,7 +24,6 @@ import csv
 import datetime as dt
 import json
 import math
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import h5py
@@ -36,51 +35,71 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from scipy.ndimage import gaussian_filter
+from scipy.fft import next_fast_len
 from scipy.signal import fftconvolve
 from scipy.stats import binomtest
 
 import phase3_train_unet as p3
 from phase2_extract_smica_null_controls import PLANCK_CLEANED_MAPS, ensure_map_input
 from phase2_generate_stratified_validation import filter_excluded_coordinates, load_exclusion_vectors
+from phase_config import (
+    CANONICAL_MASK_THRESHOLD,
+    DEFAULTS,
+    DEFAULT_INJECTION_CONVENTION,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_MCEWEN2012,
+    INJECTION_CONVENTION_NOTES,
+    PROVENANCE_SCHEMA_VERSION,
+)
 from phase2_generate_training import (
     GEOMETRY_MODE_CODES,
     GEOMETRY_MODES,
-    MASK_THRESHOLD,
     NSIDE_WORKING,
     build_coordinate_pool,
+    coordinate_cluster_ids,
+    coordinate_cluster_pixels,
     fwhm_arcmin_to_sigma_pixels,
     load_mask,
     project_patch,
     sample_actual_geometry_mode,
     sample_signal_geometry,
 )
-from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, T_CMB_K, bubble_collision_signal
+from phase2_observing_model import remove_real_map_low_modes
+from phase2_signal_model import PATCH_PIX, RESO_ARCMIN, bubble_collision_signal, fractional_signal_delta
 from phase3_ensemble_evaluate import DEFAULT_MODELS, load_model, parse_model_spec
+from phase3_method_registry import CIRCULAR_TEMPLATE_SCREEN, method_metadata
 from phase3_sensitivity_curve import (
     SIGN_QUADRANTS,
     make_feeney_template_kernel,
-    score_matched_template_patch,
+    score_circular_template_patch,
 )
 from phase_dataset_utils import patch_center_pixel, stable_group_id
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "real_sky_injection_v1"
-DEFAULT_SENS_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_report.json"
-DEFAULT_SENS_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_scores.npz"
-DEFAULT_SENS_H5 = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5"
-DEFAULT_ENSEMBLE_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "ensemble_eval_v1" / "ensemble_eval.json"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_real_sky_injection_smica_mask090"
+DEFAULT_SENS_REPORT = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_report.json"
+)
+DEFAULT_SENS_SCORES = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_scores.npz"
+)
+DEFAULT_SENS_H5 = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_data.h5"
+)
+DEFAULT_ENSEMBLE_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_ensemble_eval" / "ensemble_eval.json"
 DEFAULT_AMPLITUDE_GRID = (1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4)
 DEFAULT_THETA_GRID_DEG = (5.0, 10.0, 15.0, 20.0, 25.0)
+DEFAULT_ZCRIT_RATIO_GRID = (0.0, 0.5, 1.0, 2.0)
 POLICIES = (
     "v5_only",
     "score_avg_only",
-    "matched_template_only",
+    f"{CIRCULAR_TEMPLATE_SCREEN}_only",
     "normal_candidate",
     "all_candidates",
     "union_or",
 )
-ML_METHODS = ("original_v4", "boundary_v4", "v5_consensus", "v6_aux_only", "v6_hard_w15")
+ML_METHODS = ("random_b64_aux", "imagenet_b64_aux")
 
 
 def parse_float_list(text):
@@ -96,9 +115,17 @@ def parse_args():
     parser.add_argument("--map-name", type=str, default="smica", choices=sorted(PLANCK_CLEANED_MAPS))
     parser.add_argument("--num-backgrounds", type=int, default=500)
     parser.add_argument("--pool-size", type=int, default=6000)
+    parser.add_argument("--mask-threshold", type=float, default=CANONICAL_MASK_THRESHOLD)
+    parser.add_argument(
+        "--coord-cluster-nside",
+        type=int,
+        default=4,
+        help="HEALPix Nside used for coordinate-cluster metadata on real-map backgrounds.",
+    )
     parser.add_argument("--seed", type=int, default=20260419)
     parser.add_argument("--amplitude-grid", type=str, default=",".join(f"{x:g}" for x in DEFAULT_AMPLITUDE_GRID))
     parser.add_argument("--theta-grid-deg", type=str, default=",".join(f"{x:g}" for x in DEFAULT_THETA_GRID_DEG))
+    parser.add_argument("--zcrit-ratio-grid", type=str, default=",".join(f"{x:g}" for x in DEFAULT_ZCRIT_RATIO_GRID))
     parser.add_argument("--geometry-mode", type=str, default="contained", choices=GEOMETRY_MODES)
     parser.add_argument(
         "--truncated-positive-fraction",
@@ -113,10 +140,23 @@ def parse_args():
     parser.add_argument("--contained-margin-deg", type=float, default=0.5)
     parser.add_argument("--edge-sigma-deg", type=float, default=0.0)
     parser.add_argument(
+        "--injection-convention",
+        type=str,
+        default=DEFAULT_INJECTION_CONVENTION,
+        choices=INJECTION_CONVENTIONS,
+        help=(
+            "Signal convention for generated positives. Use the McEwen additive "
+            "branch only when building explicit additive benchmark products."
+        ),
+    )
+    parser.add_argument(
         "--signal-beam-fwhm-arcmin",
         type=float,
-        default=15.0,
-        help="Beam smoothing applied to the injected signal delta only. The real map background is not re-smoothed.",
+        default=0.0,
+        help=(
+            "Optional legacy patch-space smoothing applied only to the injected signal delta. "
+            "Keep 0 for remediated real-sky injections to avoid double-smoothing Planck maps."
+        ),
     )
     parser.add_argument("--exclude-h5", action="append", default=[])
     parser.add_argument("--exclude-radius-deg", type=float, default=0.25)
@@ -124,11 +164,25 @@ def parse_args():
     parser.add_argument("--sensitivity-scores", type=str, default=str(DEFAULT_SENS_SCORES))
     parser.add_argument("--sensitivity-h5", type=str, default=str(DEFAULT_SENS_H5))
     parser.add_argument("--ensemble-report", type=str, default=str(DEFAULT_ENSEMBLE_REPORT))
-    parser.add_argument("--model", action="append", default=[], help="Optional model specs; defaults to Phase 3 five-branch set.")
+    parser.add_argument(
+        "--model",
+        action="append",
+        default=[],
+        help="Optional model specs; defaults to the remediated random/ImageNet branches.",
+    )
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--cache-ml-data",
+        action="store_true",
+        help=(
+            "Load the real-sky injection HDF5 tensors into host memory before ML scoring. "
+            "This avoids slow repeated HDF5 reads for score-only validation runs."
+        ),
+    )
     parser.add_argument("--classical-workers", type=int, default=8)
     parser.add_argument("--classical-chunk-size", type=int, default=256)
+    parser.add_argument("--classical-beam-fwhm-arcmin", type=float, default=DEFAULTS.beam_fwhm_arcmin)
     parser.add_argument("--bootstrap-resamples", type=int, default=1000)
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
     parser.add_argument("--reuse-data", action="store_true")
@@ -142,16 +196,23 @@ def parse_args():
 def validate_args(args):
     args.amplitude_grid = parse_float_list(args.amplitude_grid)
     args.theta_grid_deg = parse_float_list(args.theta_grid_deg)
+    args.zcrit_ratio_grid = parse_float_list(args.zcrit_ratio_grid)
     if args.num_backgrounds <= 0:
         raise ValueError("--num-backgrounds must be positive.")
     if args.num_backgrounds % len(SIGN_QUADRANTS) != 0:
         raise ValueError("--num-backgrounds must be divisible by 4 for balanced sign quadrants per cell.")
     if args.pool_size < args.num_backgrounds:
         raise ValueError("--pool-size must be >= --num-backgrounds.")
+    if not (0.0 < args.mask_threshold <= 1.0):
+        raise ValueError("--mask-threshold must lie in (0, 1].")
+    if args.coord_cluster_nside <= 0 or not hp.isnsideok(args.coord_cluster_nside):
+        raise ValueError("--coord-cluster-nside must be a valid positive HEALPix Nside.")
     if any(value <= 0.0 for value in args.amplitude_grid):
         raise ValueError("--amplitude-grid values must be positive.")
     if any(value <= 0.0 for value in args.theta_grid_deg):
         raise ValueError("--theta-grid-deg values must be positive.")
+    if not args.zcrit_ratio_grid or any(value < 0.0 for value in args.zcrit_ratio_grid):
+        raise ValueError("--zcrit-ratio-grid must contain non-negative values.")
     if args.contained_margin_deg < 0.0:
         raise ValueError("--contained-margin-deg must be non-negative.")
     if args.signal_center_edge_margin_pix < 0.0:
@@ -180,15 +241,18 @@ def validate_args(args):
         raise ValueError("--classical-workers must be positive.")
     if args.classical_chunk_size <= 0:
         raise ValueError("--classical-chunk-size must be positive.")
+    if args.classical_beam_fwhm_arcmin < 0.0:
+        raise ValueError("--classical-beam-fwhm-arcmin must be non-negative.")
     if args.bootstrap_resamples <= 0:
         raise ValueError("--bootstrap-resamples must be positive.")
 
 
 def default_exclusion_h5s():
     paths = [
-        PROJECT_ROOT / "data" / "training_v4" / "training_data.h5",
-        PROJECT_ROOT / "data" / "validation_stratified_v1" / "validation_data.h5",
-        PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "training_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "calibration_data.h5",
+        PROJECT_ROOT / "data" / "remediated_v1" / "test_data.h5",
+        PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_data.h5",
     ]
     return [str(path) for path in paths if path.exists()]
 
@@ -214,12 +278,28 @@ def load_json(path):
         return json.load(handle)
 
 
-def read_sensitivity_thresholds(sensitivity_report, ensemble_report):
+def read_sensitivity_thresholds(sensitivity_report, ensemble_report, ml_methods):
     sens = load_json(sensitivity_report)
-    ensemble = load_json(ensemble_report)
-    thresholds = {method: float(sens["thresholds"][method]["threshold"]) for method in ML_METHODS}
-    thresholds["matched_template"] = float(sens["thresholds"]["matched_template"]["threshold"])
-    thresholds["score_avg"] = float(ensemble["ensemble_thresholds"]["score_avg"])
+    thresholds = {
+        method: float(sens["thresholds"][method]["threshold"])
+        for method in ml_methods
+        if method in sens["thresholds"]
+    }
+    missing = [method for method in ml_methods if method not in thresholds]
+    if missing:
+        raise KeyError(f"Sensitivity report is missing thresholds for requested ML methods: {missing}")
+    classical_key = (
+        CIRCULAR_TEMPLATE_SCREEN
+        if CIRCULAR_TEMPLATE_SCREEN in sens["thresholds"]
+        else "matched_template"
+    )
+    thresholds[CIRCULAR_TEMPLATE_SCREEN] = float(sens["thresholds"][classical_key]["threshold"])
+    thresholds["matched_template"] = thresholds[CIRCULAR_TEMPLATE_SCREEN]
+    ensemble_path = Path(ensemble_report)
+    if ensemble_path.exists():
+        ensemble = load_json(ensemble_path)
+        if "ensemble_thresholds" in ensemble and "score_avg" in ensemble["ensemble_thresholds"]:
+            thresholds["score_avg"] = float(ensemble["ensemble_thresholds"]["score_avg"])
     return thresholds
 
 
@@ -243,8 +323,13 @@ def write_array_group(h5, name, arrays):
 
 def generate_dataset(args, h5_path):
     rng = np.random.default_rng(args.seed)
-    mask_256, sky_fraction = load_mask()
-    coord_pool, mask_fractions = build_coordinate_pool(mask_256, args.pool_size, rng, min_unmasked_fraction=MASK_THRESHOLD)
+    mask_256, sky_fraction = load_mask(threshold=args.mask_threshold)
+    coord_pool, mask_fractions = build_coordinate_pool(
+        mask_256,
+        args.pool_size,
+        rng,
+        min_unmasked_fraction=args.mask_threshold,
+    )
     exclusions = args.exclude_h5 or default_exclusion_h5s()
     exclusion_vectors = combined_exclusion_vectors(exclusions)
     coord_pool, mask_fractions = filter_excluded_coordinates(
@@ -259,13 +344,22 @@ def generate_dataset(args, h5_path):
         )
     coord_pool = coord_pool[: args.num_backgrounds]
     mask_fractions = mask_fractions[: args.num_backgrounds]
+    coord_cluster_pix = coordinate_cluster_pixels(coord_pool, args.coord_cluster_nside)
+    coord_cluster_id = coordinate_cluster_ids(coord_cluster_pix, args.coord_cluster_nside)
 
     product = ensure_map_input(args.map_name)
     cleaned_map = hp.read_map(product["path"], field=0)
     cleaned_map_256 = hp.ud_grade(cleaned_map, NSIDE_WORKING)
+    cleaned_map_256 = remove_real_map_low_modes(cleaned_map_256, mask=mask_256)
+    cleaned_map_256[np.asarray(mask_256) <= 0] = 0.0
 
     num_neg = int(args.num_backgrounds)
-    num_pos = int(args.num_backgrounds * len(args.amplitude_grid) * len(args.theta_grid_deg))
+    num_pos = int(
+        args.num_backgrounds
+        * len(args.amplitude_grid)
+        * len(args.theta_grid_deg)
+        * len(args.zcrit_ratio_grid)
+    )
     num_samples = num_neg + num_pos
     chunk_size = min(max(args.classical_chunk_size, 1), num_samples)
     base_patches = np.empty((num_neg, PATCH_PIX, PATCH_PIX), dtype=np.float32)
@@ -276,6 +370,7 @@ def generate_dataset(args, h5_path):
         "glon_deg": np.zeros(num_samples, dtype=np.float32),
         "glat_deg": np.zeros(num_samples, dtype=np.float32),
         "coord_pool_idx": np.zeros(num_samples, dtype=np.int32),
+        "coord_cluster_id": np.zeros(num_samples, dtype=np.uint64),
         "coord_mask_fraction": np.zeros(num_samples, dtype=np.float32),
         "cmb_realization_idx": np.full(num_samples, -1, dtype=np.int32),
         "background_id": np.zeros(num_samples, dtype=np.uint64),
@@ -288,6 +383,7 @@ def generate_dataset(args, h5_path):
         "theta_crit_deg": np.zeros(num_samples, dtype=np.float32),
         "z0": np.zeros(num_samples, dtype=np.float32),
         "zcrit": np.zeros(num_samples, dtype=np.float32),
+        "zcrit_ratio": np.zeros(num_samples, dtype=np.float32),
         "edge_sigma_deg": np.zeros(num_samples, dtype=np.float32),
         "signal_center_x_pix": np.full(num_samples, patch_center_pixel(PATCH_PIX), dtype=np.float32),
         "signal_center_y_pix": np.full(num_samples, patch_center_pixel(PATCH_PIX), dtype=np.float32),
@@ -306,6 +402,7 @@ def generate_dataset(args, h5_path):
     strat = {
         "amplitude_idx": np.full(num_samples, -1, dtype=np.int16),
         "theta_idx": np.full(num_samples, -1, dtype=np.int16),
+        "zcrit_ratio_idx": np.full(num_samples, -1, dtype=np.int16),
         "sign_quadrant": np.full(num_samples, -1, dtype=np.int16),
     }
 
@@ -329,6 +426,7 @@ def generate_dataset(args, h5_path):
             metadata["glon_deg"][bg_idx] = float(lon)
             metadata["glat_deg"][bg_idx] = float(lat)
             metadata["coord_pool_idx"][bg_idx] = bg_idx
+            metadata["coord_cluster_id"][bg_idx] = coord_cluster_id[bg_idx]
             metadata["coord_mask_fraction"][bg_idx] = float(mask_fractions[bg_idx])
             metadata["background_id"][bg_idx] = np.uint64(background_id)
             metadata["split_group_id"][bg_idx] = np.uint64(background_id)
@@ -388,73 +486,91 @@ def generate_dataset(args, h5_path):
                 signal_center_in_patch[bg_idx] = geometry_i["signal_center_in_patch"]
 
             for amp_i, amp in enumerate(args.amplitude_grid):
-                quadrants = np.tile(np.arange(len(SIGN_QUADRANTS), dtype=np.int16), args.num_backgrounds // len(SIGN_QUADRANTS))
-                rng.shuffle(quadrants)
-                signs = sign_table[quadrants]
-                z0_values = (signs[:, 0] * float(amp)).astype(np.float32)
-                zcrit_values = (signs[:, 1] * float(amp)).astype(np.float32)
-                injected_batch = np.empty_like(base_patches)
-                for bg_idx in range(args.num_backgrounds):
-                    signal = bubble_collision_signal(
-                        theta_grids[bg_idx],
-                        float(z0_values[bg_idx]),
-                        float(zcrit_values[bg_idx]),
-                        np.radians(float(theta_deg)),
-                        edge_sigma_deg=args.edge_sigma_deg,
+                for ratio_i, zcrit_ratio in enumerate(args.zcrit_ratio_grid):
+                    quadrants = np.tile(
+                        np.arange(len(SIGN_QUADRANTS), dtype=np.int16),
+                        args.num_backgrounds // len(SIGN_QUADRANTS),
                     )
-                    signal_delta = np.asarray(signal * (T_CMB_K + base_patches[bg_idx]), dtype=np.float32)
-                    if signal_beam_sigma_pix > 0.0:
-                        signal_delta = gaussian_filter(signal_delta, sigma=signal_beam_sigma_pix, mode="reflect")
-                    injected_batch[bg_idx] = (base_patches[bg_idx] + signal_delta).astype(np.float32)
+                    rng.shuffle(quadrants)
+                    signs = sign_table[quadrants]
+                    z0_values = (signs[:, 0] * float(amp)).astype(np.float32)
+                    zcrit_values = (signs[:, 1] * float(amp) * float(zcrit_ratio)).astype(np.float32)
+                    injected_batch = np.empty_like(base_patches)
+                    for bg_idx in range(args.num_backgrounds):
+                        signal = bubble_collision_signal(
+                            theta_grids[bg_idx],
+                            float(z0_values[bg_idx]),
+                            float(zcrit_values[bg_idx]),
+                            np.radians(float(theta_deg)),
+                            edge_sigma_deg=args.edge_sigma_deg,
+                        )
+                        signal_delta = np.asarray(
+                            fractional_signal_delta(
+                                base_patches[bg_idx],
+                                signal,
+                                injection_convention=args.injection_convention,
+                            ),
+                            dtype=np.float32,
+                        )
+                        if signal_beam_sigma_pix > 0.0:
+                            signal_delta = gaussian_filter(signal_delta, sigma=signal_beam_sigma_pix, mode="reflect")
+                        injected_batch[bg_idx] = (base_patches[bg_idx] + signal_delta).astype(np.float32)
 
-                stop_idx = sample_idx + args.num_backgrounds
-                row_slice = slice(sample_idx, stop_idx)
-                sample_rows = np.arange(sample_idx, stop_idx, dtype=np.int64)
-                patches[row_slice] = injected_batch
-                masks[row_slice] = target_masks
-                labels[row_slice] = 1
-                metadata["background_index"][row_slice] = np.arange(args.num_backgrounds, dtype=np.int32)
-                metadata["glon_deg"][row_slice] = metadata["glon_deg"][: args.num_backgrounds]
-                metadata["glat_deg"][row_slice] = metadata["glat_deg"][: args.num_backgrounds]
-                metadata["coord_pool_idx"][row_slice] = np.arange(args.num_backgrounds, dtype=np.int32)
-                metadata["coord_mask_fraction"][row_slice] = metadata["coord_mask_fraction"][: args.num_backgrounds]
-                metadata["background_id"][row_slice] = metadata["background_id"][: args.num_backgrounds]
-                metadata["split_group_id"][row_slice] = np.asarray(
-                    [
-                        stable_group_id("real_sky_injected_event", args.seed, int(row), int(bg_id))
-                        for row, bg_id in zip(sample_rows, metadata["background_id"][: args.num_backgrounds])
-                    ],
-                    dtype=np.uint64,
-                )
-                truth["has_signal"][row_slice] = 1
-                truth["event_id"][row_slice] = np.asarray(
-                    [stable_group_id("real_sky_injection_event", args.seed, int(row)) for row in sample_rows],
-                    dtype=np.uint64,
-                )
-                truth["amplitude"][row_slice] = float(amp)
-                truth["theta_crit_deg"][row_slice] = float(theta_deg)
-                truth["z0"][row_slice] = z0_values
-                truth["zcrit"][row_slice] = zcrit_values
-                truth["edge_sigma_deg"][row_slice] = float(args.edge_sigma_deg)
-                truth["signal_center_x_pix"][row_slice] = center_x
-                truth["signal_center_y_pix"][row_slice] = center_y
-                truth["signal_center_dx_deg"][row_slice] = (center_x - center_pix) * RESO_ARCMIN / 60.0
-                truth["signal_center_dy_deg"][row_slice] = (center_y - center_pix) * RESO_ARCMIN / 60.0
-                truth["geometry_mode_code"][row_slice] = geometry_codes
-                truth["fully_contained"][row_slice] = fully_contained
-                truth["target_touches_edge"][row_slice] = touches_edge
-                truth["visible_target_fraction"][row_slice] = visible_target_fraction
-                truth["visible_target_pixels"][row_slice] = visible_target_pixels
-                truth["full_disc_pixels_est"][row_slice] = full_disc_pixels_est
-                truth["target_edge_contact_pixels"][row_slice] = target_edge_contact_pixels
-                truth["disc_edge_margin_pix"][row_slice] = disc_edge_margin_pix
-                truth["signal_center_in_patch"][row_slice] = signal_center_in_patch
-                strat["amplitude_idx"][row_slice] = amp_i
-                strat["theta_idx"][row_slice] = theta_i
-                strat["sign_quadrant"][row_slice] = quadrants
-                sample_idx = stop_idx
-                print(f"  Injected cell A={amp:.1e}, theta={theta_deg:g}: {sample_idx - num_neg:6d} / {num_pos}", flush=True)
-                h5.flush()
+                    stop_idx = sample_idx + args.num_backgrounds
+                    row_slice = slice(sample_idx, stop_idx)
+                    sample_rows = np.arange(sample_idx, stop_idx, dtype=np.int64)
+                    patches[row_slice] = injected_batch
+                    masks[row_slice] = target_masks
+                    labels[row_slice] = 1
+                    metadata["background_index"][row_slice] = np.arange(args.num_backgrounds, dtype=np.int32)
+                    metadata["glon_deg"][row_slice] = metadata["glon_deg"][: args.num_backgrounds]
+                    metadata["glat_deg"][row_slice] = metadata["glat_deg"][: args.num_backgrounds]
+                    metadata["coord_pool_idx"][row_slice] = np.arange(args.num_backgrounds, dtype=np.int32)
+                    metadata["coord_cluster_id"][row_slice] = coord_cluster_id
+                    metadata["coord_mask_fraction"][row_slice] = metadata["coord_mask_fraction"][: args.num_backgrounds]
+                    metadata["background_id"][row_slice] = metadata["background_id"][: args.num_backgrounds]
+                    metadata["split_group_id"][row_slice] = np.asarray(
+                        [
+                            stable_group_id("real_sky_injected_event", args.seed, int(row), int(bg_id))
+                            for row, bg_id in zip(sample_rows, metadata["background_id"][: args.num_backgrounds])
+                        ],
+                        dtype=np.uint64,
+                    )
+                    truth["has_signal"][row_slice] = 1
+                    truth["event_id"][row_slice] = np.asarray(
+                        [stable_group_id("real_sky_injection_event", args.seed, int(row)) for row in sample_rows],
+                        dtype=np.uint64,
+                    )
+                    truth["amplitude"][row_slice] = float(amp)
+                    truth["theta_crit_deg"][row_slice] = float(theta_deg)
+                    truth["z0"][row_slice] = z0_values
+                    truth["zcrit"][row_slice] = zcrit_values
+                    truth["zcrit_ratio"][row_slice] = float(zcrit_ratio)
+                    truth["edge_sigma_deg"][row_slice] = float(args.edge_sigma_deg)
+                    truth["signal_center_x_pix"][row_slice] = center_x
+                    truth["signal_center_y_pix"][row_slice] = center_y
+                    truth["signal_center_dx_deg"][row_slice] = (center_x - center_pix) * RESO_ARCMIN / 60.0
+                    truth["signal_center_dy_deg"][row_slice] = (center_y - center_pix) * RESO_ARCMIN / 60.0
+                    truth["geometry_mode_code"][row_slice] = geometry_codes
+                    truth["fully_contained"][row_slice] = fully_contained
+                    truth["target_touches_edge"][row_slice] = touches_edge
+                    truth["visible_target_fraction"][row_slice] = visible_target_fraction
+                    truth["visible_target_pixels"][row_slice] = visible_target_pixels
+                    truth["full_disc_pixels_est"][row_slice] = full_disc_pixels_est
+                    truth["target_edge_contact_pixels"][row_slice] = target_edge_contact_pixels
+                    truth["disc_edge_margin_pix"][row_slice] = disc_edge_margin_pix
+                    truth["signal_center_in_patch"][row_slice] = signal_center_in_patch
+                    strat["amplitude_idx"][row_slice] = amp_i
+                    strat["theta_idx"][row_slice] = theta_i
+                    strat["zcrit_ratio_idx"][row_slice] = ratio_i
+                    strat["sign_quadrant"][row_slice] = quadrants
+                    sample_idx = stop_idx
+                    print(
+                        f"  Injected cell A={amp:.1e}, theta={theta_deg:g}, "
+                        f"|zcrit|/|z0|={zcrit_ratio:g}: {sample_idx - num_neg:6d} / {num_pos}",
+                        flush=True,
+                    )
+                    h5.flush()
 
         write_array_group(h5, "metadata", metadata)
         write_array_group(h5, "truth", truth)
@@ -463,6 +579,8 @@ def generate_dataset(args, h5_path):
         coord_group.create_dataset("glon_deg", data=coord_pool[:, 0].astype(np.float32), compression="gzip", shuffle=True)
         coord_group.create_dataset("glat_deg", data=coord_pool[:, 1].astype(np.float32), compression="gzip", shuffle=True)
         coord_group.create_dataset("mask_fraction", data=mask_fractions.astype(np.float32), compression="gzip", shuffle=True)
+        coord_group.create_dataset("coord_cluster_pix", data=coord_cluster_pix.astype(np.int32), compression="gzip", shuffle=True)
+        coord_group.create_dataset("coord_cluster_id", data=coord_cluster_id.astype(np.uint64), compression="gzip", shuffle=True)
         summary = {
             "created_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
             "map_name": args.map_name,
@@ -475,6 +593,13 @@ def generate_dataset(args, h5_path):
             "num_negative": int(num_neg),
             "amplitude_grid": json.dumps(tuple(float(x) for x in args.amplitude_grid)),
             "theta_grid_deg": json.dumps(tuple(float(x) for x in args.theta_grid_deg)),
+            "zcrit_ratio_grid": json.dumps(tuple(float(x) for x in args.zcrit_ratio_grid)),
+            "amplitude_definition": "|z0| = A; |zcrit|/|z0| is scanned over zcrit_ratio_grid with balanced sign quadrants",
+            "provenance_schema_version": PROVENANCE_SCHEMA_VERSION,
+            "injection_convention": args.injection_convention,
+            "injection_convention_note": INJECTION_CONVENTION_NOTES[args.injection_convention],
+            "matched_filter_approximation_convention": INJECTION_CONVENTION_MCEWEN2012,
+            "matched_filter_approximation_note": INJECTION_CONVENTION_NOTES[INJECTION_CONVENTION_MCEWEN2012],
             "geometry_mode": args.geometry_mode,
             "truncated_positive_fraction_requested": float(args.truncated_positive_fraction),
             "truncated_visible_fraction_min": float(args.truncated_visible_fraction_min),
@@ -487,12 +612,21 @@ def generate_dataset(args, h5_path):
             "min_positive_visible_target_fraction": float(np.min(truth["visible_target_fraction"][num_neg:])),
             "edge_sigma_deg": float(args.edge_sigma_deg),
             "signal_beam_fwhm_arcmin": float(args.signal_beam_fwhm_arcmin),
-            "background_beam_note": "real cleaned-map background is not re-smoothed; beam is applied only to injected signal delta",
+            "beam_fwhm_arcmin": float(DEFAULTS.beam_fwhm_arcmin),
+            "injection_beam_policy": (
+                "no_patch_space_injection_smoothing"
+                if args.signal_beam_fwhm_arcmin == 0.0
+                else "legacy_signal_delta_only_patch_space_smoothing"
+            ),
+            "background_beam_note": "real cleaned-map background is not re-smoothed; default injection path avoids patch-space signal smoothing",
             "nside": int(NSIDE_WORKING),
             "patch_pixels": int(PATCH_PIX),
             "reso_arcmin": float(RESO_ARCMIN),
-            "mask_threshold": float(MASK_THRESHOLD),
+            "mask_threshold": float(args.mask_threshold),
             "sky_fraction": float(sky_fraction),
+            "low_mode_policy": "remove_monopole_dipole_with_mask",
+            "coord_cluster_nside": int(args.coord_cluster_nside),
+            "num_coordinate_clusters": int(len(np.unique(coord_cluster_pix))),
             "exclude_h5": json.dumps([str(Path(p).resolve()) for p in exclusions]),
             "exclude_radius_deg": float(args.exclude_radius_deg),
             "contained_margin_deg": float(args.contained_margin_deg),
@@ -511,10 +645,71 @@ def generate_dataset(args, h5_path):
     return h5_path
 
 
-def score_matched_template_h5(h5_path, output_dir, theta_grid_deg, beam_fwhm_arcmin, workers, chunk_size, reuse_scores):
+def score_circular_template_batch(patches, kernels):
+    """Vectorized circular-template screen matching the per-patch FFT score.
+
+    The score remains a translation scan of the linear Feeney cap templates
+    used by :func:`score_circular_template_patch`; this only batches the FFT
+    convolutions across patches to avoid per-sample Python overhead.
+    """
+
+    patches = np.asarray(patches, dtype=np.float32).copy()
+    patches -= patches.mean(axis=(1, 2), keepdims=True)
+    std = patches.std(axis=(1, 2), keepdims=True)
+    np.divide(patches, std, out=patches, where=std > 0.0)
+    best = np.full(patches.shape[0], -np.inf, dtype=np.float32)
+    for kernel in kernels:
+        response = fftconvolve(
+            patches,
+            np.asarray(kernel[::-1, ::-1], dtype=np.float32)[None, :, :],
+            mode="same",
+            axes=(-2, -1),
+        )
+        best = np.maximum(best, response.reshape(response.shape[0], -1).max(axis=1).astype(np.float32))
+    return best
+
+
+def score_circular_template_batch_torch(patches, kernels, device):
+    """GPU FFT implementation of the circular-template screen.
+
+    This computes the same full linear convolution and centered ``same`` crop
+    as SciPy's :func:`fftconvolve`; the only change is batching over patches
+    and template kernels on the accelerator.
+    """
+
+    if device.type != "cuda":
+        return score_circular_template_batch(patches, kernels)
+    patches = np.asarray(patches, dtype=np.float32).copy()
+    patches -= patches.mean(axis=(1, 2), keepdims=True)
+    std = patches.std(axis=(1, 2), keepdims=True)
+    np.divide(patches, std, out=patches, where=std > 0.0)
+    patch_tensor = torch.from_numpy(patches).to(device=device, non_blocking=True)
+    kernel_array = np.stack(
+        [np.asarray(kernel[::-1, ::-1], dtype=np.float32) for kernel in kernels],
+        axis=0,
+    )
+    kernel_tensor = torch.from_numpy(kernel_array).to(device=device, non_blocking=True)
+    _, height, width = patch_tensor.shape
+    _, kernel_height, kernel_width = kernel_tensor.shape
+    full_height = height + kernel_height - 1
+    full_width = width + kernel_width - 1
+    fft_height = next_fast_len(full_height)
+    fft_width = next_fast_len(full_width)
+    patch_fft = torch.fft.rfftn(patch_tensor[:, None, :, :], s=(fft_height, fft_width), dim=(-2, -1))
+    kernel_fft = torch.fft.rfftn(kernel_tensor[None, :, :, :], s=(fft_height, fft_width), dim=(-2, -1))
+    conv = torch.fft.irfftn(patch_fft * kernel_fft, s=(fft_height, fft_width), dim=(-2, -1))
+    start_y = (full_height - height) // 2
+    start_x = (full_width - width) // 2
+    same = conv[:, :, start_y: start_y + height, start_x: start_x + width]
+    scores = same.flatten(2).amax(dim=2).amax(dim=1).detach().cpu().numpy()
+    del patch_tensor, kernel_tensor, patch_fft, kernel_fft, conv, same
+    return scores.astype(np.float32, copy=False)
+
+
+def score_circular_template_h5(h5_path, output_dir, theta_grid_deg, beam_fwhm_arcmin, workers, chunk_size, reuse_scores, device=None):
     cache_dir = output_dir / "score_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / "real_sky_matched_template_scores.npz"
+    cache_path = cache_dir / f"real_sky_{CIRCULAR_TEMPLATE_SCREEN}_scores.npz"
     if reuse_scores and cache_path.exists():
         with np.load(cache_path) as loaded:
             return np.asarray(loaded["scores"], dtype=np.float32)
@@ -527,24 +722,23 @@ def score_matched_template_h5(h5_path, output_dir, theta_grid_deg, beam_fwhm_arc
     with h5py.File(h5_path, "r") as h5:
         n = int(h5["labels"].shape[0])
         scores = np.zeros(n, dtype=np.float32)
-        progress = p3.ProgressPrinter(n, f"Real-sky matched_template ({workers} threads)")
+        progress = p3.ProgressPrinter(n, f"Real-sky {CIRCULAR_TEMPLATE_SCREEN} ({workers} threads)")
         completed = 0
         for start in range(0, n, chunk_size):
             stop = min(start + chunk_size, n)
             patches = np.asarray(h5["patches"][start:stop], dtype=np.float32)
-
-            def score_one(local_idx):
-                return local_idx, score_matched_template_patch(patches[local_idx], kernels)
-
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = [executor.submit(score_one, idx) for idx in range(len(patches))]
-                for future in as_completed(futures):
-                    local_idx, score = future.result()
-                    scores[start + local_idx] = score
-                    completed += 1
-                    if completed % 500 == 0 or completed == n:
-                        progress.update(completed)
-    np.savez_compressed(cache_path, scores=scores)
+            if device is not None and device.type == "cuda":
+                scores[start:stop] = score_circular_template_batch_torch(patches, kernels, device)
+            else:
+                scores[start:stop] = score_circular_template_batch(patches, kernels)
+            completed = stop
+            progress.update(completed)
+    np.savez_compressed(
+        cache_path,
+        scores=scores,
+        method=CIRCULAR_TEMPLATE_SCREEN,
+        method_metadata=json.dumps(method_metadata(CIRCULAR_TEMPLATE_SCREEN), sort_keys=True),
+    )
     return scores
 
 
@@ -566,14 +760,18 @@ def score_model_batched(spec, h5_path, output_dir, args, device):
         augment=False,
         seed=int(run_config["args"]["seed"]) + 10009,
         max_translate_pixels=0,
+        cache_data=bool(args.cache_ml_data),
     )
+    effective_num_workers = 0 if args.cache_ml_data else args.num_workers
     loader = p3.DataLoader(
         dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.num_workers,
+        num_workers=effective_num_workers,
         pin_memory=device.type == "cuda",
-        persistent_workers=args.num_workers > 0,
+        persistent_workers=effective_num_workers > 0,
+        worker_init_fn=p3.seed_worker if effective_num_workers > 0 else None,
+        generator=torch.Generator().manual_seed(int(run_config["args"]["seed"]) + 12009),
     )
     scores = np.zeros(n, dtype=np.float32)
     offset = 0
@@ -597,15 +795,17 @@ def score_real_sky_dataset(args, h5_path, output_dir):
     scores = {}
     for spec in specs:
         scores[spec.name] = score_model_batched(spec, h5_path, output_dir, args, device)
-    scores["matched_template"] = score_matched_template_h5(
+    scores[CIRCULAR_TEMPLATE_SCREEN] = score_circular_template_h5(
         h5_path=h5_path,
         output_dir=output_dir,
         theta_grid_deg=args.theta_grid_deg,
-        beam_fwhm_arcmin=args.signal_beam_fwhm_arcmin,
+        beam_fwhm_arcmin=args.classical_beam_fwhm_arcmin,
         workers=args.classical_workers,
         chunk_size=args.classical_chunk_size,
         reuse_scores=args.reuse_scores,
+        device=device,
     )
+    scores["matched_template"] = scores[CIRCULAR_TEMPLATE_SCREEN]
     with h5py.File(h5_path, "r") as h5:
         labels = np.asarray(h5["labels"][:], dtype=np.uint8)
     score_path = output_dir / "real_sky_scores.npz"
@@ -625,24 +825,52 @@ def load_real_scores(score_path):
         for name in loaded.files:
             if name.startswith("score__"):
                 scores[name.removeprefix("score__")] = np.asarray(loaded[name], dtype=np.float32)
+    if CIRCULAR_TEMPLATE_SCREEN not in scores and "matched_template" in scores:
+        scores[CIRCULAR_TEMPLATE_SCREEN] = scores["matched_template"]
+    if "matched_template" not in scores and CIRCULAR_TEMPLATE_SCREEN in scores:
+        scores["matched_template"] = scores[CIRCULAR_TEMPLATE_SCREEN]
     return labels, scores
 
 
-def active_policies(scores, thresholds):
-    ml_matrix = np.vstack([scores[method] for method in ML_METHODS])
+def policy_order_for_methods(ml_methods, thresholds):
+    policies = [f"{method}_only" for method in ml_methods]
+    policies.append(f"{CIRCULAR_TEMPLATE_SCREEN}_only")
+    if len(ml_methods) > 1:
+        policies.extend(["ml_score_mean", f"ml_vote_{(len(ml_methods) // 2) + 1}of{len(ml_methods)}", "union_or"])
+    historical = {"v5_consensus", "score_avg"}.issubset(set(ml_methods) | set(thresholds))
+    if historical and "v5_consensus" in ml_methods and "score_avg" in thresholds:
+        policies.extend(["v5_only", "score_avg_only", "normal_candidate", "all_candidates"])
+    return tuple(dict.fromkeys(policies))
+
+
+def active_policies(scores, thresholds, ml_methods):
+    ml_methods = tuple(method for method in ml_methods if method in scores and method in thresholds)
+    if not ml_methods:
+        raise ValueError("No requested ML methods are available in score arrays and thresholds.")
+    ml_matrix = np.vstack([scores[method] for method in ml_methods])
+    ml_hits = np.vstack([scores[method] > thresholds[method] for method in ml_methods])
     avg = ml_matrix.mean(axis=0)
-    votes = np.vstack([scores[method] > thresholds[method] for method in ML_METHODS]).sum(axis=0)
-    v5 = scores["v5_consensus"] > thresholds["v5_consensus"]
-    matched = scores["matched_template"] > thresholds["matched_template"]
-    score_avg = avg > thresholds["score_avg"]
-    return {
-        "v5_only": v5,
-        "score_avg_only": score_avg,
-        "matched_template_only": matched,
-        "normal_candidate": v5 & (score_avg | matched),
-        "all_candidates": (v5 & (score_avg | matched)) | (matched & ~v5),
-        "union_or": votes > 0,
-    }
+    votes = ml_hits.sum(axis=0)
+    circular = scores[CIRCULAR_TEMPLATE_SCREEN] > thresholds[CIRCULAR_TEMPLATE_SCREEN]
+    policies = {f"{method}_only": scores[method] > thresholds[method] for method in ml_methods}
+    policies[f"{CIRCULAR_TEMPLATE_SCREEN}_only"] = circular
+    if len(ml_methods) > 1:
+        mean_threshold = float(np.mean([thresholds[method] for method in ml_methods]))
+        policies["ml_score_mean"] = avg > mean_threshold
+        policies[f"ml_vote_{(len(ml_methods) // 2) + 1}of{len(ml_methods)}"] = votes >= ((len(ml_methods) // 2) + 1)
+        policies["union_or"] = votes > 0
+    if "v5_consensus" in ml_methods and "v5_consensus" in thresholds and "score_avg" in thresholds:
+        v5 = scores["v5_consensus"] > thresholds["v5_consensus"]
+        score_avg = avg > thresholds["score_avg"]
+        policies.update(
+            {
+                "v5_only": v5,
+                "score_avg_only": score_avg,
+                "normal_candidate": v5 & (score_avg | circular),
+                "all_candidates": (v5 & (score_avg | circular)) | (circular & ~v5),
+            }
+        )
+    return policies
 
 
 def binary_metrics(active, labels):
@@ -659,16 +887,34 @@ def binary_metrics(active, labels):
     return {"tp": tp, "fp": fp, "tn": tn, "fn": fn, "precision": precision, "recall": recall, "fpr": fpr, "f1": f1}
 
 
-def load_camb_scores(sensitivity_scores, sensitivity_h5):
+def load_camb_scores(sensitivity_scores, sensitivity_h5, ml_methods):
     with np.load(sensitivity_scores) as loaded:
         labels = np.asarray(loaded["labels"], dtype=np.uint8)
-        scores = {method: np.asarray(loaded[f"score__{method}"], dtype=np.float32) for method in (*ML_METHODS, "matched_template")}
+        scores = {
+            method: np.asarray(loaded[f"score__{method}"], dtype=np.float32)
+            for method in ml_methods
+            if f"score__{method}" in loaded
+        }
+        missing = [method for method in ml_methods if method not in scores]
+        if missing:
+            raise KeyError(f"Sensitivity scores are missing requested ML score arrays: {missing}")
+        classical_key = (
+            f"score__{CIRCULAR_TEMPLATE_SCREEN}"
+            if f"score__{CIRCULAR_TEMPLATE_SCREEN}" in loaded
+            else "score__matched_template"
+        )
+        scores[CIRCULAR_TEMPLATE_SCREEN] = np.asarray(loaded[classical_key], dtype=np.float32)
+        scores["matched_template"] = scores[CIRCULAR_TEMPLATE_SCREEN]
     with h5py.File(sensitivity_h5, "r") as h5:
         amp_idx = np.asarray(h5["stratification"]["amplitude_idx"][:], dtype=np.int16)
         theta_idx = np.asarray(h5["stratification"]["theta_idx"][:], dtype=np.int16)
         amp_grid = [float(x) for x in json.loads(h5["summary"].attrs["amplitude_grid"])]
         theta_grid = [float(x) for x in json.loads(h5["summary"].attrs["theta_grid_deg"])]
-    return labels, scores, amp_idx, theta_idx, amp_grid, theta_grid
+        zcrit_ratio_grid = [
+            float(x)
+            for x in json.loads(h5["summary"].attrs.get("zcrit_ratio_grid", "[1.0]"))
+        ]
+    return labels, scores, amp_idx, theta_idx, amp_grid, theta_grid, zcrit_ratio_grid
 
 
 def load_real_stratification(h5_path):
@@ -678,7 +924,11 @@ def load_real_stratification(h5_path):
         theta_idx = np.asarray(h5["stratification"]["theta_idx"][:], dtype=np.int16)
         amp_grid = [float(x) for x in json.loads(h5["summary"].attrs["amplitude_grid"])]
         theta_grid = [float(x) for x in json.loads(h5["summary"].attrs["theta_grid_deg"])]
-    return labels, amp_idx, theta_idx, amp_grid, theta_grid
+        zcrit_ratio_grid = [
+            float(x)
+            for x in json.loads(h5["summary"].attrs.get("zcrit_ratio_grid", "[1.0]"))
+        ]
+    return labels, amp_idx, theta_idx, amp_grid, theta_grid, zcrit_ratio_grid
 
 
 def bootstrap_delta_ci(real_hits, camb_hits, resamples, rng):
@@ -694,24 +944,34 @@ def bootstrap_delta_ci(real_hits, camb_hits, resamples, rng):
     return [float(np.percentile(deltas, 2.5)), float(np.percentile(deltas, 97.5))]
 
 
-def compare_real_to_camb(args, h5_path, real_labels, real_scores, thresholds, output_dir):
-    real_labels_h5, real_amp_idx, real_theta_idx, real_amp_grid, real_theta_grid = load_real_stratification(h5_path)
+def compare_real_to_camb(args, h5_path, real_labels, real_scores, thresholds, output_dir, ml_methods):
+    real_labels_h5, real_amp_idx, real_theta_idx, real_amp_grid, real_theta_grid, real_zcrit_ratio_grid = load_real_stratification(h5_path)
     if not np.array_equal(real_labels, real_labels_h5):
         raise RuntimeError("Score labels do not match real-sky HDF5 labels.")
-    camb_labels, camb_scores, camb_amp_idx, camb_theta_idx, camb_amp_grid, camb_theta_grid = load_camb_scores(
+    camb_labels, camb_scores, camb_amp_idx, camb_theta_idx, camb_amp_grid, camb_theta_grid, camb_zcrit_ratio_grid = load_camb_scores(
         args.sensitivity_scores,
         args.sensitivity_h5,
+        ml_methods,
     )
     if [float(x) for x in real_amp_grid] != [float(x) for x in camb_amp_grid]:
         raise RuntimeError("Real-sky amplitude grid does not match CAMB sensitivity grid.")
     if [float(x) for x in real_theta_grid] != [float(x) for x in camb_theta_grid]:
         raise RuntimeError("Real-sky theta grid does not match CAMB sensitivity grid.")
+    if [float(x) for x in real_zcrit_ratio_grid] != [float(x) for x in camb_zcrit_ratio_grid]:
+        raise RuntimeError("Real-sky zcrit-ratio grid does not match CAMB sensitivity grid.")
 
     rng = np.random.default_rng(args.seed + 991)
-    real_active = active_policies(real_scores, thresholds)
-    camb_active = active_policies(camb_scores, thresholds)
+    real_active = active_policies(real_scores, thresholds, ml_methods)
+    camb_active = active_policies(camb_scores, thresholds, ml_methods)
+    policy_order = policy_order_for_methods(ml_methods, thresholds)
+    policy_order = tuple(policy for policy in policy_order if policy in real_active and policy in camb_active)
+    comparison_policy = (
+        "normal_candidate"
+        if "normal_candidate" in policy_order
+        else (f"{ml_methods[-1]}_only" if ml_methods else f"{CIRCULAR_TEMPLATE_SCREEN}_only")
+    )
     rows = []
-    for policy in POLICIES:
+    for policy in policy_order:
         for amp_i, amp in enumerate(real_amp_grid):
             for theta_i, theta in enumerate(real_theta_grid):
                 real_mask = (real_labels == 1) & (real_amp_idx == amp_i) & (real_theta_idx == theta_i)
@@ -752,12 +1012,15 @@ def compare_real_to_camb(args, h5_path, real_labels, real_scores, thresholds, ou
         "sensitivity_h5": str(Path(args.sensitivity_h5).resolve()),
         "thresholds": thresholds,
         "bootstrap_resamples": int(args.bootstrap_resamples),
+        "ml_methods": list(ml_methods),
+        "policy_order": list(policy_order),
+        "comparison_policy": comparison_policy,
         "policies": {
             policy: {
                 "real": binary_metrics(real_active[policy], real_labels),
                 "camb": binary_metrics(camb_active[policy], camb_labels),
             }
-            for policy in POLICIES
+            for policy in policy_order
         },
         "rows": rows,
     }
@@ -792,7 +1055,8 @@ def write_csv(path, rows):
 
 
 def write_markdown(path, report):
-    normal_rows = [row for row in report["rows"] if row["policy"] == "normal_candidate"]
+    comparison_policy = report.get("comparison_policy", "normal_candidate")
+    normal_rows = [row for row in report["rows"] if row["policy"] == comparison_policy]
     sig = [row for row in normal_rows if row["delta_significant"]]
     lines = ["# Real-Sky Injection Validation", ""]
     lines.append(f"Real-sky HDF5: `{report['real_sky_h5']}`")
@@ -802,12 +1066,12 @@ def write_markdown(path, report):
     lines.append("")
     lines.append("| policy | real recall | real FPR | CAMB recall | CAMB FPR |")
     lines.append("|---|---:|---:|---:|---:|")
-    for policy in POLICIES:
+    for policy in report.get("policy_order", list(report["policies"])):
         real = report["policies"][policy]["real"]
         camb = report["policies"][policy]["camb"]
         lines.append(f"| `{policy}` | {real['recall']:.3f} | {real['fpr']:.3f} | {camb['recall']:.3f} | {camb['fpr']:.3f} |")
     lines.append("")
-    lines.append("## Normal-Candidate Cell Comparison")
+    lines.append(f"## `{comparison_policy}` Cell Comparison")
     lines.append("")
     lines.append("| A | theta_deg | real P_det | CAMB P_det | delta | delta 95% CI | significant |")
     lines.append("|---:|---:|---:|---:|---:|---:|---:|")
@@ -820,12 +1084,15 @@ def write_markdown(path, report):
             f"{row['delta_significant']} |"
         )
     lines.append("")
-    lines.append(f"Significant normal-candidate CAMB-vs-real cells: `{len(sig)} / {len(normal_rows)}`")
+    lines.append(f"Significant `{comparison_policy}` CAMB-vs-real cells: `{len(sig)} / {len(normal_rows)}`")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def plot_normal_policy(report, output_dir):
-    rows = [row for row in report["rows"] if row["policy"] == "normal_candidate"]
+    comparison_policy = report.get("comparison_policy", "normal_candidate")
+    rows = [row for row in report["rows"] if row["policy"] == comparison_policy]
+    if not rows:
+        return
     amplitudes = sorted({row["amplitude"] for row in rows})
     thetas = sorted({row["theta_crit_deg"] for row in rows})
     fig, axes = plt.subplots(1, len(thetas), figsize=(4.0 * len(thetas), 3.6), sharey=True)
@@ -844,9 +1111,9 @@ def plot_normal_policy(report, output_dir):
         ax.grid(alpha=0.25)
     axes[0].set_ylabel("P_det")
     axes[-1].legend(loc="lower right")
-    fig.suptitle("Normal-candidate sensitivity: real cleaned-map backgrounds vs CAMB")
+    fig.suptitle(f"{comparison_policy}: real cleaned-map backgrounds vs CAMB")
     fig.tight_layout()
-    path = output_dir / "real_vs_camb_normal_candidate.png"
+    path = output_dir / f"real_vs_camb_{comparison_policy}.png"
     fig.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(fig)
 
@@ -870,12 +1137,14 @@ def main():
     if args.generate_only:
         return
 
-    thresholds = read_sensitivity_thresholds(args.sensitivity_report, args.ensemble_report)
+    specs = [parse_model_spec(text) for text in (args.model or DEFAULT_MODELS)]
+    ml_methods = tuple(spec.name for spec in specs)
+    thresholds = read_sensitivity_thresholds(args.sensitivity_report, args.ensemble_report, ml_methods)
     if args.reuse_scores and score_path.exists():
         real_labels, real_scores = load_real_scores(score_path)
     else:
         real_labels, real_scores = score_real_sky_dataset(args, h5_path, output_dir)
-    report = compare_real_to_camb(args, h5_path, real_labels, real_scores, thresholds, output_dir)
+    report = compare_real_to_camb(args, h5_path, real_labels, real_scores, thresholds, output_dir, ml_methods)
 
     json_path = output_dir / "real_sky_injection_report.json"
     csv_path = output_dir / "real_sky_injection_cells.csv"

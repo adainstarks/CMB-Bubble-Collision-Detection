@@ -15,11 +15,19 @@ look valid while being scientifically compromised:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 from pathlib import Path
 
 import h5py
 import numpy as np
+
+from phase_config import (
+    INJECTION_METADATA_REQUIRED_AFTER_UTC,
+    INJECTION_CONVENTIONS,
+    INJECTION_CONVENTION_FEENEY2011,
+    PROVENANCE_SCHEMA_VERSION,
+)
 
 
 TRUTH_FIELD_NAMES = {
@@ -218,13 +226,16 @@ def audit_splits(h5, audit):
         return None, None
     splits = h5["splits"]
     audit.require("train_idx" in splits, "Missing splits/train_idx")
-    audit.require("val_idx" in splits, "Missing splits/val_idx")
-    if "train_idx" not in splits or "val_idx" not in splits:
+    has_calibration = "calibration_idx" in splits
+    audit.require("val_idx" in splits or has_calibration, "Missing splits/val_idx or splits/calibration_idx")
+    if "train_idx" not in splits or ("val_idx" not in splits and not has_calibration):
         return None, None
 
     labels = np.asarray(h5["labels"][:], dtype=np.uint8)
     train_idx = np.asarray(splits["train_idx"][:], dtype=np.int64)
-    val_idx = np.asarray(splits["val_idx"][:], dtype=np.int64)
+    val_key = "calibration_idx" if has_calibration else "val_idx"
+    val_idx = np.asarray(splits[val_key][:], dtype=np.int64)
+    test_idx = np.asarray(splits["test_idx"][:], dtype=np.int64) if "test_idx" in splits else None
     n = len(labels)
 
     audit.require(train_idx.size > 0, "train split is empty")
@@ -232,14 +243,28 @@ def audit_splits(h5, audit):
     audit.require(np.all((0 <= train_idx) & (train_idx < n)), "train indices out of range")
     audit.require(np.all((0 <= val_idx) & (val_idx < n)), "validation indices out of range")
     overlap = sorted(set(map(int, train_idx)) & set(map(int, val_idx)))
-    audit.require(len(overlap) == 0, f"train/validation sample overlap: {overlap[:10]}")
+    audit.require(len(overlap) == 0, f"train/calibration sample overlap: {overlap[:10]}")
+    if test_idx is not None:
+        audit.require(test_idx.size > 0, "test split is empty")
+        audit.require(np.all((0 <= test_idx) & (test_idx < n)), "test indices out of range")
+        train_test = sorted(set(map(int, train_idx)) & set(map(int, test_idx)))
+        cal_test = sorted(set(map(int, val_idx)) & set(map(int, test_idx)))
+        audit.require(len(train_test) == 0, f"train/test sample overlap: {train_test[:10]}")
+        audit.require(len(cal_test) == 0, f"calibration/test sample overlap: {cal_test[:10]}")
 
     audit.add_metric("num_train_samples", int(train_idx.size))
+    audit.add_metric("num_calibration_samples", int(val_idx.size))
     audit.add_metric("num_val_samples", int(val_idx.size))
     audit.add_metric("num_train_positive", int(labels[train_idx].sum()))
+    audit.add_metric("num_calibration_positive", int(labels[val_idx].sum()))
     audit.add_metric("num_val_positive", int(labels[val_idx].sum()))
     audit.add_metric("num_train_negative", int(train_idx.size - labels[train_idx].sum()))
+    audit.add_metric("num_calibration_negative", int(val_idx.size - labels[val_idx].sum()))
     audit.add_metric("num_val_negative", int(val_idx.size - labels[val_idx].sum()))
+    if test_idx is not None:
+        audit.add_metric("num_test_samples", int(test_idx.size))
+        audit.add_metric("num_test_positive", int(labels[test_idx].sum()))
+        audit.add_metric("num_test_negative", int(test_idx.size - labels[test_idx].sum()))
 
     return train_idx, val_idx
 
@@ -261,14 +286,14 @@ def audit_split_leakage(h5, audit, train_idx, val_idx):
         values = np.asarray(metadata[field][:])
         shared = nonzero_intersection(values[train_idx], values[val_idx], ignore_values=ignore_values)
         audit.add_metric(f"shared_{field}_count", int(len(shared)))
-        audit.require(len(shared) == 0, f"Shared {field} values across train/val: {shared[:10]}")
+        audit.require(len(shared) == 0, f"Shared {field} values across train/calibration: {shared[:10]}")
 
     truth_group, _ = get_truth_group(h5)
     if truth_group is not None and "event_id" in truth_group:
         event_id = np.asarray(truth_group["event_id"][:])
         shared_events = nonzero_intersection(event_id[train_idx], event_id[val_idx], ignore_values=(0,))
         audit.add_metric("shared_event_id_count", int(len(shared_events)))
-        audit.require(len(shared_events) == 0, f"Shared event_id values across train/val: {shared_events[:10]}")
+        audit.require(len(shared_events) == 0, f"Shared event_id values across train/calibration: {shared_events[:10]}")
 
 
 def audit_metadata_shortcuts(h5, audit):
@@ -413,7 +438,86 @@ def audit_coordinate_pool(h5, audit):
         audit.add_metric("coordinate_pool_mask_fraction_min", float(np.min(mask_fraction)))
         audit.require(bool(np.all((glon >= 0.0) & (glon <= 360.0))), "coordinate_pool longitude out of range")
         audit.require(bool(np.all((glat >= -90.0) & (glat <= 90.0))), "coordinate_pool latitude out of range")
-        audit.require(bool(np.all(mask_fraction >= 0.95)), "coordinate_pool contains mask_fraction below 0.95")
+        summary = get_summary_attrs(h5)
+        threshold = float(summary.get("mask_threshold", 0.95))
+        audit.require(
+            bool(np.all(mask_fraction + 1e-8 >= threshold)),
+            f"coordinate_pool contains mask_fraction below configured threshold {threshold:.2f}",
+        )
+
+
+def parse_utc_datetime(value):
+    """Parse repository UTC timestamp strings."""
+
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def injection_metadata_required(summary):
+    """Return True when missing injection metadata must fail closed."""
+
+    if summary.get("provenance_schema_version") == PROVENANCE_SCHEMA_VERSION:
+        return True
+    created = parse_utc_datetime(summary.get("created_utc"))
+    cutoff = parse_utc_datetime(INJECTION_METADATA_REQUIRED_AFTER_UTC)
+    return created is not None and cutoff is not None and created >= cutoff
+
+
+def audit_injection_convention(h5, audit):
+    """Validate source-generation convention metadata when signals are present."""
+
+    if "labels" not in h5 or "summary" not in h5:
+        return
+    labels = np.asarray(h5["labels"][:], dtype=np.uint8)
+    if not bool(np.any(labels == 1)):
+        return
+    summary = get_summary_attrs(h5)
+    convention = summary.get("injection_convention")
+    audit.add_metric("injection_convention", convention)
+    audit.add_metric("provenance_schema_version", summary.get("provenance_schema_version"))
+    require_metadata = injection_metadata_required(summary)
+    if convention is None:
+        message = (
+            "Missing summary/injection_convention. Existing artifacts may be "
+            "pre-provenance remediated products; regenerated products must set it."
+        )
+        if require_metadata:
+            audit.require(False, message)
+        else:
+            audit.warn(message)
+        return
+    audit.require(
+        convention in INJECTION_CONVENTIONS,
+        f"Unknown injection convention {convention!r}; expected one of {sorted(INJECTION_CONVENTIONS)}",
+    )
+    audit.require(
+        "injection_convention_note" in summary,
+        "Injection metadata needs injection_convention_note.",
+    )
+    if require_metadata:
+        audit.require(
+            summary.get("provenance_schema_version") == PROVENANCE_SCHEMA_VERSION,
+            f"Regenerated artifact needs provenance_schema_version={PROVENANCE_SCHEMA_VERSION!r}.",
+        )
+    if convention == INJECTION_CONVENTION_FEENEY2011:
+        audit.require(
+            "injection_convention_note" in summary,
+            "Feeney full-temperature modulation metadata needs injection_convention_note.",
+        )
 
 
 def run_audit(data_h5, allow_legacy=False, sample_patch_count=256):
@@ -433,6 +537,7 @@ def run_audit(data_h5, allow_legacy=False, sample_patch_count=256):
         audit_truth_and_masks(h5, audit)
         audit_patch_values(h5, audit, sample_patch_count)
         audit_coordinate_pool(h5, audit)
+        audit_injection_convention(h5, audit)
         audit.add_metric("summary", get_summary_attrs(h5))
 
     return audit.report()

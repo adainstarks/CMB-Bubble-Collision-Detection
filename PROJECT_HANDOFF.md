@@ -1,1346 +1,426 @@
 # Project Handoff: CMB Bubble Collision Screening
 
-Last updated: 2026-04-17 (Batch 5 full-sky audit: retracts Batch 4 shipped lift; all FPR-calibrated thresholds in the repo are suspect until deployment-representative null pools are built)
+Last updated: 2026-04-21
 Repo path: `/data/william/CMB-Collision-Bubbles`
-Primary current claim: Planck-era ML/classical candidate-screening front end for localized bubble-collision signatures; not a standalone cosmological detection or Feeney-style Bayesian evidence pipeline.
 
-## 0. Current Working Interpretation
+## Assumptions
 
-This repo is a research pipeline for candidate screening, not a completed discovery framework.
+- This is an astrophysical **candidate-screening** repository.
+- It is not a standalone bubble-collision discovery claim.
+- It is not yet a Feeney-style Bayesian evidence or posterior pipeline.
+- Signal amplitudes are dimensionless fractional `Delta T / T`.
+- Patch tensors are CMB anisotropies in Kelvin, not microkelvin and not full
+  thermodynamic CMB temperature.
+- Current remediated products use `float64` for geometry/harmonic work and
+  `float32` for stored tensors after finite/range checks.
 
-Best current operational stack (revised 2026-04-17 after Batch 5 full-sky audit retracted the Batch 4 shipped lift but confirmed PR #8):
+## Current Directive
 
-- **Primary deployment policy: `learned_gbt --feature-set scores_only`** (the PR #8 6-feature GBT). Under deployment-representative tile calibration on all four Planck cleaned maps, it beats `v6_only` by a cross-map mean of **+0.036 recall** at FPR 0.08 (tied on SMICA/NILC; **+0.070 on SEVEM, +0.074 on Commander**). This matches the clean-null PR #8 claim of +0.031 and confirms the score-ensemble lever survives deployment calibration. Per-map null calibration is mandatory. See Section 27.
-- **Single-model fallback: `v6_aux_only` at per-map-calibrated thresholds**. Cross-map tile-recalibrated recall at FPR 0.08: SMICA 0.334, NILC 0.293, SEVEM 0.167, Commander 0.155. Closest to the 6-feature GBT on SMICA/NILC; noticeably weaker on noisier maps.
-- **Archived: `learned_gbt --feature-set all`** (the PR #9 14-feature GBT). The 4 truth-free geometry proxies (`mask_area_at_0.5`, `centroid_offset_px`, `compactness`, `edge_touching_fraction`) overfit the clean-null pool's mask-fraction distribution; deployment recall is worse than `gbt_6` on SEVEM (−0.045) and Commander (−0.036). Code infrastructure stays; the `--feature-set all` path remains for reproducibility of PR #9's numbers.
-- `v6_aux_only`: primary backbone ML screener; heavily weighted by the router (~44% feature importance). Also retained as a documented single-model fallback when a reviewer does not want a composite policy.
-- `v7_mixed_ft`: retained as an input to the learned router and as a Phase 5 specialist on truncated candidates. Not run as a separate parallel screener.
-- `matched_template`: classical Feeney-template reference, fallback, and independent score.
-- Thresholds must be calibrated on real-map null controls, not CAMB-only negatives.
-- The five-model stack was important for investigation but should not be treated as the default deployment path.
-
-Current blocker:
-
-- Weak-family recall at low amplitude (A <= 5e-6) is still near the Planck SMICA noise floor. This is physical, not engineering.
-- `v7_mixed_ft` dominates on CAMB backgrounds but loses to `v6_aux_only` on real SMICA in isolation.
-- Batch 2 post-processing ablation (`work/batch2_postprocess_ablation.md`) confirmed Gaussian smoothing is null and matched-filter-on-mask is a geometry specialist, not a general replacement.
-- Batch 3 simple ensemble / heuristic-router policies all underperformed `v6_only` at FPR 0.08; the 6-feature learned GBT classifier beat `v6_only` by +3.1pp under clean-null calibration. The real-sky-tile-calibrated comparison has not yet been recomputed (Step 2b pending).
-- Batch 4 router feature expansion reported +0.043 gate-cell lift on clean-null calibration, but the Batch 5 full-sky audit retracted that claim for deployment: geometry features specifically overfit to the clean null pool's mask-fraction distribution. See Section 27.
-- **Biggest blocker (as of 2026-04-17): the `smica_null_controls_all.h5` calibration pool was drawn at `MASK_THRESHOLD = 0.95` and systematically excludes mask-adjacent sky. Deployment-tile patch-level FPR is 2-6x what the calibration pool says (SMICA 1.96x, NILC 2.01x, SEVEM 3.64x, Commander 5.78x). Fix: rebuild null pools per map at `MASK_THRESHOLD = 0.5` and re-evaluate every FPR-calibrated threshold the repo has shipped.**
-- Remaining untouched training-signal lever: `v8` retrain with matched-filter response map as a second input channel on mixed geometry. Earlier MF-channel training (`phase3_v7_mf_channel_aux_w4`) on contained data gave only +0.013 contested recall; Section 25's speculative "+4-10pp" estimate is not calibrated by that prior. Mixed-geometry retrain has not been run and its expected lift is now unclear.
-
-Do not proceed with:
-
-- The current `radius_head_w02` branch. It failed the fixed stratified external gate.
-- More small U-Net/loss variants without a specific failure-cell hypothesis.
-- Full Nside=512 retraining; the focused probe did not justify it.
-
-## 1. Scientific Background And Required Framing
-
-Relevant local references:
-
-- `references/papers/1012.1995.pdf`: Feeney, Johnson, Mortlock, Peiris, "First Observational Tests of Eternal Inflation", arXiv:1012.1995.
-- `references/papers/1012.3667.pdf`: related Feeney et al. WMAP/eternal-inflation observational analysis.
-
-Feeney-style full detection framework includes:
-
-- Candidate localization.
-- Causal-boundary/edge testing.
-- Bayesian parameter estimation.
-- Model comparison against LambdaCDM.
-- Interpretation in terms of expected detectable collision count.
-
-This repo currently covers:
-
-- Physically motivated candidate generation.
-- ML/classical screening and ranking.
-- Null calibration and threshold-volume analysis.
-- Structured handoff artifacts for later classical/Bayesian follow-up.
-
-This repo currently does not cover:
-
-- Final Bayesian posterior over bubble-collision parameters.
-- Evidence ratio against LambdaCDM.
-- Cosmological detection claim.
-- Constraint on expected detectable collision count.
-
-Correct public claim:
+Use `remediated_v1` as the active baseline. The working claim is:
 
 ```text
-A reproducible Planck-era ML candidate-screening method for localized bubble-collision signatures, intended to accelerate or supplement classical follow-up.
+A reproducible Planck-era ML/classical candidate-screening front end for
+localized bubble-collision signatures, intended to accelerate or supplement
+classical/Bayesian follow-up.
 ```
 
-## 2. Signal Model And Injection Physics
+Framing rule: treat current outputs as candidate screening, synthetic
+sensitivity calibration, candidate-volume accounting, or template-fit handoff
+products. Do not write them up as standalone cosmological detection evidence.
+Paper-facing wording guardrails live in
+`docs/manuscript_framing_candidate_screening.md`.
 
-Feeney Eq. 1 template used in `scripts/phase2_signal_model.py`:
+Do not use historical `training_v4`, `validation_stratified_v1`, old
+`matched_template`, or post-hoc best-branch heatmap numbers as current science
+claims. They are development history only.
 
-```math
-deltaT/T =
-[
-(zcrit - z0 cos(theta_crit)) / (1 - cos(theta_crit))
-+
-(z0 - zcrit) / (1 - cos(theta_crit)) cos(theta)
-] H(theta_crit - theta)
-```
-
-Variables:
-
-- `z0`: central modulation amplitude.
-- `zcrit`: boundary/discontinuity parameter.
-- `theta_crit`: angular radius of causal disc.
-- `theta`: angular distance from collision center.
-- `H`: causal-boundary window.
-
-Implementation:
-
-- `bubble_collision_signal(theta, z0, zcrit, theta_crit, edge_sigma_deg=0.0)`.
-- `edge_sigma_deg=0` gives hard Heaviside causal boundary.
-- `edge_sigma_deg>0` uses Gaussian-CDF smoothing as a robustness heuristic, not a settled physical theorem.
-
-Injection is multiplicative, not additive:
-
-```math
-T_injected = (1 + f(nhat)) * (T_CMB0 + deltaT_CMB) - T_CMB0
-```
-
-Code:
-
-- `scripts/phase2_signal_model.py::inject_signal_into_patch`
-- `T_CMB_K = 2.7255`
-
-Scientific safeguards:
-
-- Feeney Eq. 1 form is preserved.
-- Azimuthally symmetric disc geometry is preserved.
-- Causal disc boundary is preserved.
-- Multiplicative injection is preserved.
-- `sin(theta_crit)` sampling is documented as a training-design choice, not an inference prior.
-
-## 3. Phase 1: Observable Domain
-
-Planck-era patch observable:
-
-- Working map products are Planck cleaned maps, primarily SMICA for current real-map tests.
-- Common mask is used to build clean coordinate pools.
-- Working resolution: `Nside=256`.
-- Patch geometry: gnomonic projection.
-- Patch size: `256 x 256`.
-- Pixel scale: `13 arcmin/pixel`.
-- Patch angular width: about `55.47 deg`.
-
-Key scripts:
-
-- `scripts/phase1_explore.py`
-- `scripts/phase2_generate_training.py::project_patch`
-- `scripts/phase_dataset_utils.py`
-
-Coordinate handling:
-
-- Galactic longitude/latitude.
-- Gnomonic patch centered on selected sky coordinate.
-- Patch-center pixel: `(npix - 1) / 2`.
-- Angular-distance grid maps tangent-plane pixels back to 3D directions before separation calculation.
-
-## 4. Phase 2: Current Training Data Product
-
-Primary current training dataset:
-
-```text
-data/training_v4/training_data.h5
-```
-
-Verified run config summary:
-
-- `num_samples = 10000`
-- `num_positive = 5000`
-- `num_negative = 5000`
-- train split: `9000` samples = `4500 pos / 4500 neg`
-- validation split: `1000` samples = `500 pos / 500 neg`
-- coordinate pool: `5000`
-- train coordinates: `4500`
-- validation coordinates: `500`
-- CAMB realizations: `192`
-- train realizations: `173`
-- validation realizations: `19`
-- `nside = 256`
-- `patch_pixels = 256`
-- `reso_arcmin = 13.0`
-- `beam_fwhm_arcmin = 15.0`
-- `noise_sigma_uk_arcmin = 30.0`
-- `noise_corr_fwhm_arcmin = 0.0`
-- `edge_sigma_min_deg = 0.3`
-- `edge_sigma_max_deg = 1.0`
-- `geometry_mode = contained` for the existing `training_v4`
-- `contained_margin_deg = 0.5`
-- `theta_training_distribution = sin(theta_crit)`
-- `split_method = coordinate_and_realization_disjoint`
-
-Audit status for existing `training_v4`:
-
-- Pass.
-- Shared train/val coordinate count: `0`.
-- Shared train/val CAMB realization count: `0`.
-- Shared background ID count: `0`.
-- Shared event ID count: `0`.
-- Positive targets touching edge: `0` because this dataset is contained-only.
-
-Important limitation:
-
-- Existing `training_v4` contains fully contained positive discs only.
-- Real full-sky tiling can see partial discs spanning patch boundaries.
-- This was identified as scientifically important and has now been addressed in local generator code, but the full mixed/truncated dataset has not yet been generated/evaluated.
-
-## 5. Newly Implemented Local Data Geometry Correction
-
-Status: implemented locally; smoke-tested; not yet full-scale evaluated.
-
-Modified files:
-
-- `scripts/phase2_generate_training.py`
-- `scripts/phase2_generate_stratified_validation.py`
-- `scripts/phase3_real_sky_injection.py`
-- `scripts/phase2_audit_dataset.py`
-- `scripts/phase3_eval_stratified_external.py`
-
-New geometry modes:
-
-- `contained`: old/default behavior; full causal disc visible inside patch.
-- `truncated`: positive mask must touch patch edge; only visible patch intersection is labeled.
-- `mixed`: per-positive draw can be contained or truncated.
-
-New main arguments:
+Run this before relying on the current artifact graph:
 
 ```bash
---geometry-mode {contained,truncated,mixed}
---truncated-positive-fraction FLOAT
---truncated-visible-fraction-min FLOAT
---truncated-visible-fraction-max FLOAT
---truncated-max-center-draws INT
---signal-center-edge-margin-pix FLOAT
+python scripts/audit_remediated_flow.py
 ```
 
-New truth fields:
-
-- `geometry_mode_code`: `0=contained`, `1=truncated`.
-- `fully_contained`: boolean-like uint8.
-- `target_touches_edge`: boolean-like uint8.
-- `visible_target_fraction`: visible patch pixels / estimated full-disc pixels.
-- `visible_target_pixels`: target-mask pixels visible in patch.
-- `full_disc_pixels_est`: full disc pixel count estimated from centered disc of same radius.
-- `target_edge_contact_pixels`: number of target pixels on patch boundary.
-- `disc_edge_margin_pix`: nearest patch-edge distance minus disc radius; negative means disc crosses patch edge.
-- `signal_center_in_patch`: whether full physical disc center lies inside current patch.
-
-Mathematical interpretation:
-
-- The physical bubble signal remains the full Feeney disc on the sky.
-- The patch label is the intersection `disc_support ∩ patch_window`.
-- This is not a shortcut or fake signal. It is the correct patch-level observable for tiled inference.
-- Downstream candidate stitching must use full physical metadata, not just the visible patch mask.
-
-Smoke tests already run:
-
-- Mixed training smoke: `10` positives, `5/10` touched edge, audit pass.
-- Truncated training smoke: `6/6` positives touched edge, audit pass.
-- Contained regression smoke: `0/6` positives touched edge, visible fraction `1.0`, audit pass.
-- Mixed stratified validation smoke: `72` positives, `32/72` touched edge, `20` centers outside patch.
-- Mixed real-SMICA injection smoke: `4/4` positives touched edge, `2` centers outside patch.
-- Temporary smoke artifacts were removed from `work/`.
-
-Next required gate:
+For a compact environment/source/artifact manifest:
 
 ```bash
-python scripts/phase2_generate_stratified_validation.py \
-  --output-dir data/validation_stratified_mixed_geometry_v1 \
-  --num-samples 5000 \
-  --samples-per-cell 50 \
-  --geometry-mode mixed \
-  --truncated-positive-fraction 0.30 \
-  --truncated-visible-fraction-min 0.15 \
-  --truncated-visible-fraction-max 0.95
+python scripts/create_reproducibility_manifest.py
 ```
 
-Then evaluate current `v6_aux_only + matched_template` on this mixed validation set before training anything new.
+## Active Artifact Graph
 
-## 6. Phase 3 Model Architecture
+Core remediated products:
 
-Training harness:
+| product | status | purpose |
+|---|---|---|
+| `data/remediated_v1/training_data.h5` | current | `20000` synthetic rows, split `16000/2000/2000` |
+| `data/remediated_v1/calibration_data.h5` | current | threshold calibration copy |
+| `data/remediated_v1/test_data.h5` | current | held-out synthetic test copy |
+| `data/remediated_v1/null_controls_{map}_{mask}.h5` | current | real-map null controls for four Planck cleaned maps and `mask090/mask050` |
+| `runs/phase3_unet/remediated_v1_unet_imagenet_b64_aux/` | current | best single remediated U-Net branch |
+| `runs/phase3_unet/remediated_v1_unet_random_b64_aux/` | current | encoder-initialization ablation |
+| `runs/phase3_unet/remediated_v1_classical_baselines/` | current | held-out circular-template comparisons |
+| `runs/phase3_unet/remediated_v1_sensitivity_curve/` | current | amplitude/radius/zcrit-ratio sensitivity grid |
+| `runs/phase3_unet/remediated_v1_upper_limits/` | current | efficiency-weighted detectable-collision upper limits |
+| `runs/phase3_unet/remediated_v1_deployment_burden/` | current | full-sky patch and clustered candidate-volume accounting |
+| `runs/phase3_unet/remediated_v1_tile_constrained_policy_search/` | current | deployable composite-policy recall-vs-burden search |
+| `runs/phase3_unet/remediated_v1_tile_constrained_candidates/` | current | canonical-mask emitted candidates and cluster representatives |
+| `runs/phase3_unet/remediated_v1_candidate_score_calibration/` | current | calibration-split null-survival scores for candidate representatives |
+| `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/` | current diagnostic | full-sky burden audit for legacy two-channel recall candidate |
+| `runs/phase3_unet/phase5_half_mission_signflip_null/` | current | HM sign-flip preflight; p-value reports once HM maps are supplied |
+| `runs/phase3_unet/remediated_v1_classical_fullsky/` | current | SMICA full-sky Wiener Feeney and SMHW maps |
+| `runs/phase3_unet/batch6_fullsky_nside32_*/` | current | deployment tile calibration |
 
-- `scripts/phase3_train_unet.py`
+Physics/observing-model contract:
 
-Primary architecture family:
+- `Nside=256`, `PATCH_PIX=256`, `RESO_ARCMIN=13`.
+- Planck cleaned maps modeled with `5 arcmin` beam.
+- `synfast(pixwin=True)` for current synthetic skies.
+- Canonical mask threshold is `0.9`.
+- Stress-test null controls at `0.5` are present and separate.
+- Mixed geometry includes contained and edge-crossing positives.
+- Minimum visible target fraction is `0.15`.
 
-- `segmentation_models_pytorch.Unet`
-- Encoder: `efficientnet-b0`
-- Default encoder weights: ImageNet unless otherwise specified.
-- Input: normalized 1-channel CMB patch unless extra-channel experiment is enabled.
-- Output: segmentation mask logits.
-- Optional image-level auxiliary head for presence/candidateness.
-- Recently added optional radius-bin auxiliary head, but current trained branch failed externally.
+## Current Results
 
-Loss structure:
+Held-out remediated synthetic test:
 
-- Pixel BCE with positive pixel reweighting.
-- Soft Dice loss.
-- Boundary-weighted loss option.
-- Optional image-level BCE auxiliary loss.
-- Optional radius-bin cross-entropy auxiliary loss for positives only.
+| method | threshold source | threshold | precision | recall | FPR | F1 |
+|---|---|---:|---:|---:|---:|---:|
+| ImageNet U-Net `component_score` | calibration split | `0.96` | `0.888` | `0.396` | `0.050` | `0.548` |
+| random-init U-Net `component_score` | calibration split | `0.99` | `0.819` | `0.362` | `0.080` | `0.502` |
+| `circular_template_screen` | calibration split | `65.0217` | `0.921` | `0.267` | `0.023` | `0.414` |
 
-Important training constants for `v6_aux_only`:
+Preselected ImageNet-vs-`circular_template_screen` heatmap:
 
-- Dataset: `data/training_v4/training_data.h5`
-- Epochs: `8`
-- Batch size: `64`
-- Learning rate: `3e-4`
-- Weight decay: `1e-4`
-- Encoder: `efficientnet-b0`
-- BCE weight: `1.0`
-- Dice weight: `1.0`
-- Aux head weight: `0.1`
-- Aux dropout: `0.2`
-- Boundary weight: `4.0`
-- Boundary width: `5 pixels`
-- Threshold during training previews: `0.99`
-- Normalization source: `runs/phase3_unet/phase3_v4_full_2gpu_b64w8_cached/run_config.json`
-- Train mean: `-8.208702282003653e-07`
-- Train std: `0.00010452365572382741`
-- Positive pixel fraction: `0.17111089409722222`
-- BCE positive weight: `4.844163256091792`
+- ImageNet wins `30 / 35` cells.
+- `14` cells are Holm-significant at family-wise alpha `0.05`.
+- `17` cells are Benjamini-Hochberg significant at FDR `0.05`.
+- This supersedes the historical post-hoc best-branch `8 / 35` count.
 
-Current hardware note:
+Real-SMICA injection diagnostic:
 
-- System has 2 x RTX 3090.
-- Use `--gpu-ids 0,1` for hard training/evaluation tasks where supported.
-- A full controlled fine-tune with batch size `64` and cache data has run successfully on both GPUs.
+- `imagenet_b64_aux_only`: real recall/FPR `0.372/0.185`.
+- CAMB comparison point: recall/FPR `0.349/0.050`.
+- Interpretation: useful transfer diagnostic, not a deployable threshold.
 
-## 7. Verified Phase 3 Metrics: Stratified Synthetic Validation
+Noise-floor diagnostic:
 
-Main report:
+- Report: `runs/phase3_unet/remediated_v1_noise_floor/noise_floor_report.md`.
+- Median negative-patch RMS is about `99.8 uK`.
+- Instrument white-noise scale is about `2.3 uK/pixel`, so CMB confusion and
+  domain transfer dominate over the configured white-noise term.
+- `A = 1e-6` support RMS is only about `1.6-2.1 uK`; `A = 5e-6` is about
+  `7.8-10.4 uK`. Treat this as a patch-RMS diagnostic, not a proof that the
+  whole weak-family problem is physically impossible.
+- This is not an impossibility proof. A real bound needs the full covariance,
+  foreground residuals, mask coupling, and a Bayesian/template-fit likelihood.
 
-```text
-runs/phase3_unet/stratified_external_combined_v1/combined_stratified_eval_report.json
-```
+Matched-filter SNR diagnostic:
 
-Matched FPR: `0.08`.
+- Script: `scripts/phase3_matched_filter_snr_curve.py`.
+- Report:
+  `runs/phase3_unet/remediated_v1_matched_filter_snr/matched_filter_snr_report.md`.
+- Under the repo CAMB/beam/noise assumptions with rough `f_sky` scaling,
+  `A <= 2e-6` cells have low ideal recall, while several `A >= 1e-5` cells have
+  high ideal matched-filter recall but low current ML recall.
+- Interpretation: the lowest amplitudes are CMB-confusion dominated for this
+  idealized template calculation; higher-SNR cells are algorithmic and
+  same-grid-benchmark targets.
 
-Table:
+Upper-limit post-processing:
 
-| method | AUROC | AUPRC | recall | weak recall | Dice+ |
-|---|---:|---:|---:|---:|---:|
-| matched_template | 0.712 | 0.881 | 0.401 | 0.282 | not primary here |
-| centered_disc | 0.639 | 0.833 | 0.252 | 0.176 | not primary here |
-| original_v4 | 0.775 | 0.914 | 0.541 | 0.425 | 0.344 |
-| boundary_v4 | 0.774 | 0.914 | 0.540 | 0.420 | 0.377 |
-| v5_consensus | 0.774 | 0.913 | 0.536 | 0.422 | 0.396 |
-| v6_aux_only | 0.773 | 0.913 | 0.539 | 0.422 | 0.401 |
-| v6_hard_w15 | 0.773 | 0.913 | 0.529 | 0.416 | not preferred |
+- Script: `scripts/phase3_upper_limit_calculator.py`.
+- Report: `runs/phase3_unet/remediated_v1_upper_limits/upper_limits.md`.
+- Default prior: log-uniform amplitude and `sin(theta)` radius weighting.
+- At 95% confidence with zero credible detections, `Nbar_s^95` is `10.2674`
+  for `imagenet_b64_aux`, `11.4544` for `random_b64_aux`, `12.1677` for
+  `circular_template_screen`, and `17.6292` for `centered_disc`.
+- `lambda H_F^-4` is computed only when `Omega_k` and `H_F/H_I` are supplied.
+  `lambda/B` is computed only for an explicit model-specific exposure factor.
+- Treat this as a screening-derived detectable-collision upper-limit proxy,
+  not as a masked-sky Bayesian evidence result or a competitive cosmological
+  constraint.
 
-Interpretation:
+## Deployment Calibration
 
-- Learned branches are very close on pooled synthetic metrics.
-- `v6_aux_only` has best positive Dice among ML branches in this table.
-- Differences among learned branches are not large enough to justify running all five by default.
-- Matched template remains scientifically important as a Feeney-style classical comparator and score.
+Batch 6 is the current deployment-calibration reference. It uses Nside=32
+full-sky tile audits with about `11200` tile patches per cleaned map.
 
-## 8. Failed Radius-Head Branch
+Tile-recalibrated mixed recall at FPR `0.08`:
 
-Status: failed. Do not proceed with this branch as trained.
-
-Run:
-
-```text
-runs/phase3_unet/phase3_scale_radius_head_w02
-```
-
-Purpose:
-
-- Add radius-bin auxiliary head with bins `5,10,15,20,25` deg.
-- Test whether explicit scale supervision improves weak/small-radius recall without changing signal physics.
-
-Training command concept:
-
-```bash
-python scripts/phase3_train_unet.py \
-  --data-h5 data/training_v4/training_data.h5 \
-  --run-name phase3_scale_radius_head_w02 \
-  --epochs 8 \
-  --batch-size 64 \
-  --learning-rate 5e-5 \
-  --scheduler cosine \
-  --normalization-config runs/phase3_unet/phase3_v6_aux_only_w4/run_config.json \
-  --resume-checkpoint runs/phase3_unet/phase3_v6_aux_only_w4/best_checkpoint.pt \
-  --model-only-resume \
-  --aux-head-weight 0.1 \
-  --boundary-weight 4.0 \
-  --boundary-width-pixels 5 \
-  --radius-head-weight 0.2 \
-  --radius-bin-edges-deg 5,10,15,20,25 \
-  --gpu-ids 0,1 \
-  --cache-data
-```
-
-External gate:
-
-```text
-runs/phase3_unet/stratified_external_radius_head_w02/stratified_eval_report.json
-```
-
-At matched FPR about `0.08`:
-
-| model | AUROC | AUPRC | recall | weak recall | Dice+ |
-|---|---:|---:|---:|---:|---:|
-| radius_head_w02 | 0.670 | 0.852 | 0.302 | 0.224 | 0.006 |
-| v6_aux_only | 0.773 | 0.913 | 0.539 | 0.422 | 0.401 |
-
-Conclusion:
-
-- Radius-head implementation plumbing works.
-- Current trained branch damaged detection and segmentation.
-- Do not use or continue this exact branch.
-- Scale-aware modeling may still be valid, but only after geometry-correct data evaluation.
-
-## 9. Beam Consistency And Sensitivity
-
-Beam audit:
-
-```text
-runs/phase3_unet/beam_consistency_audit/audit.md
-```
-
-Verdict:
-
-- Current sensitivity comparison is beam-consistent.
-- Injections are hard Eq. 1 at analytic stage, then observed patch is beam-smoothed.
-- Matched-template kernel is also hard Eq. 1 then smoothed with same recorded beam.
-- Current sensitivity grid uses `beam_fwhm_arcmin = 15.0`.
-- This validates internal comparison, not native SMICA `~5 arcmin` readiness.
-
-ML gain heatmap:
-
-```text
-runs/phase3_unet/ml_gain_heatmap_v1/ml_gain_heatmap.json
-```
-
-At matched synthetic FPR `0.05`:
-
-- Significant ML wins: `8 / 35` amplitude-radius cells.
-- Significant ML losses: `0 / 35`.
-- Gain is localized, not universal.
-
-Important significant cells:
-
-| A | theta_deg | best_model | matched P_det | best ML P_det | delta |
-|---:|---:|---|---:|---:|---:|
-| 1e-5 | 20 | boundary_v4 | 0.050 | 0.120 | +0.070 |
-| 1e-5 | 25 | v6_hard_w15 | 0.065 | 0.175 | +0.110 |
-| 2e-5 | 20 | v6_aux_only | 0.235 | 0.555 | +0.320 |
-| 2e-5 | 25 | v6_hard_w15 | 0.375 | 0.710 | +0.335 |
-| 5e-5 | 5 | v6_hard_w15 | 0.065 | 0.295 | +0.230 |
-| 5e-5 | 10 | v5_consensus | 0.490 | 0.980 | +0.490 |
-| 5e-5 | 15 | v6_hard_w15 | 0.960 | 1.000 | +0.040 |
-| 1e-4 | 5 | v5_consensus | 0.500 | 0.980 | +0.480 |
-
-## 10. Real-SMICA Recalibration
-
-Main report:
-
-```text
-runs/phase3_unet/real_sky_recalibration_v1/real_sky_recalibration_report.json
-```
-
-Core result:
-
-- Initial real-SMICA gate failure was threshold miscalibration, not a full domain gap.
-- CAMB-calibrated thresholds were too strict on real SMICA negatives.
-
-At FPR target `0.05`:
-
-| method | real recalibrated recall | real FPR | precision | CAMB-threshold real recall |
+| map | `v6_only` | `gbt_6` | `gbt_14` | `gbt_6 - v6` |
 |---|---:|---:|---:|---:|
-| v6_aux_only | 0.353 | 0.040 | 0.997 | 0.262 |
-| matched_template | 0.323 | 0.052 | 0.995 | 0.238 |
-| either_v6_or_matched | 0.387 | 0.076 | 0.994 | 0.271 |
-| both_v6_and_matched | 0.289 | 0.016 | 0.998 | 0.230 |
+| SMICA | `0.347` | `0.337` | `0.329` | `-0.010` |
+| NILC | `0.296` | `0.307` | `0.320` | `+0.011` |
+| SEVEM | `0.173` | `0.237` | `0.192` | `+0.065` |
+| Commander | `0.161` | `0.230` | `0.193` | `+0.070` |
+| mean | `0.244` | `0.278` | `0.258` | `+0.034` |
 
-At FPR target `0.10`:
+Policy interpretation:
 
-| method/policy | real recall | real/null FPR | expected FP per 3000 independent patches |
-|---|---:|---:|---:|
-| v6_aux_only | 0.395 | 0.0998 | 299.4 |
-| matched_template | 0.385 | 0.0998 | 299.4 |
-| either_v6_or_matched | 0.454 | 0.1638 | 491.4 |
-| both_v6_and_matched | 0.326 | 0.0358 | 107.4 |
+- `gbt_6` survives as a cross-map score-ensemble policy.
+- `gbt_6` is not an SMICA-specific improvement; on SMICA it is slightly worse
+  than `v6_only`.
+- `gbt_14` is archived. The geometry features overfit clean-null mask
+  structure and do not survive deployment calibration.
+- Quote per-map numbers and bootstrap intervals. Do not hide map dependence in
+  a single cross-map mean.
 
-Thresholds:
+Deployment candidate burden:
 
-| FPR target | method | CAMB threshold | real-SMICA threshold |
-|---:|---|---:|---:|
-| 0.05 | v6_aux_only | 0.992082 | 0.8884694 |
-| 0.05 | matched_template | 76.977921 | 61.829514 |
-| 0.08 | v6_aux_only | 0.992082 | 0.87323481 |
-| 0.08 | matched_template | 76.977921 | 58.569695 |
-| 0.10 | v6_aux_only | 0.992082 | 0.8648743 |
-| 0.10 | matched_template | 76.977921 | 56.798725 |
+- Script: `scripts/phase3_deployment_burden_table.py`.
+- Report: `runs/phase3_unet/remediated_v1_deployment_burden/deployment_burden.md`.
+- At tile-recalibrated FPR `0.08`, each map has about `896` patch candidates by
+  construction.
+- At `15 deg` greedy peak clustering, mean clustered burden is `55.00` for
+  `v6_only`, `69.25` for `gbt_6`, and `68.50` for `gbt_14`.
+- `gbt_6` has the best cross-map mean recall (`0.2779`) but costs more
+  clustered follow-up than `v6_only` (`0.2440` recall).
+- Shipped clean-null thresholds are now drift diagnostics only; they produce
+  thousands of patch candidates on SEVEM and Commander.
 
-Conclusion:
+Policy Pareto search:
 
-- Any real-map screening must use map-calibrated null thresholds.
-- FFP10 retraining is optional, not mandatory, unless future mixed-geometry/real-map tests expose a new gap.
+- Script: `scripts/phase3_policy_pareto_search.py`.
+- Report: `runs/phase3_unet/remediated_v1_policy_pareto/policy_pareto.md`.
+- Under CAMB FPR `<=0.05` and real-SMICA FPR `<=0.02`, the best diagnostic
+  policy is `2-of-3(random>=0.987007, imagenet>=0.947194, circular>=68.79)`,
+  with real recall `0.2520`, a `+0.0289` gain over the best exact-threshold
+  single-score baseline.
+- Under CAMB FPR `<=0.05` and real-SMICA FPR `<=0.05`, the best diagnostic
+  policy is `random>=0.994006 OR imagenet>=0.998799`, with real recall
+  `0.2671`, a `+0.0441` gain over the best exact-threshold single-score
+  baseline.
+- Under CAMB FPR `<=0.08` and real-SMICA FPR `<=0.08`, the best diagnostic
+  policy is `2-of-3(random>=0.946233, imagenet>=0.947194, circular>=75.0896)`,
+  with real recall `0.3028`, a `+0.0490` gain over the best exact-threshold
+  single-score baseline.
+- These policies are recall-boost candidates only. The follow-up audits below
+  are now the limiting evidence.
 
-## 11. Smoothed Real-SMICA Sensitivity
+Composite-policy audits:
 
-Report:
+- Scripts: `scripts/phase3_remediated_null_policy_audit.py` and
+  `scripts/phase3_remediated_policy_tile_audit.py`; the broader constrained
+  search is `scripts/phase3_tile_constrained_policy_search.py`.
+- Reports:
+  `runs/phase3_unet/remediated_v1_null_policy_audit/null_policy_audit.md` and
+  `runs/phase3_unet/remediated_v1_policy_tile_audit/policy_tile_audit.md`.
+- On `5976` held-out real-null patches, pooled policy FPRs are a few percent:
+  `0.0281` for the `0.05/0.02` budget, `0.0246` for `0.05/0.05`, `0.0131`
+  for `0.08/0.05`, and `0.0343` for `0.08/0.08`.
+- Full-sky overlapping tiles are stricter. At `15 deg` clustering, the
+  `0.05/0.05` policy gives `41` SMICA clusters and `28` NILC clusters, but
+  `68` SEVEM clusters and `101` Commander clusters.
+- Deployment decision report:
+  `runs/phase3_unet/remediated_v1_deployment_policy_decision/deployment_policy_decision.md`.
+- Default decision constraints are `15 deg` clustering, max `70` clusters on
+  every cleaned map, max tile-trigger fraction `0.15` on every cleaned map, and
+  pooled held-out null-control FPR upper CI `<=0.04`.
+- Under those constraints, `0 / 5` composite policies are promotable. The
+  highest-recall `0.08/0.08` policy reaches recall `0.3028`, but has `83`
+  Commander clusters and Commander trigger fraction `0.1772`.
+- The broader tile-constrained search finds a deployment-safe composite under
+  the same rule: `2-of-3(random>=0.999983, imagenet>=0.983177,
+  circular>=51.0957)`, with real-injection recall `0.2620`, real FPR `0.0650`,
+  pooled null FPR CI high `0.0290`, max `62` clusters, and max trigger fraction
+  `0.0899`. Its recall gain over the best feasible single-score baseline is
+  `+0.0403`.
+- Candidate emission for that policy is now frozen on the canonical
+  `mask_fraction >= 0.9` science footprint. It emits `102` overlapping tile
+  candidates and `24` clustered representatives across SMICA, NILC, SEVEM, and
+  Commander. Use
+  `runs/phase3_unet/remediated_v1_tile_constrained_candidates/cluster_representatives_15deg.jsonl`
+  as the first-pass HM sign-flip/template-fit input.
+- Projection/systematics context now lives in
+  `runs/phase3_unet/remediated_v1_projection_clustering_audit/projection_clustering_audit.md`.
+- The template-fit handoff for the frozen `24` cluster representatives now
+  lives in
+  `runs/phase3_unet/remediated_v1_template_fit_handoff/template_fit_summary.json`.
+- The merged Bayesian/template-likelihood handoff for those same `24`
+  representatives now lives in
+  `runs/phase3_unet/remediated_v1_bayesian_template_handoff/bayesian_template_handoff_summary.json`.
+- Candidate score calibration now uses only the null-control calibration split
+  (`5768` pooled null margins) and writes empirical survival p-values plus BH
+  q-values to
+  `runs/phase3_unet/remediated_v1_candidate_score_calibration/calibrated_candidates.jsonl`.
+- Phase 5 HM sign-flip preflight validates the frozen `24` candidate
+  representatives, policy slug, model checkpoints, and common mask. It is
+  currently `blocked` only because HM1/HM2 cleaned-map paths are not available
+  in the local artifact tree.
+  The best current representative has plus-one pooled null-survival
+  `p=0.000173` and BH q-value `0.000693`. These are follow-up prioritization
+  scores, not global detection probabilities.
+- Treat that as the current deployment-safe composite candidate, but do not
+  promote any diagnostic recall result to a cosmological claim.
 
-```text
-runs/phase3_unet/real_sky_smoothed_sensitivity_v1/smoothed_sensitivity_report.json
-```
+Matched-filter-channel recall candidate:
 
-Setup:
+- Script: `scripts/phase3_mf_channel_tile_audit.py`.
+- Report:
+  `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/mf_channel_tile_audit.md`.
+- Shared feature implementation:
+  `scripts/phase3_circular_template_features.py`.
+- This audits the legacy v7 two-channel checkpoint without modifying the
+  current tile HDF5 files. The second channel is reconstructed in memory from
+  the legacy circular-template response bank.
+- Diagnostic real-SMICA recall is `0.3526` at FPR `0.0440`, above the current
+  deployment-safe composite recall `0.2620`.
+- Hard-regime recall remains limited: `0.0466` for `A <= 2e-6`, `0.1724` for
+  `5e-6 <= A <= 2e-5`, and `0.9288` for `A >= 5e-5`.
+- Canonical-mask full-sky burden is `285/307/290/422` eligible triggered tiles
+  for SMICA/NILC/SEVEM/Commander and `20/21/22/23` clusters at `15 deg`.
+- Do not promote this checkpoint as current science. It was trained on
+  historical `training_v4` with a legacy `15 arcmin` feature channel. The next
+  model-development step is a remediated-v1 two-channel retrain with the
+  current `5 arcmin` beam, canonical masks, disjoint splits, and real-null
+  deployment gates.
+- The old duplicated response-map code path was consolidated so the HDF5
+  feature cacher and tile audit now use the same circular-template feature
+  implementation. Torch and scipy response maps agree to about `1.9e-5` max
+  absolute difference on sample remediated patches.
 
-- Model: `v6_aux_only`
-- Edge smoothing: uniform `0.30` to `1.00` deg.
-- Real SMICA backgrounds.
-- Threshold source: real-SMICA recalibration report.
+## Classical Naming Contract
 
-At FPR target `0.05`:
+Use these names exactly:
 
-- Global recall: `0.351`
-- Dead `A <= 2e-6`: `0.042`
-- Contested `5e-6 to 2e-5`: `0.174`
-- Solved `A >= 5e-5`: `0.925`
-- Contested+solved `A >= 5e-6`: `0.474`
+- `circular_template_screen`: historical patch-space circular disc/ring
+  correlation screen.
+- `wiener_feeney_matched_filter`: harmonic-space Feeney template with beam,
+  HEALPix pixel-window, and CMB/noise inverse-covariance weighting.
+- `smhw_screen`: spherical Mexican-hat / scale-space context screen.
 
-At FPR target `0.10`:
+Never describe `circular_template_screen` as an optimal matched filter. Any
+paper-facing ML-vs-classical claim must say whether it is comparing against the
+simple circular screen or the true Wiener Feeney matched filter.
 
-- Global recall: `0.392`
-- Dead `A <= 2e-6`: `0.089`
-- Contested `5e-6 to 2e-5`: `0.232`
-- Solved `A >= 5e-5`: `0.935`
-- Contested+solved `A >= 5e-6`: `0.514`
+Same-grid classical status:
 
-Interpretation:
+- Script: `scripts/phase3_classical_same_grid_status.py`.
+- Report:
+  `runs/phase3_unet/remediated_v1_classical_same_grid_status/classical_same_grid_status.md`.
+- Current status is now `complete` for the stratified same-grid manifest in
+  `runs/phase3_unet/remediated_v1_same_grid_fullsky_manifest/`.
+- Mean recall on that fixed manifest is `0.3841` for
+  `wiener_feeney_matched_filter`, `0.3517` for `imagenet_b64_aux`, `0.2994`
+  for `random_b64_aux`, and `0.2734` for `smhw_screen`.
+- ImageNet beats Wiener in `17 / 35` raw cells and loses in `16 / 35`; under
+  non-overlapping exact 95% CIs it is better in `7` cells and worse in `8`.
+- Scientific consequence: the true Wiener/Feeney filter is the strongest
+  average classical screener on the same-grid benchmark, while the ML branch
+  remains locally competitive rather than uniformly superior.
+- Pilot driver: `scripts/phase3_same_grid_fullsky_benchmark.py` streams
+  full-sky injected maps, writes patches projected from those maps, scores
+  Wiener/SMHW locally, and can optionally score ML checkpoints on the same
+  patches. Subset output is a path-validation artifact, not a superiority
+  claim.
 
-- Smoothing mismatch was not the main bottleneck.
-- Solved-zone behavior is strong.
-- Contested-zone recall remains limited under strict FPR.
+## Remaining Blockers
 
-## 12. Threshold-Volume Sweep
+1. **Weak-signal recall.** At real-SMICA FPR `0.08`, models remain below `0.10`
+   recall for `A <= 5e-6`. Treat `A <= 2e-6` as CMB-confusion dominated under
+   the current ideal SNR diagnostic; treat higher-SNR cells as algorithmic
+   targets under the now-closed same-grid benchmark.
+2. **Candidate-volume convention.** Candidate-volume accounting exists, but the
+   paper narrative still needs a final cluster radius and score-calibration
+   convention.
+3. **Posterior/evidence calibration.** Empirical null-survival scores exist,
+   but top candidates still need template likelihood or Bayesian follow-up.
+4. **Projection-robust follow-up.** The deterministic template/Bayesian
+   handoff exists, but projection cautions remain attached to a majority of the
+   frozen candidates and need native-sphere or projection-robust follow-up
+   before any parameter statement.
+5. **True-Wiener two-stream branch.** The corrected full-cache rerun is now
+   complete. Relative to `imagenet_b64_aux`, `true_wiener_ft` raises mean
+   synthetic sensitivity from `0.34875` to `0.36839` overall, helps
+   moderate/high-amplitude cells (`+0.03881` mean delta) and large-radius
+   cells (`+0.02226`), but remains worse on the hardest low-amplitude subset
+   (`-0.00592`). Keep it as a candidate secondary branch or fusion input, not
+   an automatic baseline replacement.
+6. **Half-mission null report.** The Phase 5 HM sign-flip preflight exists and
+   validates candidate/policy/model readiness, but no HM1/HM2-backed candidate
+   p-value report has been produced because the HM maps are not local.
+7. **Remediated matched-filter-channel retrain.** The legacy v7 tile audit is
+   promising for recall, but it must be retrained and recalibrated under the
+   current artifact contract before it can replace the deployment-safe
+   composite.
 
-Report:
+## Current Next Steps
 
-```text
-runs/phase3_unet/threshold_volume_sweep_v1/threshold_volume_sweep.json
-```
+1. Retrain and audit a remediated-v1 matched-filter-channel branch using the
+   current `5 arcmin` beam, canonical masks, disjoint splits, and real-map null
+   deployment gates.
+2. Cache `features/circular_template_response` with
+   `scripts/phase3_cache_matched_filter_channel.py` for the remediated train,
+   calibration, test, sensitivity, real-injection, and null-control products
+   needed by that retrain. Do not use the historical `15 arcmin` feature
+   contract for new claims.
+3. Close the true Wiener/SMHW classical comparison on the same remediated
+   injection/null products.
+4. Select/provide Planck HM1/HM2 component-separated map paths, rerun the Phase
+   5 preflight, then run sign-flip calibration on the frozen cluster
+   representatives.
+5. Add posterior/template-likelihood calibration for the top HM-vetted
+   candidates.
+6. Choose and justify the paper-facing cluster radius for candidate burden.
+7. Train against real-map null backgrounds rather than another CAMB-only
+   distribution.
+8. Build the template-fit/Bayesian handoff path for emitted candidates.
+9. Run Phase 5 HM sign-flip p-values after Planck HM1/HM2 maps are selected.
 
-`v6_aux_only` on cached smoothed real-SMICA positives + 5000-patch SMICA nulls:
+## Quality Gates
 
-| threshold | dead recall | contested recall | solved recall | global recall | null FPR | expected FP / 3000 |
-|---:|---:|---:|---:|---:|---:|---:|
-| 0.75 | 0.538 | 0.654 | 0.976 | 0.713 | 0.544 | 1631 |
-| 0.80 | 0.272 | 0.442 | 0.954 | 0.540 | 0.298 | 895 |
-| 0.85 | 0.124 | 0.278 | 0.940 | 0.423 | 0.134 | 401 |
-| 0.90 | 0.028 | 0.150 | 0.922 | 0.336 | 0.035 | 106 |
-
-Operating points:
-
-- Contested recall `>=0.50` needs threshold about `0.784`, expected FP about `1099`.
-- Expected FP `<=800` gives contested recall about `0.412`.
-- Expected FP `<=500` gives contested recall about `0.317`.
-- Expected FP `<=300` gives contested recall about `0.232`.
-
-Conclusion:
-
-- The model is not blind to contested positives.
-- Recall versus false-positive volume is now an operational budget question.
-- Candidate clustering and downstream fitting are needed to make high-recall mode practical.
-
-## 13. Two-Pass ML Then Matched-Template Policy
-
-Report:
-
-```text
-runs/phase3_unet/two_pass_policy_v1/two_pass_policy.json
-```
-
-Pass 1:
-
-- `v6_aux_only >= 0.75`
-- Positive kept: `12473 / 17500`
-- Global recall: `0.713`
-- Null kept: `2718 / 5000`
-- Expected FP / 3000: `1631`
-- Dead recall: `0.538`
-- Contested recall: `0.654`
-- Solved recall: `0.976`
-
-Pass 2:
-
-- Matched-template verifier calibrated only on ML-kept null subset.
-
-| FP budget | matched threshold | expected FP | global recall | contested recall | solved recall |
-|---:|---:|---:|---:|---:|---:|
-| 200 | 58.933 | 200 | 0.336 | 0.167 | 0.858 |
-| 400 | 53.124 | 400 | 0.408 | 0.263 | 0.904 |
-| 600 | 49.418 | 600 | 0.462 | 0.338 | 0.929 |
-| 800 | 46.536 | 800 | 0.508 | 0.400 | 0.943 |
-
-Conclusion:
-
-- Matched-template verification reduces false positives but also removes many contested positives.
-- The ML false positives often look disc-like to the matched template; they are not trivially rejected.
-- Bayesian/template-fit follow-up or clustering is needed for practical high-recall operation.
-
-## 14. Current Candidate Output Direction
-
-Desired candidate object fields:
-
-- patch provenance: source map, map product, sky center, patch index, mask fraction.
-- model scores: `v6_aux_only_score`, `matched_template_score`, thresholds, pass/fail flags.
-- candidate center estimate in patch pixels and sky coordinates.
-- candidate angular radius estimate or matched radius.
-- thresholded mask and mask path.
-- visible fraction / truncation metadata once mixed geometry is used.
-- fit/handoff artifact paths.
-
-Existing candidate-output scripts:
-
-- `scripts/phase3_screen_and_verify.py`
-- candidate records should remain machine-readable JSONL/CSV/NPZ style.
-
-## 15. Immediate Next Steps
-
-Do these in order. Do not train before step 2 completes.
-
-1. Generate full mixed-geometry stratified validation:
+Fast artifact graph audit:
 
 ```bash
-python scripts/phase2_generate_stratified_validation.py \
-  --output-dir data/validation_stratified_mixed_geometry_v1 \
-  --num-samples 5000 \
-  --samples-per-cell 50 \
-  --geometry-mode mixed \
-  --truncated-positive-fraction 0.30 \
-  --truncated-visible-fraction-min 0.15 \
-  --truncated-visible-fraction-max 0.95
+python scripts/audit_remediated_flow.py
 ```
 
-2. Evaluate current models on mixed geometry:
+Compile + physics + remediated-flow audit:
 
 ```bash
-python scripts/phase3_eval_stratified_external.py \
-  --data-h5 data/validation_stratified_mixed_geometry_v1/validation_data.h5 \
-  --output-dir runs/phase3_unet/stratified_external_mixed_geometry_v1 \
-  --model v6_aux_only:runs/phase3_unet/phase3_v6_aux_only_w4:best:mask_max \
-  --batch-size 64 \
-  --num-workers 8 \
-  --device cuda
+python scripts/run_quality_gates.py --skip-train-dry-run
 ```
 
-Also score `matched_template` through the classical harness or an equivalent matched-template evaluator.
-
-3. Read geometry group metrics:
-
-- `geometry_contained`
-- `geometry_truncated`
-- `center_inside_patch`
-- `center_outside_patch`
-- `visible_fraction_low`
-- `visible_fraction_mid`
-- `visible_fraction_high`
-- `weak_family_union`
-
-4. Decision gate:
-
-- If `v6_aux_only + matched_template` holds contained performance and does not collapse on truncated positives, do not retrain immediately; proceed to real-SMICA mixed injection calibration.
-- If truncated recall collapses while contained remains stable, generate mixed training data and fine-tune `v6_aux_only` with a modest truncated fraction.
-- If false positives rise under mixed geometry, do not lower thresholds until real-map nulls and clustering are rechecked.
-
-5. If retraining is justified:
-
-Suggested first mixed training product:
+Full local gate including dataset audit:
 
 ```bash
-python scripts/phase2_generate_training.py \
-  --num-samples 10000 \
-  --pool-size 5000 \
-  --num-cmb-realizations 192 \
-  --output-dir data/training_v5_mixed_geometry \
-  --geometry-mode mixed \
-  --truncated-positive-fraction 0.30 \
-  --truncated-visible-fraction-min 0.15 \
-  --truncated-visible-fraction-max 0.95
+python scripts/run_quality_gates.py \
+  --data-h5 data/remediated_v1/training_data.h5 \
+  --skip-train-dry-run
 ```
 
-Suggested fine-tune:
+Use the training dry run only when the local PyTorch/CUDA environment is known
+to be healthy.
+
+Last validated local gate:
 
 ```bash
-python scripts/phase3_train_unet.py \
-  --data-h5 data/training_v5_mixed_geometry/training_data.h5 \
-  --output-root runs/phase3_unet \
-  --run-name phase3_v8_mixed_geometry_v6_ft \
-  --epochs 6 \
-  --batch-size 64 \
-  --learning-rate 5e-5 \
-  --scheduler cosine \
-  --normalization-config runs/phase3_unet/phase3_v6_aux_only_w4/run_config.json \
-  --resume-checkpoint runs/phase3_unet/phase3_v6_aux_only_w4/best_checkpoint.pt \
-  --model-only-resume \
-  --aux-head-weight 0.1 \
-  --aux-head-dropout 0.2 \
-  --boundary-weight 4.0 \
-  --boundary-width-pixels 5 \
-  --checkpoint-metric image_f1 \
-  --gpu-ids 0,1 \
-  --num-workers 8 \
-  --cache-data
+python scripts/run_quality_gates.py \
+  --data-h5 data/remediated_v1/training_data.h5 \
+  --skip-train-dry-run
 ```
 
-Required post-training gates:
-
-- Fixed contained validation should not regress materially.
-- Mixed/truncated validation should improve.
-- Real-SMICA null burden should stay controlled under map-calibrated thresholds.
-- Candidate-volume sweep must be rerun.
-- Matched-template comparison must be rerun.
-
-## 16. Low-Risk High-Gain Ideas Still Valid
-
-Prioritized:
-
-1. Mixed/truncated positive geometry correction.
-   - Already implemented locally.
-   - High scientific validity.
-   - Must evaluate before retraining.
-
-2. Real-map threshold calibration.
-   - Already shown essential.
-   - Keep mandatory for SMICA/NILC/SEVEM/Commander.
-
-3. Candidate clustering/deduplication.
-   - High practical gain for false-positive burden.
-   - Does not alter signal physics.
-   - Needed before full-sky candidate-count claims.
-
-4. Mixed geometry plus real-SMICA injection validation.
-   - Needed after synthetic mixed validation.
-   - Tests whether patch-edge positives transfer on real backgrounds.
-
-5. Real-null training or FFP10.
-   - Plausible but higher leakage/systematics risk.
-   - Only use after mixed geometry and calibration gates.
-
-6. Scale-aware model changes.
-   - Radius head failed in current form.
-   - Revisit only if mixed-geometry evaluation shows scale-specific failure not fixed by data.
-
-## 17. Things Tested And Outcome
-
-Completed and useful:
-
-- Feeney Eq. 1 implementation checks.
-- Multiplicative injection checks.
-- Provenance-clean split audit.
-- Beam/noise forward-model inclusion.
-- Classical baselines: matched template and centered disc.
-- Matched-FPR sensitivity curves.
-- Bootstrap CIs for ML gain heatmap.
-- Real-SMICA threshold recalibration.
-- Threshold-volume sweep.
-- Two-pass ML+matched-template policy.
-- Smoothed real-SMICA sensitivity.
-- Nside=512 probe.
-- Matched-filter input-channel experiment.
-- Radius-head auxiliary branch.
-- Mixed/truncated geometry implementation smoke tests.
-
-Failed or not worth continuing as-is:
-
-- Radius-head branch `phase3_scale_radius_head_w02`: external metrics collapsed.
-- Matched-filter input channel: moved contested recall by only about `0.013`; not main lever.
-- Nside=512 probe: not enough improvement without unacceptable null saturation.
-- Strict two-pass matched-template verifier: reduces FPs but cuts too much contested recall.
-
-Still needs evaluation:
-
-- Full mixed-geometry stratified validation.
-- Current `v6_aux_only + matched_template` on contained vs truncated patches.
-- Real-SMICA mixed-geometry injection and recalibration.
-- Cross-map threshold calibration for NILC/SEVEM/Commander after final model choice.
-- Full-sky candidate clustering/deduplication.
-
-## 18. File/Directory Notes
-
-Root files:
-
-- `README.md`: public project overview.
-- `README_main_backup_2026-04-16.md`: backup of previous README before overhaul.
-- `PROJECT_HANDOFF.md`: this handoff.
-- `environment.yml`: conda environment.
-
-Data:
-
-- `data/training_v4/training_data.h5`: current primary contained training dataset.
-- `data/validation_stratified_v1/validation_data.h5`: current contained stratified validation.
-- `data/training_v4/smica_null_controls_all.h5`: real SMICA null controls used for recalibration.
-
-Runs:
-
-- `runs/phase3_unet/phase3_v6_aux_only_w4`: current preferred ML branch.
-- `runs/phase3_unet/stratified_external_combined_v1`: main contained stratified model comparison.
-- `runs/phase3_unet/real_sky_recalibration_v1`: key SMICA threshold recalibration result.
-- `runs/phase3_unet/threshold_volume_sweep_v1`: recall vs FP-volume tradeoff.
-- `runs/phase3_unet/two_pass_policy_v1`: ML proposal + matched-template verifier test.
-- `runs/phase3_unet/phase3_scale_radius_head_w02`: failed radius-head branch; keep as negative result.
-
-Work folder:
-
-- New throwaway scripts/artifacts should go under `work/` unless intentionally promoted.
-- Smoke artifacts created during geometry implementation were removed.
-
-## 19. Git State Warning
-
-At the time this handoff was created, local modifications exist in:
-
-- `scripts/phase2_audit_dataset.py`
-- `scripts/phase2_generate_stratified_validation.py`
-- `scripts/phase2_generate_training.py`
-- `scripts/phase3_eval_stratified_external.py`
-- `scripts/phase3_real_sky_injection.py`
-- `scripts/phase3_train_unet.py`
-
-Meaning:
-
-- Geometry correction is local and not yet necessarily pushed.
-- Radius-head plumbing is also local and remains in code, but the trained radius-head branch failed.
-- Before publishing, review whether to keep radius-head code as disabled experimental infrastructure or remove it.
-
-## 20. Minimal Mental Model For Next AI
-
-The project is not blocked by lack of model complexity. It is blocked by observable correctness and operating-point discipline.
-
-Current best reasoning:
-
-1. Existing training used contained positives only.
-2. Real full-sky patch tiling can observe partial/clipped bubble discs.
-3. The generator now supports this physically correct geometry.
-4. Evaluate current `v6_aux_only + matched_template` on mixed geometry before retraining.
-5. If truncated geometry is a real failure mode, fine-tune on mixed geometry.
-6. After any model/data change, recalibrate thresholds on real-map nulls.
-7. Judge success by weak/truncated recall at controlled real-map false-positive burden, not pooled F1 alone.
-
-Non-negotiable scientific rule:
-
-Do not simplify the signal into easier blobs. Preserve Feeney Eq. 1, multiplicative injection, causal disc support, azimuthal symmetry, long-wavelength modulation, real-map null calibration, and explicit metadata sufficient for classical/Bayesian follow-up.
-
-## 21. 2026-04-17 Real-SMICA Validation Gate: v7_mixed_ft vs v6_aux_only
-
-Full report: `work/v7_real_sky_gate.md`. Gate harness: `scripts/phase3_real_sky_v7_gate.py`.
-
-Artifacts:
-
-- `runs/phase3_unet/real_sky_v7_gate_v1/contained/v7_vs_v6_contained_report.{md,json}`
-- `runs/phase3_unet/real_sky_v7_gate_v1/mixed/v7_vs_v6_mixed_report.{md,json}`
-
-Key numbers at real-SMICA-calibrated FPR 0.08, n_positive = 17500 per geometry:
-
-### Contained geometry
-
-| model | recall @ FPR 0.05 | recall @ FPR 0.08 | recall @ FPR 0.10 |
-|---|---:|---:|---:|
-| v7_mixed_ft | 0.286 | 0.357 | 0.386 |
-| v6_aux_only | 0.348 | 0.372 | 0.389 |
-
-v7 loses to v6 on real-SMICA contained geometry at FPR 0.05 by 6.2 points. The
-contained-geometry advantage v7 showed on synthetic CAMB backgrounds does not
-survive the foreground-residual domain shift.
-
-### Mixed geometry (30% truncated)
-
-| group | v7 recall | v6 recall | delta |
-|---|---:|---:|---:|
-| geometry_contained | 0.360 | 0.380 | -0.020 |
-| geometry_truncated | 0.246 | 0.205 | +0.041 |
-| center_outside_patch | 0.207 | 0.163 | +0.044 |
-| visible_fraction_low | 0.196 | 0.145 | +0.051 |
-
-v7 wins on every truncated / edge-crossing subgroup, as expected from its
-mixed-geometry fine-tune. v6 remains better on fully contained positives on
-real backgrounds.
-
-### Decision (as it stood at the end of this gate; see Section 22 for the final answer)
-
-At the time of the real-SMICA gate, the natural interpretation was a
-two-model portfolio at Phase 5:
-
-1. v6_aux_only for contained positives.
-2. v7_mixed_ft for truncated / edge-crossing positives.
-3. Union of triggers at lowered per-model thresholds.
-
-This reading was correct given only the gate numbers. Section 22 shows that
-the simple portfolio policies (OR, AND, rank_max, heuristic routing) all
-underperform `v6_only` at deployment FPR because v6 and v7 false positives
-are highly correlated. The portfolio is recovered by the learned GBT
-router in Section 22, not by raw model ensembling.
-
-### Next step: Batch 2 — completed
-
-See `work/batch2_postprocess_ablation.md` for the full ablation.
-
-- Harness: `scripts/phase3_postprocess_ablation.py`.
-- Artifacts: `runs/phase3_unet/batch2_postprocess_ablation_v1/`.
-
-Two transforms evaluated on frozen v6 / v7 probability masks against the
-same real-SMICA gate data:
-
-- `smooth_multi` (Gaussian at sigma in {4, 8, 16} pix, max over sigmas):
-  null result. The U-Net mask is already smooth at that scale.
-- `mf_on_mask` (matched-filter rescoring with positive-disc kernels on the
-  smoothed mask): positive for `v7_mixed_ft` specifically, at tight FPR,
-  specifically on contained geometry (+0.039 recall @ FPR 0.05). Hurts
-  `v6_aux_only` at every setting. Also hurts `v7_mixed_ft` on truncated /
-  edge-crossing positives.
-
-Portfolio decision holds. Best `v7 + mf_on_mask` (0.325 at FPR 0.05 on
-contained) is still below `v6 baseline` (0.348). Post-processing alone does
-not close the gap.
-
-## 22. 2026-04-17 Batch 3 Portfolio Router
-
-Full report: `work/batch3_geometry_router.md`. Harness:
-`scripts/phase3_geometry_router.py`. Artifacts:
-`runs/phase3_unet/batch3_geometry_router_v1/`.
-
-Eight portfolio policies evaluated against the single-model baselines from
-Section 21, using the cached Batch 2 transform scores. The six simple /
-heuristic policies all underperform the best single model at FPR 0.08. A
-learned GBT classifier on all six transform features beats `v6_only`
-cleanly in every cell.
-
-### Learned GBT router result (honest evaluation)
-
-Cross-geometry training (fit on contained to score mixed, and vice versa)
-with a disjoint null train/eval split (2500/2500 by fixed seed):
-
-| geometry | FPR | v6_only | learned_gbt | delta |
-|---|---:|---:|---:|---:|
-| contained | 0.05 | 0.348 | 0.359 | +0.011 |
-| contained | 0.08 | 0.372 | **0.403** | **+0.031** |
-| contained | 0.10 | 0.389 | **0.431** | **+0.042** |
-| mixed | 0.05 | 0.305 | 0.322 | +0.017 |
-| mixed | 0.08 | 0.331 | **0.365** | **+0.034** |
-| mixed | 0.10 | 0.347 | **0.392** | **+0.045** |
-
-Per-geometry-group recall on mixed at FPR 0.08 — the GBT wins biggest on
-exactly the groups where `v6_only` is weakest:
-
-| group | v6_only | learned_gbt | delta |
-|---|---:|---:|---:|
-| geometry_contained | 0.380 | **0.409** | +0.029 |
-| geometry_truncated | 0.205 | **0.253** | +0.048 |
-| center_outside_patch | 0.163 | **0.207** | +0.044 |
-| visible_fraction_low | 0.145 | **0.191** | +0.046 |
-
-GBT feature importances: `v6_baseline` 0.44, `v6_smooth_multi` 0.16,
-`v7_mf_on_mask` 0.12, `v7_baseline` 0.11, `v7_smooth_multi` 0.09,
-`v6_mf_on_mask` 0.07. Primary signal is v6, with v7 and matched-filter
-acting as complementary sub-scores. Non-linear interactions matter:
-`learned_logistic` only gains ~+0.004, `learned_gbt` gains +0.034.
-
-### Honest-evaluation note
-
-An initial pass fit on `{positives, full 5000-null pool}` and calibrated
-the threshold on the same full null pool, producing inflated numbers (GBT
-FPR 0.08 mixed recall 0.396 in that pass). The numbers above use the
-corrected disjoint null split. The Batch 2 transform caches are shared
-across geometries (same 5000 null patches), so cross-geometry positive
-training alone does not prevent null leakage. The 2500/2500 null split by
-fixed seed is the right control.
-
-### Simple policies (all negative at FPR 0.08)
-
-Mixed geometry:
-
-| policy | recall |
-|---|---:|
-| v6_only | **0.331** |
-| v7_only | 0.328 |
-| either_OR | 0.325 |
-| rank_max | 0.325 |
-| both_AND | 0.272 |
-| geometry_routed (best quantile) | 0.305 |
-
-Contained geometry:
-
-| policy | recall |
-|---|---:|
-| v6_only | **0.372** |
-| v7_only | 0.357 |
-| either_OR | 0.367 |
-| rank_max | 0.367 |
-
-Mixed geometry at deployment FPR 0.08:
-
-| policy | recall |
-|---|---:|
-| v6_only | **0.331** |
-| v7_only | 0.328 |
-| either_OR | 0.325 |
-| rank_max | 0.325 |
-| both_AND | 0.272 |
-| geometry_routed (best quantile) | 0.305 |
-
-Contained geometry at FPR 0.08:
-
-| policy | recall |
-|---|---:|
-| v6_only | **0.372** |
-| v7_only | 0.357 |
-| either_OR | 0.367 |
-| rank_max | 0.367 |
-
-Why the two-model ensemble does not help:
-
-- v6 and v7 share an EfficientNet encoder and overlapping training
-  distribution, so their false positives are highly correlated. `either_OR`
-  buys little independent signal.
-- To keep joint null FPR at 0.08, each model's threshold rises above its
-  single-model setting. The recall lost to tightening roughly cancels
-  recall gained from v7's truncated positives.
-
-Why the simple geometry router does not help:
-
-- The `v7_mf_on_mask - v7_baseline` signal correlates with both signal
-  strength and geometry, not cleanly with geometry. Strong truncated
-  positives get routed to v6 (which does not detect them). Weak contained
-  positives get routed to v7 (which scores them lower than v6 would).
-- Full route-quantile sweep in {0.25, 0.50, 0.70, 0.85, 0.95} did not find
-  a setting that beat best single model at any FPR target.
-
-Revised deployment advice from this result:
-
-- **Primary operating policy: `learned_gbt` router.** 200-tree gradient-
-  boosted classifier on six features derived from the frozen v6 and v7
-  probability masks (baseline, smooth_multi, mf_on_mask per model).
-  Deployable at inference time with negligible compute.
-- **Single-model fallback: `v6_aux_only`** at real-SMICA threshold 0.873
-  (FPR 0.08). Clean reference when a reviewer does not want a composite
-  score.
-- `v7_mixed_ft` is retained as an input to the learned router and as a
-  Phase 5 specialist on truncated candidates. Not run as a separate
-  parallel screener.
-- `matched_template` role unchanged.
-
-This supersedes the "v6 alone, portfolio walked back" note from my earlier
-Section 21 draft: the portfolio is recovered via the learned classifier,
-not via raw model ensembling.
-
-## 23. 2026-04-17 Batch 2 Ablation v2 Small-Sigma Sweep
-
-Full report: `work/batch2_postprocess_ablation.md` (extended). Artifacts:
-`runs/phase3_unet/batch2_postprocess_ablation_v2_smallsigma/`.
-
-Gaussian smoothing sigma sweep at (0.5, 1.0, 2.0) pixels, following up on
-the null result in the (4, 8, 16) sweep. Also null at every cell
-(delta <= 0.001 in recall).
-
-`mf_on_mask` with base sigma 0.5 gives identical numbers to sigma 4
-(v7 contained @ FPR 0.05: 0.326 vs 0.325). Matched-filter-on-mask captures
-mask shape coherence, not mask smoothness.
-
-This closes the Gaussian-smoothing branch of post-processing.
-
-## 24. What Does NOT Help (Running Negative-Result Registry)
-
-Closed off by direct measurement so the next AI does not loop on them:
-
-- Naive multi-model probability-mask averaging. Measured negative in
-  `work/tta_ensemble_eval.md`.
-- D4 test-time augmentation beyond +0.7pp Dice. Same doc. Theoretical
-  sqrt(8) argument does not apply to a CNN trained with rotation / flip
-  augmentation.
-- Gaussian smoothing on the probability mask at any practical sigma.
-  Measured null in Batch 2 v1 (sigma 4, 8, 16) and Batch 2 v2 (sigma
-  0.5, 1, 2).
-- Matched-filter-on-mask as a general screener replacement. Hurts
-  `v6_aux_only` at every setting; helps `v7_mixed_ft` only at FPR 0.05 on
-  contained. Useful as a measurement of "disc-like coherence", not a
-  recall lever.
-- Two-model OR / AND / rank_max ensembling at joint FPR 0.08. Measured
-  negative in `work/batch3_geometry_router.md`.
-- Heuristic geometry routing on the `v7_mf - v7_baseline` contrast.
-  Swept quantile, none win. Same doc.
-- Linear (logistic-regression) router on the six frozen-mask features.
-  +0.004 recall at FPR 0.08, which is within noise. The optimal decision
-  boundary is non-linear; linear combination of the six features does not
-  find it. Same doc.
-- Nside=512 retrain. Measured negative in `docs/nside512_probe_decision.md`.
-- Radius-head auxiliary branch at weight 0.2 cold-started. Measured
-  negative in `work/radius_head_post_mortem.md`. Retry requires warmup
-  + checkpoint metric hygiene + geometry-correct training data.
-- **Batch 4 14-feature router as a deployment improvement.** Clean-null
-  FPR-0.08 delta over `gbt_6` was +0.043 (shipped claim in PR #9). Under
-  deployment-representative Nside=8 tile calibration the cross-map mean
-  delta is **−0.015** (SMICA −0.001, NILC +0.023, SEVEM −0.045,
-  Commander −0.036). The geometry features specifically overfit the
-  clean-pool mask-fraction distribution. See `work/batch5_fullsky_calibration_gap.md`
-  and Section 27. Code infrastructure stays; deployment claim retracted.
-
-## 25. What Remains on the Table (Open Recall Levers)
-
-Ordered by expected gain per unit compute:
-
-- **v8 retrain with matched-filter response channel, on
-  training_v5_mixed_geometry.** The only remaining training-signal lever.
-  Expected to lift truncated recall a further 4-10pp on top of the
-  Batch 4 learned-router gain. Wall clock 6-10 hours on 2x3090. Requires
-  training hygiene from `work/radius_head_post_mortem.md`. Must run a
-  1-epoch 500-sample smoke test first.
-- **Isotonic score calibration on real-SMICA nulls.** Not a recall boost;
-  required for clean candidate-volume statistics in the paper.
-- **Expand the learned-router feature set further.** Batch 4 added 4
-  geometry proxies per model. Additional candidates for a Batch 5: a
-  matched-filter response channel evaluated as a router feature (rather
-  than a model input channel), second-moment / eccentricity of the mask,
-  and per-model image-level aux-head score. Each is cheap to implement
-  and the router architecture already scales to arbitrary feature counts.
-
-## Closed recall levers (completed)
-
-- **Expand the learned-router feature set with 4 truth-free geometry
-  proxies per model.** Executed in Batch 4, measured positive: +0.043
-  mixed recall at FPR 0.08 over the PR #8 GBT, robust across 4 null-split
-  seeds (min +0.021). See `work/batch4_router_features.md` and Section 26.
-
-## 26. 2026-04-17 Batch 4 Router Feature Expansion
-
-Full report: `work/batch4_router_features.md`. Harness:
-`scripts/phase3_postprocess_ablation.py` (extended) +
-`scripts/phase3_geometry_router.py` (new `--feature-set` flag).
-Artifacts: `runs/phase3_unet/batch4_router_features_v1/`.
-
-Added 4 truth-free geometry proxies per model (8 new features total)
-to the PR #8 learned-GBT router. Same architecture (200 trees, depth 3,
-LR 0.05), same honest-eval protocol (cross-geometry positive training,
-2500/2500 disjoint null split at seed 20260417), same deployment FPR
-targets.
-
-New per-patch features, computed from `P = sigmoid(mask_logits)`:
-
-- `mask_area_at_0.5`: fraction of pixels with `P >= 0.5`.
-- `centroid_offset_px`: Euclidean distance from probability-weighted
-  centroid to patch center.
-- `compactness`: perimeter / sqrt(area) on the thresholded binary mask.
-- `edge_touching_fraction`: fraction of mask-at-0.5 pixels within
-  <= 4 px of the patch boundary.
-
-### Gate result
-
-Pre-registered gate: 14-feature GBT must beat 6-feature GBT by
->= +0.010 recall on mixed geometry at FPR 0.08. Gate **passed**:
-
-| geometry | FPR | `gbt_6` | `gbt_14` | delta | gate |
-|---|---:|---:|---:|---:|---|
-| contained | 0.05 | 0.359 | **0.388** | **+0.029** | pass |
-| contained | 0.08 | 0.403 | **0.434** | **+0.031** | pass |
-| contained | 0.10 | 0.431 | **0.466** | **+0.035** | pass |
-| mixed | 0.05 | 0.322 | **0.352** | **+0.030** | pass |
-| mixed | 0.08 | 0.365 | **0.408** | **+0.043** | **PASS (registered gate)** |
-| mixed | 0.10 | 0.392 | **0.438** | **+0.046** | pass |
-
-Every cell improves. Deltas consistent in sign and magnitude.
-
-### Per-geometry-group lift at mixed / FPR 0.08
-
-The geometry proxies do exactly what the hypothesis said they would:
-the biggest gains land on the groups where the probability mask has
-the most spatial non-triviality and where the 6 scalar scores lose the
-most information.
-
-| group | n | `gbt_6` | `gbt_14` | delta |
-|---|---:|---:|---:|---:|
-| geometry_truncated | 4914 | 0.253 | **0.313** | **+0.060** |
-| center_outside_patch | 2625 | 0.207 | **0.265** | **+0.058** |
-| visible_fraction_low | 1708 | 0.191 | **0.246** | **+0.056** |
-| visible_fraction_mid | 2100 | 0.281 | **0.340** | +0.059 |
-| geometry_contained | 12586 | 0.409 | **0.445** | +0.036 |
-
-### Seed sensitivity
-
-Four independent null-split seeds, same 14-feature config, mixed
-recall at FPR 0.08:
-
-| seed | `gbt_6` | `gbt_14` | delta |
-|---:|---:|---:|---:|
-| 20260417 (default) | 0.365 | 0.408 | +0.043 |
-| 111 | 0.370 | 0.403 | +0.034 |
-| 222 | 0.349 | 0.370 | +0.021 |
-| 333 | 0.382 | 0.411 | +0.028 |
-
-Mean delta +0.032, min +0.021, max +0.043, stdev 0.009. Every seed
-clears the +0.010 gate. The worst seed gives 2.1x the required delta,
-so the result is not an artifact of one null split.
-
-### Feature importances
-
-Default seed, mixed-geometry GBT. New features sum to ~37% of total
-importance:
-
-- v6_baseline 0.327 (primary score, same as PR #8).
-- v7_mf_on_mask 0.089, v6_smooth_multi 0.074 (PR #8 carryover).
-- **v7_centroid_offset 0.067**, **v6_centroid_offset 0.066** (new).
-- **v7_edge_touching 0.061**, **v7_mask_area 0.056**, **v6_mask_area
-  0.046** (new).
-- v7_smooth_multi 0.051, v6_mf_on_mask 0.049, v7_baseline 0.036
-  (PR #8 carryover).
-- **v6_compactness 0.033**, **v7_compactness 0.031**, **v6_edge_touching
-  0.013** (new, weaker but still non-zero).
-
-Centroid offset (both models) and v7 edge_touching are the most
-informative new features. Compactness is the weakest new feature.
-
-`learned_logistic` still underperforms `learned_gbt` on the 14
-features (+0.013 vs +0.043 on the gate cell), confirming the optimal
-boundary is non-linear across the expanded feature set.
-
-### Revised deployment advice (current)
-
-- **Primary policy: `learned_gbt` with `--feature-set all` (14
-  features).** Same GBT architecture as PR #8.
-- **Fallback: `v6_aux_only` at real-SMICA threshold 0.873 (FPR 0.08).**
-- **6-feature `learned_gbt` remains available via `--feature-set
-  scores_only`** as the published PR #8 baseline for apples-to-apples
-  comparators.
-- Roles of `v7_mixed_ft` and `matched_template` unchanged.
-
-**Section 26 note (2026-04-17 post-Batch-5):** The Batch 4 shipped lift
-numbers above were measured on the clean null pool and do not survive
-deployment-representative calibration. See Section 27. The 14-feature
-GBT is no longer recommended as primary. Section 26 is retained as-is
-for historical record of what was shipped in PR #9.
-
-## 27. 2026-04-17 Batch 5 Full-sky Calibration Gap (Batch 4 Retraction)
-
-Full report: `work/batch5_fullsky_calibration_gap.md`. Harness:
-`scripts/phase3_fullsky_tile.py` (new). Artifacts:
-`runs/phase3_unet/batch5_fullsky_fp_audit_*`.
-
-A full-sky gnomonic tiling of all four Planck cleaned maps at HEALPix
-Nside=8 (700 patches each after common-mask filter at unmasked fraction
->= 0.5) uncovered two findings:
-
-### Finding 1: Calibration pool mask-fraction bias
-
-The `data/training_v4/smica_null_controls_all.h5` calibration pool was
-drawn with `MASK_THRESHOLD = 0.95` (coord_mask_fraction min 0.950,
-median 0.984). Deployment tiling at 0.5 threshold covers patches with
-50-99% unmasked, median 0.87. False positives fire preferentially on
-mask-adjacent patches, which the calibration pool excludes.
-
-Real-sky patch-level FPR at the PR #9 shipped 14-feature-GBT threshold
-(calibrated to 0.08 on the clean-null eval half):
-
-| map | patch-level FPR | FPR inflation vs 0.08 target |
-|---|---:|---:|
-| SMICA | 0.157 | 1.96x |
-| NILC | 0.161 | 2.01x |
-| SEVEM | 0.291 | 3.64x |
-| Commander | 0.463 | **5.78x** |
-
-On SMICA, stratified by patch mask fraction:
-
-| mask fraction band | n | triggers | observed FPR |
-|---|---:|---:|---:|
-| [0.50, 0.70) | 59 | 14 | 0.237 |
-| [0.70, 0.90) | 32 | 5 | 0.156 |
-| [0.90, 0.95) | 15 | 2 | 0.133 |
-| [0.95, 1.00] | 69 | 5 | 0.073 |
-
-In the clean-pool band (>= 0.95) the tile FPR matches the calibration
-target; in the [0.50, 0.70) band it is 3.3x higher. The bias is clean
-and monotonic.
-
-**Implication**: all FPR-calibrated thresholds shipped in PR #6, #8,
-#9 (and the real-SMICA recalibration numbers in Sections 10-13) are
-underestimates of deployment FPR by 2-6x depending on map.
-
-### Finding 2: full cross-map policy comparison under deployment calibration
-
-Recalibrating all three policies (`v6_only`, `gbt_6`, `gbt_14`) per map
-using the Nside=8 tile as the null distribution (threshold set so
-exactly 8% of tile patches trigger), then re-applying to the cached
-17500-positive mixed gate set:
-
-| map | `v6_only` | `gbt_6` | `gbt_14` | `gbt_6 − v6` | `gbt_14 − v6` | `gbt_14 − gbt_6` |
-|---|---:|---:|---:|---:|---:|---:|
-| SMICA | 0.334 | 0.331 | 0.329 | −0.003 | −0.005 | −0.001 |
-| NILC | 0.293 | 0.292 | **0.315** | −0.001 | **+0.022** | **+0.023** |
-| SEVEM | 0.167 | **0.237** | 0.192 | **+0.070** | +0.025 | −0.045 |
-| Commander | 0.155 | **0.230** | 0.193 | **+0.074** | +0.038 | −0.036 |
-| **cross-map mean** | **0.237** | **0.273** | 0.257 | **+0.036** | +0.020 | −0.015 |
-
-**PR #8 (`gbt_6`) survives recalibration cleanly.** Cross-map mean lift
-over `v6_only` is **+0.036** (shipped clean-null claim was +0.031).
-The 6-feature router's v6/v7 score ensemble does exactly what PR #8
-said it would — it's tied with `v6_only` on clean maps (SMICA/NILC)
-and wins big on noisier maps (SEVEM/Commander).
-
-**PR #9 (`gbt_14`) does not survive recalibration.** Cross-map mean
-`gbt_14 − gbt_6` is **−0.015** (shipped clean-null claim was +0.043).
-The Batch 4 geometry features (`edge_touching_fraction`,
-`centroid_offset_px`, etc.) learned statistics specific to the
-clean-pool mask-fraction distribution. Under deployment-representative
-calibration they require higher thresholds that eat more recall than
-they gain — especially on SEVEM/Commander where mask-adjacent
-foreground residuals are stronger.
-
-### Clustering side-result (Step 1 of the original session plan)
-
-At realistic Nside=8 deployment density (7.3 deg spacing, ~87% per-
-neighbor overlap), greedy angular-distance clustering of triggers does
-reduce apparent FP burden meaningfully, consistent with my original
-hypothesis:
-
-| tile Nside | cluster @ 15 deg | cluster @ 25 deg |
-|---|---:|---:|
-| 4 (SMICA) | 1.18x | 1.53x |
-| 8 (SMICA) | 2.29x | 4.78x |
-| 8 (NILC) | 2.76x | 4.35x |
-| 8 (SEVEM) | 3.24x | 7.03x |
-| 8 (Commander) | ~ | ~ |
-
-Clustering is therefore a real, cheap FP-reduction lever for deployment
-tiling, but it only reduces apparent-FP count. The underlying patch-
-level FPR inflation (Finding 1) is the dominant issue and has to be
-fixed first.
-
-### Actions taken
-
-- `work/batch5_fullsky_calibration_gap.md` — full writeup.
-- `scripts/phase3_fullsky_tile.py` — new, reusable.
-- Negative registry entry added to Section 24.
-- Deployment-advice header in Section 0 revised.
-- Section 26 retained as historical record of what was shipped in PR
-  #9; a note at the top of Section 26 points here.
-
-### Corrective work still open (Step 2 and beyond)
-
-1. **Build deployment-representative null pools per map** at
-   `MASK_THRESHOLD = 0.5`. Target 5000 patches per map. Likely needs a
-   small code change to `phase2_extract_smica_null_controls.py` to
-   accept the lower threshold, or a new script that enumerates random
-   patch centers uniformly on the sky with loose mask filtering.
-2. **Re-run `phase3_postprocess_ablation.py`** on the new null pools.
-3. **Re-run `phase3_geometry_router.py`** on the new transform caches
-   for all three policies (`v6_only`, `gbt_6`, `gbt_14`) to get honest
-   deployment-representative recall at FPR 0.08, per map.
-4. **Ship the corrected deployment advice** based on the outcome.
-   Likely `v6_aux_only` single-model with per-map calibrated thresholds
-   remains the primary; any router claim needs to pass a cross-map
-   gate on the new pools.
-5. **Revisit the `phase3_v7_mf_channel_aux_w4` model** (the existing
-   MF-channel training). Hypothesis: the MF-channel input may suppress
-   mask-adjacent FPs because it only responds to disc-shaped kernel
-   correlations, which mask-edge residuals lack. If true, its
-   tile/clean-null FPR-inflation ratio would be smaller than the vanilla
-   models' 2-6x. That would be a deployment-relevant advantage even
-   if its clean-pool recall gain is small. This is the revised Step 3.
+Status: pass. Expected warnings are the already documented high-burden
+diagnostic composite policies, no original Policy-Pareto rank-1 policy being
+promotable under default burden constraints, and high unmasked SEVEM/Commander
+trigger fractions for the legacy MF-channel checkpoint.
+
+## Historical Notes
+
+Keep historical batch notes under `work/` for provenance, but do not treat them
+as current instructions unless they are explicitly referenced above.
+
+Key retained history:
+
+- `work/batch5_fullsky_calibration_gap.md`: identified clean-null deployment
+  drift.
+- `work/batch6_review_response.md`: current Nside=32 deployment calibration and
+  review-driven ablations.
+- `work/radius_head_post_mortem.md`: failed radius-head branch hygiene notes.
+- `docs/nside512_probe_decision.md`: old probe result; not a final statement
+  about Nside=512 physics.
+- `docs/evaluation_inventory.md`: current map of active, deferred, and
+  historical evaluation surfaces.
+- `docs/phase5_half_mission_signflip_null.md`: real-data half-mission null
+  design and CLI usage notes.

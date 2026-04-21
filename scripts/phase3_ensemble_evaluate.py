@@ -1,16 +1,14 @@
 """
-Evaluate score-level and mask-level ensembles of the five ML branches.
+Evaluate score-level and mask-level ensembles of ML branches.
 
-Policies:
-    union_or:      any model passes its sensitivity FPR=0.05 threshold
-    intersect:     all models pass their thresholds
-    majority:      at least 3/5 models pass their thresholds
-    score_avg:     average scalar score, threshold calibrated on sensitivity negatives
-
-The script reports:
-    - sensitivity curves at the ensemble policy thresholds
-    - SMICA null burden at the same thresholds
-    - stratified validation AUROC/AUPRC and Dice+ for ensemble masks
+Assumptions
+-----------
+* The default inputs are remediated-v1 candidate-screening artifacts.
+* Model thresholds are scalar image-screening thresholds calibrated on the
+  sensitivity grid; mask-level Dice is a diagnostic, not a detection claim.
+* Policies are count-based for an arbitrary number of model branches:
+  ``union_or`` means at least one branch passes, ``intersect`` means all pass,
+  and ``majority`` means strictly more than half pass.
 """
 
 from __future__ import annotations
@@ -33,11 +31,15 @@ from phase3_evaluate_run import load_json, resolve_checkpoint_path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SENS_REPORT = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_report.json"
-DEFAULT_SENS_SCORES = PROJECT_ROOT / "runs" / "phase3_unet" / "sensitivity_curve_v1" / "sensitivity_scores.npz"
-DEFAULT_STRAT_H5 = PROJECT_ROOT / "data" / "validation_stratified_v1" / "validation_data.h5"
-DEFAULT_NULL_H5 = PROJECT_ROOT / "data" / "training_v4" / "smica_null_controls_all.h5"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "ensemble_eval_v1"
+DEFAULT_SENS_REPORT = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_report.json"
+)
+DEFAULT_SENS_SCORES = (
+    PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_sensitivity_curve" / "sensitivity_scores.npz"
+)
+DEFAULT_STRAT_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "test_data.h5"
+DEFAULT_NULL_H5 = PROJECT_ROOT / "data" / "remediated_v1" / "null_controls_smica_mask090.h5"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "runs" / "phase3_unet" / "remediated_v1_ensemble_eval"
 POLICIES = ("union_or", "intersect", "majority", "score_avg")
 
 
@@ -141,11 +143,18 @@ def ensemble_scores(scores_by_model, thresholds):
     }
 
 
-def policy_thresholds(policy_scores, labels, fpr_target):
-    thresholds = {
+def vote_thresholds(num_models):
+    majority_count = (int(num_models) // 2) + 1
+    return {
         "union_or": 0.5,
-        "majority": 2.5,
-        "intersect": 4.5,
+        "majority": float(majority_count) - 0.5,
+        "intersect": float(num_models) - 0.5,
+    }
+
+
+def policy_thresholds(policy_scores, labels, fpr_target, num_models):
+    thresholds = {
+        **vote_thresholds(num_models),
     }
     avg_thr, _, _ = threshold_from_negatives(policy_scores["score_avg"], labels, fpr_target)
     thresholds["score_avg"] = float(avg_thr)
@@ -240,9 +249,10 @@ def compute_ensemble_masks_and_scores(specs, h5_path, thresholds, policy_thresho
                 offset += b
                 progress.update(batch_idx)
 
+    majority_count = (len(specs) // 2) + 1
     masks = {
         "union_or": vote_counts >= 1,
-        "majority": vote_counts >= 3,
+        "majority": vote_counts >= majority_count,
         "intersect": vote_counts >= len(specs),
         "score_avg": avg_probs > float(policy_thresholds_map["score_avg"]),
     }
@@ -278,12 +288,25 @@ def main():
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     sens_report = load_json(Path(args.sensitivity_report))
-    model_thresholds = {name: float(row["threshold"]) for name, row in sens_report["thresholds"].items() if name.startswith(("original", "boundary", "v5", "v6"))}
     specs = [parse_model_spec(text) for text in (args.model or DEFAULT_MODELS)]
     model_names = [spec.name for spec in specs]
+    model_thresholds = {}
+    missing_thresholds = []
+    for name in model_names:
+        if name in sens_report["thresholds"]:
+            model_thresholds[name] = float(sens_report["thresholds"][name]["threshold"])
+        else:
+            missing_thresholds.append(name)
+    if missing_thresholds:
+        raise KeyError(f"Sensitivity report is missing model thresholds: {missing_thresholds}")
     labels_sens, sens_model_scores = load_sensitivity_scores(args.sensitivity_scores, model_names)
     sens_policy_scores = ensemble_scores(sens_model_scores, model_thresholds)
-    ens_thresholds = policy_thresholds(sens_policy_scores, labels_sens, float(sens_report["fpr_target"]))
+    ens_thresholds = policy_thresholds(
+        sens_policy_scores,
+        labels_sens,
+        float(sens_report["fpr_target"]),
+        len(model_names),
+    )
 
     sens_rows = sensitivity_rows(sens_report["data_h5"], sens_policy_scores, ens_thresholds)
     sens_metrics = {policy: summarize_binary(active_for_policy(policy, scores, ens_thresholds[policy]), labels_sens) for policy, scores in sens_policy_scores.items()}

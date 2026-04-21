@@ -1,8 +1,15 @@
 """
-Build one operating table for ML branches and classical baselines.
+Build a historical operating table for ML branches and classical baselines.
 
-The table intentionally mixes screening, morphology, real-null, and handoff
-metrics so model selection cannot hide behind a single pooled F1 score.
+Assumptions
+-----------
+* This is a legacy branch-triage utility retained for provenance.
+* The mixed ``branch_score`` is an operational heuristic, not a discovery
+  statistic, not a Bayesian evidence ratio, and not part of the active
+  remediated-v1 headline claims.
+* Current science claims should use the remediated sensitivity grid, deployment
+  tile calibration, upper-limit calculator, and true classical-filter
+  benchmarks instead.
 """
 
 from __future__ import annotations
