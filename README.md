@@ -3,6 +3,32 @@
 Planck-era machine-learning and classical candidate screening for localized
 bubble-collision signatures in the Cosmic Microwave Background.
 
+## Status note, 21 November 2026
+
+Work continued in November 2026 on a new cluster. The April results below reproduce exactly from the saved
+checkpoints and data (identical test-split confusion counts; sensitivity scores equal to numerical noise).
+A code review then found four defects that change what those results mean. Until the benchmark is redone,
+read the sections below with these in mind. Measurements and reasoning are in `work/notebook.md`.
+
+1. **Signal geometry.** Injected discs were drawn on a pixel grid that is not the gnomonic projection used
+   for the backgrounds. Radius labels are up to 6% (centred) or 13% (off-centre) too large.
+2. **Sphere placement.** `offset_signal_vector` is mirrored left-right.
+3. **Candidate coordinates.** `peak_sky_coord` has both axes reversed, so every candidate position in the
+   April reports is reflected through its tile centre. Corrected positions are in
+   `work/results_2026-11-21/candidates_corrected.json`: the 102 frozen tile candidates form about five sky
+   locations, two of which coincide with published WMAP candidates (the Cold Spot at 3 degrees and
+   McEwen et al. 2012 candidate 10 at 5.5 to 9 degrees). The clustering, grouping and survivor tables below
+   were built on the reflected coordinates.
+4. **Classical comparator.** The Wiener filter bank contains only templates with `|z_crit| = |z0|`. On
+   edge-free signals it is at chance (0.06 against 0.30 for the U-Net between 1e-5 and 5e-5), so "Wiener is
+   the strongest average screener" is an average over a mixture of edge ratios, not a test against the
+   matched filter for the signal theory predicts.
+
+The sharp temperature jump `z_crit` itself is not supported by theory after 2011.
+`scripts/core/collision_template_transfer.py` builds the template from the primordial curvature through
+CAMB transfer functions instead. With that template an ideal matched filter needs an observed central
+amplitude near 5e-5, and most of the April sensitivity between 1e-5 and 5e-5 came from the sharp edge.
+
 ## Assumptions
 
 - This repository implements a **candidate-screening front end**, not a
