@@ -433,3 +433,113 @@ State of the verification list in (d): 1 restore integrity: done. 3 test-split e
 So the April numbers are real outputs of the saved models on the saved data. What they mean is another
 matter: entries (e), (i) and (j) show the signals had a wrong geometry and an unphysical edge, and the
 classical comparator lacked the edge-free template.
+
+## (l) 2026-11-21 03:22 CST. Pre-registration: benchmark on transfer-function templates with a matched filter bank
+
+Committed and pushed at 03:17: branch `geometry-template-fixes`, four commits (the April 21-23 working tree;
+geometry; template; verification and this notebook through entry (k)).
+
+Purpose. Nothing measured so far compares a network with the right matched filter on the right signal
+(entries (i), (j)). `scripts/analysis/benchmark_transfer_template.py` does that as a first, limited test.
+
+Design.
+- Backgrounds: 450 Gaussian CMB skies (CAMB lensed TT, `synfast` with 5 arcmin beam and pixel window,
+  Nside 256, 30 uK-arcmin white noise), eight patch centres per sky at least 50 deg apart: 3,600 patches,
+  alternating signal-free and signal.
+- Signals: the ramp template through CAMB transfer functions, sizes 5, 10, 15, 20, 25 deg, amplitudes 1e-5,
+  2e-5, 3e-5, 5e-5, 7e-5, 1e-4 in observed peak Delta T / T, random sign, centre within 5 deg of the patch
+  centre, 60 patches per (amplitude, size) cell.
+- Matched filter bank: the same five templates; patch statistic = largest |SNR| over the bank and over all
+  sky pixels within 27 deg of the patch centre.
+- Networks: the two April U-Nets (ImageNet and random initialisation), scored as in April (largest mask
+  probability over the patch). They were trained on sharp-disc templates with the geometry defect B1.
+- Every method thresholded at 5% false positives on the 1,800 signal-free patches.
+- Built-in checks: null SNR maps must have unit standard deviation; the SNR at an injected signal's centre
+  must average A * sqrt(norm); the fast projector must return exactly what `hp.gnomview` returns.
+
+Limits, stated beforehand: Gaussian skies only (no real-sky residuals); one template family (ramp, no step);
+signal centres near the patch centre; the networks were not trained on these templates, so this measures
+how the April networks transfer, not what a network trained on the right signal can do.
+
+Predictions.
+1. The filter bank's 50% detection amplitude lies between 3e-5 and 6e-5 for every size.
+2. The filter bank detects at least as much as either U-Net in at least 80% of the cells where either
+   method is between 10% and 90%.
+3. Between 3e-5 and 5e-5 the ImageNet U-Net's detection rate is below 0.7 of the filter bank's.
+I am unsure of 3: the networks did see edge-free discs in training and may transfer better than that.
+If 2 fails, the first suspect is my filter (search region or normalisation), and the self-checks decide.
+
+## (m) 2026-11-21 03:35 CST. Benchmark on transfer-function templates: first result; two of three predictions failed
+
+Job 82909 (node c3, 10 min). Run at 1,500 skies instead of the 450 in (l): the test run (job 82908) showed
+0.2 s per sky, and the size was raised before any full result existed. 12,000 patches: 6,000 signal-free,
+6,000 with a signal (200 per cell).
+
+Self-checks: projector output identical to `hp.gnomview`; standard deviation of the null SNR maps 0.998,
+0.993, 0.989, 0.979, 0.970 for the 5 to 25 deg templates; SNR at the injected centre against A * sqrt(norm):
+worst of 30 cells 2.15 standard errors. Ideal SNR per 1e-5 of peak: 0.908, 1.015, 1.088, 1.102, 1.104.
+
+Detection probability at 5% false positives, all sizes pooled (1,000 signals per amplitude), 95% intervals:
+
+| observed peak | matched filter bank, 27 deg search | U-Net, ImageNet (April) | U-Net, random init (April) |
+|---:|---|---|---|
+| 1e-5 | 0.061 [0.048, 0.078] | 0.075 [0.060, 0.093] | 0.067 [0.053, 0.084] |
+| 2e-5 | 0.147 [0.126, 0.170] | 0.241 [0.216, 0.268] | 0.157 [0.136, 0.181] |
+| 3e-5 | 0.321 [0.293, 0.351] | 0.447 [0.416, 0.478] | 0.295 [0.268, 0.324] |
+| 5e-5 | 0.905 [0.885, 0.922] | 0.898 [0.878, 0.915] | 0.741 [0.713, 0.767] |
+| 7e-5 | 0.996 | 0.990 | 0.959 |
+| 1e-4 | 1.000 | 1.000 | 0.999 |
+
+Filter threshold 4.36 sigma. By size at 3e-5: filter 0.17, 0.20, 0.38, 0.40, 0.46; ImageNet U-Net 0.20, 0.35,
+0.56, 0.56, 0.56 (5 to 25 deg).
+
+Predictions from (l):
+1. Filter 50% detection amplitude between 3e-5 and 6e-5 for every size: **held** (between 3e-5 and 5e-5).
+2. Filter at least as good as either U-Net in 80% of the informative cells: **failed**. The ImageNet U-Net
+   is ahead at 2e-5 and 3e-5 with separated intervals and level from 5e-5 up.
+3. ImageNet U-Net below 0.7 of the filter between 3e-5 and 5e-5: **failed**; it is at 1.4 and 1.0 of it.
+
+What this does and does not show. The April ImageNet network transfers to physically motivated templates
+it never saw, and detects them at least as well as this filter bank. It does not show a network beating
+the optimal test: as written in (l), the first suspect is the filter's search region. The filter takes its
+maximum over every pixel within 27 deg and pays a look-elsewhere price for that (threshold 4.36 sigma),
+while every signal here lies within 5 deg of the patch centre. A network trained on discs that had to fit
+in the patch may have learned to expect large discs near the centre, which matches this benchmark's layout.
+Follow-up, not pre-registered and labelled as such: job 82910 repeats the run with the filter's search
+radius at 27, 12 and 6 deg on identical data.
+
+## (n) 2026-11-21 03:47 CST. Follow-up to (m), not pre-registered: the filter's search radius explains the result
+
+Job 82910, identical data (the 27 deg numbers reproduce (m) exactly). The filter statistic is now also taken
+over sky pixels within 12 and 6 deg of the patch centre. Signals lie within 5 deg of the centre.
+Detection probability at 5% false positives, all sizes pooled, 1,000 signals per amplitude:
+
+| observed peak | filter, 27 deg | filter, 12 deg | filter, 6 deg | U-Net, ImageNet (April) | U-Net, random init (April) |
+|---:|---:|---:|---:|---:|---:|
+| 1e-5 | 0.061 | 0.076 | 0.087 | 0.075 | 0.067 |
+| 2e-5 | 0.147 | 0.245 | 0.317 [0.289, 0.346] | 0.241 [0.216, 0.268] | 0.157 |
+| 3e-5 | 0.321 | 0.499 | 0.594 [0.563, 0.624] | 0.447 [0.416, 0.478] | 0.295 |
+| 5e-5 | 0.905 | 0.959 | 0.976 [0.965, 0.984] | 0.898 [0.878, 0.915] | 0.741 |
+| 7e-5 | 0.996 | 0.999 | 1.000 | 0.990 | 0.959 |
+
+Thresholds: 4.36, 3.93 and 3.59 sigma for 27, 12 and 6 deg.
+
+Reading.
+- With the search region matched to where signals can be, the filter bank is ahead of the April ImageNet
+  U-Net at every informative amplitude: by a factor of 1.3 at 2e-5 and 3e-5 and by 1.09 at 5e-5.
+  Prediction 2 of (l) holds for the 6 deg filter and fails for the 27 deg one; the comparison depends on the
+  positional prior, which (l) did not specify. That was a flaw in the pre-registration.
+- The April network performs like a filter with a search radius of about 12 deg. It carries a positional
+  prior from its training geometry, where large discs had to lie near the patch centre.
+- The ImageNet U-Net reaches about 75% of the 6 deg filter's detection rate at 2e-5 and 3e-5 and 92% at
+  5e-5, on templates it was never trained on. The random-initialised U-Net is clearly behind
+  (0.157, 0.295, 0.741), so pretraining matters.
+- This sets a measurable target: a network trained on these templates with the correct geometry and the
+  same positional prior should approach 0.32, 0.59 and 0.98 at 2e-5, 3e-5 and 5e-5, and by detection
+  theory should not exceed them on Gaussian skies.
+
+Note on entry (f). I wrote there that no data would be generated from the new template until the difference
+from Osborne et al. Fig. 3 was settled. Entries (g) and (h) then showed the template is CAMB's standard
+physics (source terms add up; the Doppler term is visible directly in the transfer function), and on that
+basis this benchmark was run. The comparison with the published figure is still open, and the exact edge
+shape would change these numbers somewhat; the ordering of the methods is less likely to depend on it.

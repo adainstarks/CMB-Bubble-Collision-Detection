@@ -29,6 +29,12 @@ The sharp temperature jump `z_crit` itself is not supported by theory after 2011
 CAMB transfer functions instead. With that template an ideal matched filter needs an observed central
 amplitude near 5e-5, and most of the April sensitivity between 1e-5 and 5e-5 came from the sharp edge.
 
+First benchmark on the new template (`scripts/analysis/benchmark_transfer_template.py`, notebook entries
+(l) to (n)): 12,000 patches of Gaussian sky, signals quoted by observed peak amplitude, 5% false positives.
+A filter bank built from the same templates and searching within 6 degrees of the patch centre detects
+0.32, 0.59 and 0.98 at 2e-5, 3e-5 and 5e-5. The April ImageNet U-Net, never trained on these templates,
+detects 0.24, 0.45 and 0.90, and behaves like the filter with a 12 degree search.
+
 ## Assumptions
 
 - This repository implements a **candidate-screening front end**, not a
