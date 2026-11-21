@@ -1,8 +1,9 @@
 # Phase 3 Candidate Artifact Schema
 
-Phase 3 emits candidate tables from `scripts/phase3_screen_and_verify.py` for
-historical two-branch validation and from
-`scripts/phase3_emit_tile_constrained_candidates.py` for the current
+Phase 3 emitted candidate tables from
+`scripts/legacy/phase3_screen_and_verify.py` for historical two-branch
+validation and from
+`scripts/followup/phase3_emit_tile_constrained_candidates.py` for the current
 remediated full-sky policy. These tables are handoff products, not discovery
 statistics.
 

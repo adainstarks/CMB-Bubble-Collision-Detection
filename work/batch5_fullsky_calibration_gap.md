@@ -48,7 +48,7 @@ reason**: clustering DOES pay off at realistic deployment tile density
 issue is that the patch-level FPR is not 0.08 in the first place — it
 is 0.157-0.463 depending on map.
 
-Harness: `scripts/phase3_fullsky_tile.py` (new). Artifacts under
+Harness: `scripts/analysis/phase3_fullsky_tile.py` (new). Artifacts under
 `runs/phase3_unet/batch5_fullsky_fp_audit_*`.
 
 ## Setup

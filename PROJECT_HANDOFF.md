@@ -37,19 +37,19 @@ claims. They are development history only.
 Run this before relying on the current artifact graph:
 
 ```bash
-python scripts/audit_remediated_flow.py
+python scripts/ops/audit_remediated_flow.py
 ```
 
 Audit the local raw Planck inputs before swapping map products or releases:
 
 ```bash
-python scripts/phase0_planck_unit_audit.py
+python scripts/data/phase0_planck_unit_audit.py
 ```
 
 For a compact environment/source/artifact manifest:
 
 ```bash
-python scripts/create_reproducibility_manifest.py
+python scripts/ops/create_reproducibility_manifest.py
 ```
 
 ## Active Artifact Graph
@@ -125,7 +125,7 @@ Noise-floor diagnostic:
 
 Matched-filter SNR diagnostic:
 
-- Script: `scripts/phase3_matched_filter_snr_curve.py`.
+- Script: `scripts/analysis/phase3_matched_filter_snr_curve.py`.
 - Report:
   `runs/phase3_unet/remediated_v1_matched_filter_snr/matched_filter_snr_report.md`.
 - Under the repo CAMB/beam/noise assumptions with rough `f_sky` scaling,
@@ -137,7 +137,7 @@ Matched-filter SNR diagnostic:
 
 Upper-limit post-processing:
 
-- Script: `scripts/phase3_upper_limit_calculator.py`.
+- Script: `scripts/analysis/phase3_upper_limit_calculator.py`.
 - Report: `runs/phase3_unet/remediated_v1_upper_limits/upper_limits.md`.
 - Default prior: log-uniform amplitude and `sin(theta)` radius weighting.
 - At 95% confidence with zero credible detections, `Nbar_s^95` is `10.2674`
@@ -176,7 +176,7 @@ Policy interpretation:
 
 Deployment candidate burden:
 
-- Script: `scripts/phase3_deployment_burden_table.py`.
+- Script: `scripts/analysis/phase3_deployment_burden_table.py`.
 - Report: `runs/phase3_unet/remediated_v1_deployment_burden/deployment_burden.md`.
 - At tile-recalibrated FPR `0.08`, each map has about `896` patch candidates by
   construction.
@@ -189,7 +189,7 @@ Deployment candidate burden:
 
 Policy Pareto search:
 
-- Script: `scripts/phase3_policy_pareto_search.py`.
+- Script: `scripts/analysis/phase3_policy_pareto_search.py`.
 - Report: `runs/phase3_unet/remediated_v1_policy_pareto/policy_pareto.md`.
 - Under CAMB FPR `<=0.05` and real-SMICA FPR `<=0.02`, the best diagnostic
   policy is `2-of-3(random>=0.987007, imagenet>=0.947194, circular>=68.79)`,
@@ -208,9 +208,9 @@ Policy Pareto search:
 
 Composite-policy audits:
 
-- Scripts: `scripts/phase3_remediated_null_policy_audit.py` and
-  `scripts/phase3_remediated_policy_tile_audit.py`; the broader constrained
-  search is `scripts/phase3_tile_constrained_policy_search.py`.
+- Scripts: `scripts/analysis/phase3_remediated_null_policy_audit.py` and
+  `scripts/analysis/phase3_remediated_policy_tile_audit.py`; the broader constrained
+  search is `scripts/analysis/phase3_tile_constrained_policy_search.py`.
 - Reports:
   `runs/phase3_unet/remediated_v1_null_policy_audit/null_policy_audit.md` and
   `runs/phase3_unet/remediated_v1_policy_tile_audit/policy_tile_audit.md`.
@@ -268,6 +268,22 @@ Composite-policy audits:
   `24` representatives into `10` sky systems. Only `2 / 10` systems contain
   any combined real-sky survivor, and `8 / 10` systems remain geometry-limited
   until projection-robust re-extraction.
+- Projection-robust re-extraction now exists for the surviving adaptive
+  systems in
+  `runs/phase3_unet/remediated_v1_projection_robust_survivor_followup/`.
+  Current result: the `nilc/sevem:9629` adaptive system is
+  `projection_robust_ready` under candidate-centered equal-area re-extraction,
+  while `nilc:9628` is still blocked by candidate-centered mask support.
+- A candidate-specific geometry-resolution study now lives in
+  `runs/phase3_unet/remediated_v1_candidate_geometry_resolution/`.
+  Current result: `nilc:9628` is `center_unstable_screening_only`; the
+  candidate-centered fit only reappears after relaxing the support cutoff and
+  then retains only about `6-8%` of the screening amplitude, while tile- and
+  seed-centered fits remain projection-consistent but strongly center-dependent.
+- A local downstream packet for the only handoff-ready survivor now lives in
+  `runs/phase3_unet/remediated_v1_system_template_likelihood_packet/`.
+- The paper-facing ranked survivor table now lives in
+  `runs/phase3_unet/remediated_v1_paper_survivor_table/`.
 - The best current representative still has pooled null-survival
   `p=0.000173` and BH q-value `0.000693`, but those are screening
   prioritization scores, not global detection probabilities.
@@ -276,11 +292,11 @@ Composite-policy audits:
 
 Matched-filter-channel recall candidate:
 
-- Script: `scripts/phase3_mf_channel_tile_audit.py`.
+- Script: `scripts/analysis/phase3_mf_channel_tile_audit.py`.
 - Report:
   `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/mf_channel_tile_audit.md`.
 - Shared feature implementation:
-  `scripts/phase3_circular_template_features.py`.
+  `scripts/core/phase3_circular_template_features.py`.
 - This audits the legacy v7 two-channel checkpoint without modifying the
   current tile HDF5 files. The second channel is reconstructed in memory from
   the legacy circular-template response bank.
@@ -316,7 +332,7 @@ simple circular screen or the true Wiener Feeney matched filter.
 
 Same-grid classical status:
 
-- Script: `scripts/phase3_classical_same_grid_status.py`.
+- Script: `scripts/analysis/phase3_classical_same_grid_status.py`.
 - Report:
   `runs/phase3_unet/remediated_v1_classical_same_grid_status/classical_same_grid_status.md`.
 - Current status is now `complete` for the stratified same-grid manifest in
@@ -329,11 +345,17 @@ Same-grid classical status:
 - Scientific consequence: the true Wiener/Feeney filter is the strongest
   average classical screener on the same-grid benchmark, while the ML branch
   remains locally competitive rather than uniformly superior.
-- Pilot driver: `scripts/phase3_same_grid_fullsky_benchmark.py` streams
+- Pilot driver: `scripts/analysis/phase3_same_grid_fullsky_benchmark.py` streams
   full-sky injected maps, writes patches projected from those maps, scores
   Wiener/SMHW locally, and can optionally score ML checkpoints on the same
   patches. Subset output is a path-validation artifact, not a superiority
   claim.
+- An exploratory out-of-fold Wiener-plus-ImageNet logistic fusion now lives in
+  `runs/phase3_unet/remediated_v1_same_grid_wiener_ml_fusion/`. It improves
+  mean same-grid recall to `0.4046` at the same realized negative
+  `FPR = 0.0498`, above Wiener alone (`0.3841`) and ImageNet alone (`0.3517`).
+  Treat that as a synthetic complementarity result, not a promoted deployment
+  branch.
 
 ## Remaining Blockers
 
@@ -346,12 +368,16 @@ Same-grid classical status:
    systems for paper-facing candidate identity and survivor reporting.
 3. **Posterior/evidence calibration.** Empirical null-survival scores exist,
    and the real-sky gate is now harsh: only `3 / 24` representatives and
-   `2 / 10` adaptive systems survive HM plus frequency follow-up. Those are the
-   only plausible inputs to a downstream template likelihood or Bayesian stage.
+   `2 / 10` adaptive systems survive HM plus frequency follow-up. After the
+   equal-area re-extraction and the `nilc:9628` center-stability study, only
+   one adaptive system is currently handoff-ready for a serious downstream
+   template likelihood or Bayesian stage.
 4. **Projection-robust follow-up.** The deterministic template/Bayesian
    handoff exists, but `8 / 10` adaptive systems are still geometry-limited and
    need native-sphere or projection-robust re-extraction before any parameter
-   statement.
+   statement. The remaining HM-plus-frequency survivor outside that set,
+   `nilc:9628`, is now classified as `center_unstable_screening_only` rather
+   than merely pending a lower-distortion cutout.
 5. **True-Wiener two-stream branch.** The corrected full-cache rerun is now
    complete. Relative to `imagenet_b64_aux`, `true_wiener_ft` raises mean
    synthetic sensitivity from `0.34875` to `0.36839` overall, helps
@@ -362,7 +388,8 @@ Same-grid classical status:
    follow-up evidence. Keep it as a candidate secondary branch or fusion input.
 6. **Half-mission null report.** The HM sign-flip report now exists and already
    excludes most of the frozen representatives from serious follow-up. The next
-   step is projection-robust re-extraction for the surviving systems, not more
+   step is downstream likelihood work for `nilc/sevem:9629` and later
+   native-sphere center-marginalized geometry work for blocked cases, not more
    threshold shopping.
 7. **Remediated matched-filter-channel retrain.** The legacy v7 tile audit is
    promising for recall, but it must be retrained and recalibrated under the
@@ -371,17 +398,17 @@ Same-grid classical status:
 
 ## Current Next Steps
 
-1. Use the adaptive follow-up table, not the fixed `15 deg` clusters, as the
+1. Use the paper survivor table, not the fixed `15 deg` clusters, as the
    paper-facing candidate table.
-2. Run native-sphere or equal-area re-extraction for the `2` surviving
-   adaptive systems first, then for the remaining geometry-limited systems if
-   they still matter scientifically.
-3. Add posterior/template-likelihood calibration only for the surviving
-   systems; the `21 / 24` failed representatives should not anchor stronger
-   paper claims.
-4. Keep the true-Wiener two-stream branch unpromoted and revisit model-level
-   improvement only as Wiener-plus-ML score fusion after the current story is
-   stable.
+2. Push the `projection_robust_ready` survivor system (`nilc/sevem:9629`) into
+   the downstream template-likelihood or Bayesian stage.
+3. Keep `nilc:9628` out of the current downstream likelihood handoff. Treat it
+   as screening-only until a native-sphere center-marginalized follow-up path
+   exists.
+4. Keep the true-Wiener two-stream branch unpromoted. The same-grid
+   Wiener-plus-ML fusion test is now the leading synthetic-only model
+   improvement result, but do not promote it until deployment burden,
+   candidate calibration, and real-sky follow-up are rerun.
 5. Retrain and audit a remediated-v1 matched-filter-channel branch using the
    current `5 arcmin` beam, canonical masks, disjoint splits, and real-map null
    deployment gates.
@@ -393,19 +420,19 @@ Same-grid classical status:
 Fast artifact graph audit:
 
 ```bash
-python scripts/audit_remediated_flow.py
+python scripts/ops/audit_remediated_flow.py
 ```
 
 Compile + physics + remediated-flow audit:
 
 ```bash
-python scripts/run_quality_gates.py --skip-train-dry-run
+python scripts/ops/run_quality_gates.py --skip-train-dry-run
 ```
 
 Full local gate including dataset audit:
 
 ```bash
-python scripts/run_quality_gates.py \
+python scripts/ops/run_quality_gates.py \
   --data-h5 data/remediated_v1/training_data.h5 \
   --skip-train-dry-run
 ```
@@ -416,7 +443,7 @@ to be healthy.
 Last validated local gate:
 
 ```bash
-python scripts/run_quality_gates.py \
+python scripts/ops/run_quality_gates.py \
   --data-h5 data/remediated_v1/training_data.h5 \
   --skip-train-dry-run
 ```

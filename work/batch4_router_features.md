@@ -27,8 +27,8 @@ None of these use injection truth. All derive from the frozen U-Net
 probability mask alone. They are legal to deploy in Phase 5 on
 real-sky patches.
 
-Harness: `scripts/phase3_postprocess_ablation.py` (extended to compute
-and cache geometry features) + `scripts/phase3_geometry_router.py`
+Harness: `scripts/analysis/phase3_postprocess_ablation.py` (extended to compute
+and cache geometry features) + `scripts/analysis/phase3_geometry_router.py`
 (new `--feature-set {scores_only, all}` flag).
 
 Artifacts: `runs/phase3_unet/batch4_router_features_v1/`.
@@ -179,7 +179,7 @@ knowledge of injection geometry. Legal for Phase 5 deployment.
 
 - Section 25 "expand learned-router feature set" entry. Measured
   positive.
-- `scripts/phase3_postprocess_ablation.py` transform caches are now
+- `scripts/analysis/phase3_postprocess_ablation.py` transform caches are now
   the source of 14 per-patch features. PR #8's 6-feature variant
   remains available via `--feature-set scores_only` for the published
   comparator.

@@ -67,19 +67,19 @@ The current generator/audit contract is:
 Run the lightweight artifact-flow audit:
 
 ```bash
-python scripts/audit_remediated_flow.py
+python scripts/ops/audit_remediated_flow.py
 ```
 
 Audit the raw local Planck FITS headers, units, and release provenance:
 
 ```bash
-python scripts/phase0_planck_unit_audit.py
+python scripts/data/phase0_planck_unit_audit.py
 ```
 
 Run the broader quality gate:
 
 ```bash
-python scripts/run_quality_gates.py \
+python scripts/ops/run_quality_gates.py \
   --data-h5 data/remediated_v1/training_data.h5 \
   --skip-train-dry-run
 ```
@@ -87,7 +87,7 @@ python scripts/run_quality_gates.py \
 Write a compact reproducibility manifest:
 
 ```bash
-python scripts/create_reproducibility_manifest.py
+python scripts/ops/create_reproducibility_manifest.py
 ```
 
 ## Current Results
@@ -115,7 +115,7 @@ This replaces the historical post-hoc best-branch `8 / 35` number.
 The remediated sensitivity grid now has an empirical signal-scale diagnostic:
 
 ```bash
-python scripts/phase3_noise_floor_analysis.py
+python scripts/analysis/phase3_noise_floor_analysis.py
 ```
 
 Current output:
@@ -138,7 +138,7 @@ proof; a real bound needs the full CMB covariance and foreground residual model.
 The ideal harmonic-space Feeney matched-filter SNR diagnostic is:
 
 ```bash
-python scripts/phase3_matched_filter_snr_curve.py
+python scripts/analysis/phase3_matched_filter_snr_curve.py
 ```
 
 Default output:
@@ -163,7 +163,7 @@ The remediated sensitivity grid now has a source-backed post-processing
 calculator for detectable-collision upper limits:
 
 ```bash
-python scripts/phase3_upper_limit_calculator.py
+python scripts/analysis/phase3_upper_limit_calculator.py
 ```
 
 Default output:
@@ -227,7 +227,7 @@ The current full-sky candidate-volume table is generated from cached Batch 6
 tile features:
 
 ```bash
-python scripts/phase3_deployment_burden_table.py
+python scripts/analysis/phase3_deployment_burden_table.py
 ```
 
 Default output:
@@ -258,7 +258,7 @@ and must not be used as deployment thresholds.
 The current recall-vs-FP policy search over existing remediated scores is:
 
 ```bash
-python scripts/phase3_policy_pareto_search.py
+python scripts/analysis/phase3_policy_pareto_search.py
 ```
 
 Default output:
@@ -284,11 +284,11 @@ budgets. They are not deployment thresholds by themselves.
 The Policy-Pareto winners have now been stress-tested two ways:
 
 ```bash
-python scripts/phase3_remediated_null_policy_audit.py
-python scripts/phase3_remediated_policy_tile_audit.py
-python scripts/phase3_tile_constrained_policy_search.py
-python scripts/phase3_emit_tile_constrained_candidates.py
-python scripts/phase3_calibrate_candidate_scores.py
+python scripts/analysis/phase3_remediated_null_policy_audit.py
+python scripts/analysis/phase3_remediated_policy_tile_audit.py
+python scripts/analysis/phase3_tile_constrained_policy_search.py
+python scripts/followup/phase3_emit_tile_constrained_candidates.py
+python scripts/followup/phase3_calibrate_candidate_scores.py
 ```
 
 Default outputs:
@@ -378,10 +378,10 @@ Candidate score calibration uses the real-map null-control calibration split,
 not the held-out test split:
 
 ```bash
-python scripts/phase3_remediated_null_policy_audit.py \
+python scripts/analysis/phase3_remediated_null_policy_audit.py \
   --split calibration \
   --output-dir runs/phase3_unet/remediated_v1_null_policy_calibration
-python scripts/phase3_calibrate_candidate_scores.py
+python scripts/followup/phase3_calibrate_candidate_scores.py
 ```
 
 Current calibrated candidate set: `24` cluster representatives scored against
@@ -417,13 +417,32 @@ Current real-sky follow-up outcome on the frozen `24` representatives:
   representatives into `10` sky systems; only `2 / 10` systems contain any
   HM-plus-frequency survivor, and `8 / 10` systems remain geometry-limited
   until projection-robust re-extraction.
+- Projection-robust survivor follow-up now exists for those `2` adaptive
+  systems in
+  `runs/phase3_unet/remediated_v1_projection_robust_survivor_followup/`.
+  Current outcome: one surviving system (`nilc/sevem:9629`) remains stable on
+  candidate-centered equal-area re-extraction, while the other survivor
+  (`nilc:9628`) fails candidate-centered mask support and should not be treated
+  as projection-robust yet.
+- A candidate-specific geometry-resolution study now lives in
+  `runs/phase3_unet/remediated_v1_candidate_geometry_resolution/`.
+  Current result: `nilc:9628` is `center_unstable_screening_only`. Its
+  candidate-centered follow-up fails at the strict `0.90` support cut, and the
+  strictest relaxed fit (`0.885`) recovers only about `6-8%` of the screening
+  seed amplitude while tile- and seed-centered fits remain projection-consistent
+  but disagree by about a factor of `15` in median amplitude retention.
+- The downstream local template-likelihood packet for the only
+  `projection_robust_ready` system now lives in
+  `runs/phase3_unet/remediated_v1_system_template_likelihood_packet/`.
+- The paper-facing ranked survivor table now lives in
+  `runs/phase3_unet/remediated_v1_paper_survivor_table/`.
 
 ## Matched-Filter-Channel Recall Candidate
 
 The legacy two-channel v7 U-Net branch now has a full-sky tile-burden audit:
 
 ```bash
-python scripts/phase3_mf_channel_tile_audit.py
+python scripts/analysis/phase3_mf_channel_tile_audit.py
 ```
 
 Default output:
@@ -468,19 +487,19 @@ Current naming contract:
 - `smhw_screen`: spherical Mexican-hat / scale-space context screen.
 
 The true Wiener/SMHW full-sky score-map implementation lives in
-`scripts/phase3_classical_filters.py`. Any headline ML-vs-classical claim must
+`scripts/analysis/phase3_classical_filters.py`. Any headline ML-vs-classical claim must
 state exactly which comparator was used.
 
 The same-grid true-classical status report is:
 
 ```bash
-python scripts/phase3_classical_same_grid_status.py
+python scripts/analysis/phase3_classical_same_grid_status.py
 ```
 
 A small, non-claim pilot that exercises the full-sky benchmark path is:
 
 ```bash
-python scripts/phase3_same_grid_fullsky_benchmark.py \
+python scripts/analysis/phase3_same_grid_fullsky_benchmark.py \
   --max-rows 64 \
   --skip-ml
 ```
@@ -504,6 +523,13 @@ Wiener/SMHW comparators. For remediated synthetic products, keep
 `--pixel-window-policy synfast_pixwin_true` aligned with
 `synfast(pixwin=True)`.
 
+An exploratory out-of-fold Wiener-plus-ImageNet logistic fusion now lives in
+`runs/phase3_unet/remediated_v1_same_grid_wiener_ml_fusion/`. On the fixed
+same-grid manifest it reaches mean recall `0.4046` at the same realized
+negative `FPR = 0.0498`, above Wiener alone (`0.3841`) and ImageNet alone
+(`0.3517`). Keep the interpretation narrow: this is a synthetic same-grid
+screening gain, not yet a promoted deployment branch.
+
 For the benchmark-design fork, generators expose `--injection-convention`.
 Use `feeney2011_full_temperature_modulation` for remediated products and
 `mcewen2012_first_order_additive` for explicit additive full-sky benchmark
@@ -524,10 +550,15 @@ approximation check; do not treat it as a universal bound.
   not a deployment result.
 - The same-grid Wiener/SMHW benchmark is now closed on the stratified manifest
   and shows Wiener as the strongest average screener. What remains open is how
-  to use that result in deployment: calibrated score fusion is still worth
-  testing, but the true-Wiener two-stream branch is not yet promotable because
-  it still lacks Batch-6 deployment-burden, candidate-calibration, and frozen
-  candidate follow-up evidence.
+  to use that result in deployment: the calibrated score-fusion test now exists
+  and improves mean same-grid recall, but both it and the true-Wiener
+  two-stream branch remain unpromoted because they still lack Batch-6
+  deployment-burden, candidate-calibration, and frozen candidate follow-up
+  evidence.
+- The follow-up story is now narrower than the original frozen-candidate list:
+  only `nilc/sevem:9629` is downstream-hand-off-ready, while `nilc:9628`
+  remains screening-only because the recovered fit depends too strongly on
+  center choice.
 - The legacy matched-filter-channel checkpoint improves diagnostic recall, but
   is not promoted because it was trained before `remediated_v1`. It now has a
   tile-burden audit and should be replaced by a remediated two-channel retrain
@@ -545,18 +576,18 @@ approximation check; do not treat it as a universal bound.
 ## Next Work
 
 1. Keep the corrected true-Wiener two-stream branch as a secondary synthetic
-   result, not a promoted deployment branch. The next model-level test should
-   be calibrated Wiener-plus-ML score fusion after the current follow-up story
-   is stable.
+   result, not a promoted deployment branch. The calibrated Wiener-plus-ML
+   score-fusion test now exists on the same-grid manifest and is the leading
+   synthetic-only model-improvement result, but it still needs deployment,
+   calibration, and real-sky follow-up closure before promotion.
 2. Treat the new scale-dependent follow-up table as the paper-facing candidate
    identity convention and reserve the fixed `15 deg` clusters for workload
    accounting only.
-3. Run native-sphere or equal-area re-extraction for the `8 / 10`
-   geometry-limited adaptive systems, prioritizing the `2` surviving systems.
-4. Push the surviving systems into the downstream template-likelihood or
-   Bayesian stage; do not spend more effort on the `21 / 24` representatives
-   that already fail the HM-plus-frequency gate unless the follow-up geometry
-   changes materially.
+3. Push the projection-robust-ready survivor system (`nilc/sevem:9629`) into
+   the downstream template-likelihood or Bayesian stage.
+4. Treat the other surviving system (`nilc:9628`) as screening-only under the
+   current pipeline. Do not promote it into the downstream likelihood handoff
+   without a native-sphere center-marginalized follow-up path.
 5. Prioritize real-map null backgrounds and later domain adaptation only after
    the current screening-plus-follow-up narrative is scientifically clean.
 
@@ -565,7 +596,7 @@ approximation check; do not treat it as a universal bound.
 Generate current training data:
 
 ```bash
-python scripts/phase2_generate_training.py \
+python scripts/data/phase2_generate_training.py \
   --num-samples 20000 \
   --pool-size 16000 \
   --num-cmb-realizations 384 \
@@ -579,7 +610,7 @@ python scripts/phase2_generate_training.py \
 Audit the dataset:
 
 ```bash
-python scripts/phase2_audit_dataset.py \
+python scripts/data/phase2_audit_dataset.py \
   --data-h5 data/remediated_v1/training_data.h5 \
   --output-json data/remediated_v1/audit_report.json
 ```
@@ -587,7 +618,7 @@ python scripts/phase2_audit_dataset.py \
 Evaluate a trained branch on the held-out test split:
 
 ```bash
-python scripts/phase3_evaluate_run.py \
+python scripts/ml/phase3_evaluate_run.py \
   --run-dir runs/phase3_unet/remediated_v1_unet_imagenet_b64_aux \
   --checkpoint best \
   --split test \
@@ -598,7 +629,7 @@ python scripts/phase3_evaluate_run.py \
 Rebuild the preselected heatmap from existing remediated scores:
 
 ```bash
-python scripts/phase3_ml_gain_heatmap.py \
+python scripts/analysis/phase3_ml_gain_heatmap.py \
   --analysis-mode preselected \
   --primary-method imagenet_b64_aux \
   --bootstrap-resamples 2000
@@ -607,20 +638,20 @@ python scripts/phase3_ml_gain_heatmap.py \
 Update reproducibility and noise-floor reports:
 
 ```bash
-python scripts/create_reproducibility_manifest.py
-python scripts/phase3_noise_floor_analysis.py
-python scripts/phase3_matched_filter_snr_curve.py
-python scripts/phase3_upper_limit_calculator.py
-python scripts/phase3_deployment_burden_table.py
-python scripts/phase3_policy_pareto_search.py
-python scripts/phase3_remediated_null_policy_audit.py
-python scripts/phase3_remediated_policy_tile_audit.py
-python scripts/phase3_deployment_policy_decision.py
-python scripts/phase3_tile_constrained_policy_search.py
-python scripts/phase3_emit_tile_constrained_candidates.py
-python scripts/phase3_calibrate_candidate_scores.py
-python scripts/phase3_classical_same_grid_status.py
-python scripts/phase5_half_mission_signflip_null.py \
+python scripts/ops/create_reproducibility_manifest.py
+python scripts/analysis/phase3_noise_floor_analysis.py
+python scripts/analysis/phase3_matched_filter_snr_curve.py
+python scripts/analysis/phase3_upper_limit_calculator.py
+python scripts/analysis/phase3_deployment_burden_table.py
+python scripts/analysis/phase3_policy_pareto_search.py
+python scripts/analysis/phase3_remediated_null_policy_audit.py
+python scripts/analysis/phase3_remediated_policy_tile_audit.py
+python scripts/analysis/phase3_deployment_policy_decision.py
+python scripts/analysis/phase3_tile_constrained_policy_search.py
+python scripts/followup/phase3_emit_tile_constrained_candidates.py
+python scripts/followup/phase3_calibrate_candidate_scores.py
+python scripts/analysis/phase3_classical_same_grid_status.py
+python scripts/followup/phase5_half_mission_signflip_null.py \
   --preflight-only \
   --candidate-jsonl runs/phase3_unet/remediated_v1_tile_constrained_candidates/cluster_representatives_15deg.jsonl
 ```
@@ -628,57 +659,57 @@ python scripts/phase5_half_mission_signflip_null.py \
 Run the Nside=32 deployment audit:
 
 ```bash
-bash scripts/batch6_overnight_orchestrator.sh
-python scripts/batch6_overnight_analysis.py
+bash scripts/ops/batch6_overnight_orchestrator.sh
+python scripts/ops/batch6_overnight_analysis.py
 ```
 
 ## Repository Layout
 
-- `scripts/phase_config.py`: canonical physical constants and remediated
+- `scripts/core/phase_config.py`: canonical physical constants and remediated
   defaults.
-- `scripts/phase2_signal_model.py`: Feeney-style signal template,
+- `scripts/core/phase2_signal_model.py`: Feeney-style signal template,
   full-temperature modulation, and first-order additive benchmark utilities.
-- `scripts/phase2_observing_model.py`: CAMB/synfast observing-model utilities.
-- `scripts/phase2_generate_training.py`: current synthetic generator.
-- `scripts/phase2_extract_smica_null_controls.py`: per-map real-null extraction.
-- `scripts/phase2_audit_dataset.py`: split/provenance/data sanity checks.
-- `scripts/phase3_train_unet.py`: U-Net training harness.
-- `scripts/phase3_evaluate_run.py`: primary held-out evaluator.
-- `scripts/phase3_template_baseline.py`: circular-template patch baseline.
-- `scripts/phase3_classical_filters.py`: full-sky Wiener Feeney and SMHW
+- `scripts/core/phase2_observing_model.py`: CAMB/synfast observing-model utilities.
+- `scripts/data/phase2_generate_training.py`: current synthetic generator.
+- `scripts/data/phase2_extract_smica_null_controls.py`: per-map real-null extraction.
+- `scripts/data/phase2_audit_dataset.py`: split/provenance/data sanity checks.
+- `scripts/ml/phase3_train_unet.py`: U-Net training harness.
+- `scripts/ml/phase3_evaluate_run.py`: primary held-out evaluator.
+- `scripts/analysis/phase3_template_baseline.py`: circular-template patch baseline.
+- `scripts/analysis/phase3_classical_filters.py`: full-sky Wiener Feeney and SMHW
   classical filters.
-- `scripts/phase3_sensitivity_curve.py`: remediated sensitivity grid.
-- `scripts/phase3_ml_gain_heatmap.py`: paired ML-vs-circular-template heatmap.
-- `scripts/phase3_noise_floor_analysis.py`: empirical CMB-confusion diagnostic.
-- `scripts/phase3_matched_filter_snr_curve.py`: ideal harmonic-space Feeney
+- `scripts/analysis/phase3_sensitivity_curve.py`: remediated sensitivity grid.
+- `scripts/analysis/phase3_ml_gain_heatmap.py`: paired ML-vs-circular-template heatmap.
+- `scripts/analysis/phase3_noise_floor_analysis.py`: empirical CMB-confusion diagnostic.
+- `scripts/analysis/phase3_matched_filter_snr_curve.py`: ideal harmonic-space Feeney
   matched-filter SNR diagnostic under repo beam/noise/CAMB assumptions.
-- `scripts/phase3_upper_limit_calculator.py`: efficiency-weighted
+- `scripts/analysis/phase3_upper_limit_calculator.py`: efficiency-weighted
   detectable-collision upper limits.
-- `scripts/phase3_deployment_burden_table.py`: full-sky patch and clustered
+- `scripts/analysis/phase3_deployment_burden_table.py`: full-sky patch and clustered
   candidate-volume accounting from Batch 6 tile caches.
-- `scripts/phase3_policy_pareto_search.py`: composite-policy recall-vs-FP
+- `scripts/analysis/phase3_policy_pareto_search.py`: composite-policy recall-vs-FP
   search over existing remediated score caches.
-- `scripts/phase3_deployment_policy_decision.py`: reproducible promotion/
+- `scripts/analysis/phase3_deployment_policy_decision.py`: reproducible promotion/
   rejection rule for composite policies.
-- `scripts/phase3_tile_constrained_policy_search.py`: exhaustive constrained
+- `scripts/analysis/phase3_tile_constrained_policy_search.py`: exhaustive constrained
   search for deployable composite policies.
-- `scripts/phase3_emit_tile_constrained_candidates.py`: frozen full-sky
+- `scripts/followup/phase3_emit_tile_constrained_candidates.py`: frozen full-sky
   candidate and cluster-representative emitter.
-- `scripts/phase3_calibrate_candidate_scores.py`: calibration-split
+- `scripts/followup/phase3_calibrate_candidate_scores.py`: calibration-split
   empirical null-survival scores for emitted representatives.
-- `scripts/phase3_classical_same_grid_status.py`: guard report for true
+- `scripts/analysis/phase3_classical_same_grid_status.py`: guard report for true
   Wiener/SMHW same-grid benchmark claims.
-- `scripts/phase3_same_grid_fullsky_benchmark.py`: guarded full-sky
+- `scripts/analysis/phase3_same_grid_fullsky_benchmark.py`: guarded full-sky
   same-grid pilot/production driver for Wiener/SMHW and optional ML scoring.
-- `scripts/phase3_remediated_null_policy_audit.py`: larger held-out real-null
+- `scripts/analysis/phase3_remediated_null_policy_audit.py`: larger held-out real-null
   audit for composite policies.
-- `scripts/phase3_remediated_policy_tile_audit.py`: full-sky overlapping-tile
+- `scripts/analysis/phase3_remediated_policy_tile_audit.py`: full-sky overlapping-tile
   burden audit for composite policies.
-- `scripts/phase3_fullsky_tile.py`: full-sky tile audit.
-- `scripts/phase5_half_mission_signflip_null.py`: downstream HM1/HM2
+- `scripts/analysis/phase3_fullsky_tile.py`: full-sky tile audit.
+- `scripts/followup/phase5_half_mission_signflip_null.py`: downstream HM1/HM2
   sign-flip null calibration and preflight checks for emitted candidates.
-- `scripts/audit_remediated_flow.py`: lightweight artifact graph audit.
-- `scripts/create_reproducibility_manifest.py`: compact source/artifact
+- `scripts/ops/audit_remediated_flow.py`: lightweight artifact graph audit.
+- `scripts/ops/create_reproducibility_manifest.py`: compact source/artifact
   manifest.
 - `work/`: historical decision notes and batch reports.
 - `docs/evaluation_inventory.md`: active/deferred/historical evaluation map.

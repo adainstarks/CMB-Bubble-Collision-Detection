@@ -14,7 +14,7 @@
 
 ## Decision
 
-This is implemented as `scripts/phase5_half_mission_signflip_null.py`, but it
+This is implemented as `scripts/followup/phase5_half_mission_signflip_null.py`, but it
 remains a downstream Phase 5 calibration step. It should run after candidate
 emission and score-policy selection are frozen, not during model training or
 threshold search.
@@ -61,7 +61,7 @@ Preflight the frozen candidate/policy/model inputs before HM maps are
 available:
 
 ```bash
-python scripts/phase5_half_mission_signflip_null.py \
+python scripts/followup/phase5_half_mission_signflip_null.py \
   --preflight-only \
   --candidate-jsonl runs/phase3_unet/remediated_v1_tile_constrained_candidates/cluster_representatives_15deg.jsonl
 ```
@@ -73,7 +73,7 @@ resolved against local PR3 HM maps for SMICA, NILC, SEVEM, and Commander.
 Current full calibration CLI pattern:
 
 ```bash
-python scripts/phase5_half_mission_signflip_null.py \
+python scripts/followup/phase5_half_mission_signflip_null.py \
   --hm1-map-template data/planck_pr3_hm/COM_CMB_IQU-{map}_2048_R3.00_hm1.fits \
   --hm2-map-template data/planck_pr3_hm/COM_CMB_IQU-{map}_2048_R3.00_hm2.fits \
   --candidate-jsonl runs/phase3_unet/remediated_v1_tile_constrained_candidates/cluster_representatives_15deg.jsonl \

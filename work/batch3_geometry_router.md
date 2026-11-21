@@ -14,7 +14,7 @@ operating policy. `v6_aux_only` remains a defensible single-model fallback.
 The raw two-model portfolio (OR, AND, rank-max) remains *not* recommended —
 only the learned combination wins.
 
-Harness: `scripts/phase3_geometry_router.py` (extended).
+Harness: `scripts/analysis/phase3_geometry_router.py` (extended).
 Artifacts: `runs/phase3_unet/batch3_geometry_router_v1/`.
 
 ## Policies evaluated

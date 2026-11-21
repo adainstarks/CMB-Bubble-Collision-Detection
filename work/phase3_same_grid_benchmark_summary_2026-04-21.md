@@ -13,7 +13,7 @@ Date: 2026-04-21
 
 ## Closure Status
 
-- `scripts/phase3_classical_same_grid_status.py` now reports `status=complete`.
+- `scripts/analysis/phase3_classical_same_grid_status.py` now reports `status=complete`.
 - The merged benchmark report is
   `runs/phase3_unet/remediated_v1_same_grid_fullsky_manifest/same_grid_fullsky_report.json`.
 

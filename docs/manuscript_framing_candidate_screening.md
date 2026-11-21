@@ -80,10 +80,18 @@ Use results wording at this level:
 - The corrected true-Wiener two-stream branch is promising on synthetic recall
   but is not promoted because deployment burden, candidate calibration, and
   frozen-candidate follow-up evidence are still missing.
+- An exploratory out-of-fold Wiener-plus-ImageNet logistic fusion reaches
+  higher mean same-grid recall than either parent on the fixed synthetic
+  benchmark, supporting complementarity rather than replacement, but it
+  remains a synthetic-only result until deployment and follow-up gates are
+  rerun.
 - The frozen real-sky follow-up is harsh: `23 / 24` representatives remain
   stable under the frequency jackknife, but only `3 / 24` remain stable under
   both HM sign-flip and frequency follow-up, collapsing to `2 / 10` adaptive
-  sky systems.
+  sky systems. After the projection-robust and center-stability follow-up,
+  only one adaptive system (`nilc/sevem:9629`) remains ready for downstream
+  likelihood initialization; the other (`nilc:9628`) is reclassified as a
+  center-unstable screening-only excess.
 - The upper-limit number is a screening-derived sensitivity proxy, not a
   standalone cosmological bound.
 - No standalone detection claim is being made.
@@ -96,8 +104,11 @@ Use results wording at this level:
   follow-up handoff.
 - The results section reports recall, null burden, candidate burden, and
   same-grid screening comparisons separately, then gives the HM-plus-frequency
-  survivor table as a follow-up triage result.
+  survivor table as a follow-up triage result with one downstream-ready system
+  and one explicit screening-only survivor.
 - Every table that contains p-values, q-values, or cluster counts states that
   these are screening/follow-up quantities.
-- The conclusion says the next scientific step is projection-robust Bayesian or
-  template-likelihood analysis of the surviving adaptive systems.
+- The conclusion says the next scientific step is projection-robust
+  template-likelihood or Bayesian analysis of `nilc/sevem:9629`, plus a later
+  native-sphere center-marginalized follow-up path for geometry-limited cases
+  such as `nilc:9628`.

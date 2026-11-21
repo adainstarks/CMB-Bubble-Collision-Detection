@@ -16,7 +16,7 @@ Assumptions
 - The first two-stream sensitivity comparison was invalid because only the
   first `12000` sensitivity rows had a populated Wiener auxiliary channel.
 - That failure mode is now blocked in code:
-  `scripts/phase3_train_unet.py` raises if an auxiliary input channel contains
+  `scripts/ml/phase3_train_unet.py` raises if an auxiliary input channel contains
   non-finite values.
 
 ## Corrected result

@@ -13,34 +13,34 @@
 These scripts are part of the active reproducible path and are included in the
 quality gate or manifest:
 
-- `scripts/audit_remediated_flow.py`
-- `scripts/create_reproducibility_manifest.py`
-- `scripts/run_quality_gates.py`
-- `scripts/phase2_generate_training.py`
-- `scripts/phase2_extract_smica_null_controls.py`
-- `scripts/phase2_audit_dataset.py`
-- `scripts/phase3_train_unet.py`
-- `scripts/phase3_evaluate_run.py`
-- `scripts/phase3_template_baseline.py`
-- `scripts/phase3_classical_filters.py`
-- `scripts/phase3_sensitivity_curve.py`
-- `scripts/phase3_ml_gain_heatmap.py`
-- `scripts/phase3_circular_template_features.py`
-- `scripts/phase3_noise_floor_analysis.py`
-- `scripts/phase3_upper_limit_calculator.py`
-- `scripts/phase3_deployment_burden_table.py`
-- `scripts/phase3_policy_pareto_search.py`
-- `scripts/phase3_deployment_policy_decision.py`
-- `scripts/phase3_tile_constrained_policy_search.py`
-- `scripts/phase3_emit_tile_constrained_candidates.py`
-- `scripts/phase3_calibrate_candidate_scores.py`
-- `scripts/phase3_classical_same_grid_status.py`
-- `scripts/phase3_remediated_null_policy_audit.py`
-- `scripts/phase3_remediated_policy_tile_audit.py`
-- `scripts/phase3_mf_channel_tile_audit.py`
-- `scripts/phase3_fullsky_tile.py`
-- `scripts/phase5_half_mission_signflip_null.py`
-- `scripts/batch6_overnight_analysis.py`
+- `scripts/ops/audit_remediated_flow.py`
+- `scripts/ops/create_reproducibility_manifest.py`
+- `scripts/ops/run_quality_gates.py`
+- `scripts/data/phase2_generate_training.py`
+- `scripts/data/phase2_extract_smica_null_controls.py`
+- `scripts/data/phase2_audit_dataset.py`
+- `scripts/ml/phase3_train_unet.py`
+- `scripts/ml/phase3_evaluate_run.py`
+- `scripts/analysis/phase3_template_baseline.py`
+- `scripts/analysis/phase3_classical_filters.py`
+- `scripts/analysis/phase3_sensitivity_curve.py`
+- `scripts/analysis/phase3_ml_gain_heatmap.py`
+- `scripts/core/phase3_circular_template_features.py`
+- `scripts/analysis/phase3_noise_floor_analysis.py`
+- `scripts/analysis/phase3_upper_limit_calculator.py`
+- `scripts/analysis/phase3_deployment_burden_table.py`
+- `scripts/analysis/phase3_policy_pareto_search.py`
+- `scripts/analysis/phase3_deployment_policy_decision.py`
+- `scripts/analysis/phase3_tile_constrained_policy_search.py`
+- `scripts/followup/phase3_emit_tile_constrained_candidates.py`
+- `scripts/followup/phase3_calibrate_candidate_scores.py`
+- `scripts/analysis/phase3_classical_same_grid_status.py`
+- `scripts/analysis/phase3_remediated_null_policy_audit.py`
+- `scripts/analysis/phase3_remediated_policy_tile_audit.py`
+- `scripts/analysis/phase3_mf_channel_tile_audit.py`
+- `scripts/analysis/phase3_fullsky_tile.py`
+- `scripts/followup/phase5_half_mission_signflip_null.py`
+- `scripts/ops/batch6_overnight_analysis.py`
 
 ## Current Post-Processing Products
 
@@ -112,22 +112,34 @@ quality gate or manifest:
 
 ## Historical Or Provenance Only
 
-These scripts should not drive current claims unless their outputs are clearly
-labelled historical:
+These scripts are archived under `scripts/legacy/`. They should not drive
+current claims unless their outputs are clearly labelled historical:
 
-- `scripts/phase3_operating_table.py`: legacy mixed operating score for branch
-  triage, not a discovery statistic.
-- `scripts/phase3_final_policy_eval.py`: older policy-evaluation surface before
-  the current remediated-v1 and Batch 6 framing.
-- `scripts/phase3_eval_tta_ensemble.py`: legacy ensemble/TTA evaluation path.
-- `scripts/phase3_nside512_probe.py`: old probe tied to
+- `scripts/legacy/phase3_operating_table.py`: legacy mixed operating score for
+  branch triage, not a discovery statistic.
+- `scripts/legacy/phase3_final_policy_eval.py`: older policy-evaluation
+  surface before the current remediated-v1 and Batch 6 framing.
+- `scripts/legacy/phase3_eval_tta_ensemble.py`: legacy ensemble/TTA evaluation
+  path.
+- `scripts/legacy/phase3_nside512_probe.py`: old probe tied to
   `docs/nside512_probe_decision.md`.
-- `scripts/phase3_threshold_volume_sweep.py`: useful diagnostic, but not the
-  current deployment-calibration source.
-- `scripts/phase3_two_pass_policy.py`: policy experiment retained for
+- `scripts/legacy/phase3_threshold_volume_sweep.py`: useful diagnostic, but
+  not the current deployment-calibration source.
+- `scripts/legacy/phase3_two_pass_policy.py`: policy experiment retained for
   provenance.
-- `scripts/phase3_visualize_smoothed_examples.py`: visualization utility, not a
-  quantitative result.
+- `scripts/legacy/phase3_visualize_smoothed_examples.py`: visualization
+  utility, not a quantitative result.
+- `scripts/legacy/phase3_real_sky_smoothed_sensitivity.py`: historical
+  v6_aux_only real-SMICA smoothed-edge sensitivity diagnostic.
+- `scripts/legacy/phase3_weak_family_breakdown.py`: historical weak-family
+  recall breakdown superseded by the remediated-v1 sensitivity grid.
+- `scripts/legacy/phase3_screen_and_verify.py`: historical two-branch
+  proposal/verifier packaging layer superseded by the current
+  tile-constrained candidate emitter and follow-up tables.
+
+`scripts/core/phase1_explore.py` is intentionally not archived even though it is an
+early exploration script: current data-generation and null-control scripts
+still import its Planck download/path helpers.
 
 ## Removed Scratch
 

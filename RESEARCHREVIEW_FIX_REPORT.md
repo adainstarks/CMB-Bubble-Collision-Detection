@@ -114,7 +114,7 @@ Local evidence:
 - `runs/phase3_unet/remediated_v1_noise_floor/noise_floor_report.md:3` says
   the diagnostic is not Bayesian evidence or an information-theoretic
   impossibility proof.
-- `scripts/phase3_noise_floor_analysis.py:8-11` records the same limitation in
+- `scripts/analysis/phase3_noise_floor_analysis.py:8-11` records the same limitation in
   code.
 - `README.md:115-118` is appropriately cautious.
 - `PROJECT_HANDOFF.md` now separates the low-amplitude CMB-confusion regime from
@@ -135,7 +135,7 @@ Required fix:
   patch-screener limitation; not yet benchmarked against the covariance-aware
   matched-filter limit."
 - Add a reproducible matched-filter SNR report:
-  - New script target: `scripts/phase3_matched_filter_snr_curve.py`.
+  - New script target: `scripts/analysis/phase3_matched_filter_snr_curve.py`.
   - Inputs: same CAMB TT spectrum, beam, `noise_sigma_uk_arcmin`, radius grid,
     sign quadrants, and amplitude grid used by `remediated_v1`.
   - Outputs: SNR vs amplitude/radius table, matched-filter ideal recall at
@@ -205,7 +205,7 @@ Local evidence:
 - `README.md` and `PROJECT_HANDOFF.md` now state the closed-benchmark outcome:
   Wiener is the strongest average classical screener, while ML remains locally
   competitive in selected cells.
-- `scripts/phase3_classical_filters.py:146-173` has a real harmonic
+- `scripts/analysis/phase3_classical_filters.py:146-173` has a real harmonic
   covariance-weighted filter implementation with explicit Gaussian-beam and
   HEALPix-pixel-window transfer handling, and it has now been evaluated on the
   same stratified same-grid manifest as the ML branch.
@@ -214,7 +214,7 @@ Required fix:
 
 - Generate or retain full-sky injected positive and negative maps for the
   `remediated_v1` amplitude/radius/zcrit grid.
-- Run `scripts/phase3_classical_filters.py` on those maps with the same beam,
+- Run `scripts/analysis/phase3_classical_filters.py` on those maps with the same beam,
   pixel-window policy, mask, `lmax`, and `C_ell/noise` model.
 - Extract scores at the same tile centers or candidate coordinates used by ML.
 - Calibrate thresholds on the same null split and report recall/FPR, cell
@@ -222,11 +222,11 @@ Required fix:
 
 Implementation outcome:
 
-- `scripts/phase3_same_grid_fullsky_benchmark.py` now streams full-sky
+- `scripts/analysis/phase3_same_grid_fullsky_benchmark.py` now streams full-sky
   injected maps, writes patches projected from those same maps, scores
   `wiener_feeney_matched_filter` and `smhw_screen` as blind local maxima, and
   can optionally score ML checkpoints on the generated HDF5.
-- `scripts/phase3_classical_filters.py` now exposes `--pixel-window-policy`,
+- `scripts/analysis/phase3_classical_filters.py` now exposes `--pixel-window-policy`,
   so remediated products generated with `synfast(pixwin=True)` can be filtered
   with the matching `B_l P_l` transfer function.
 - The closed stratified manifest reports mean recall `0.3841` for Wiener,
@@ -237,7 +237,7 @@ Implementation outcome:
 
 Acceptance criteria:
 
-- `scripts/phase3_classical_same_grid_status.py` returns `complete`.
+- `scripts/analysis/phase3_classical_same_grid_status.py` returns `complete`.
 - The report includes ImageNet U-Net, random-init U-Net, circular-template
   screen, Wiener Feeney matched filter, and SMHW screen on the same rows and
   thresholds.
@@ -251,16 +251,16 @@ Verdict: `invalid as stated`, but still paper-blocking until documented.
 
 Local evidence:
 
-- `scripts/phase2_signal_model.py:161-182` injects
+- `scripts/core/phase2_signal_model.py:161-182` injects
   `(1 + signal) * (T_CMB_K + patch) - T_CMB_K`.
-- `scripts/phase2_observing_model.py:230-232` uses the same spherical injection.
-- `scripts/phase2_physics_checks.py:85-113` explicitly tests the Feeney
+- `scripts/core/phase2_observing_model.py:230-232` uses the same spherical injection.
+- `scripts/data/phase2_physics_checks.py:85-113` explicitly tests the Feeney
   full-temperature convention and quantifies the additive cross term.
 - Several downstream scripts previously reconstructed injected positives with
   `signal * (T_CMB_K + base)`, including
-  `scripts/phase3_real_sky_injection.py:482-492` and
-  `scripts/phase3_two_pass_policy.py:169-179`; this should remain centralized
-  through the shared signal-model convention helper.
+  `scripts/analysis/phase3_real_sky_injection.py:482-492` and
+  `scripts/legacy/phase3_two_pass_policy.py:169-179`; this should remain
+  centralized through the shared signal-model convention helper.
 - A direct search found no pure `T_anisotropy *= (1 + f)` path. The code's
   algebra is the Feeney full-temperature modulation:
   `patch + signal*T_CMB_K + signal*patch`.
@@ -295,7 +295,7 @@ Required fix:
 - Update docstrings from generic "temperature modulation" to specify whether
   the artifact is Feeney full-temperature modulation or McEwen first-order
   additive.
-- Extend `scripts/phase2_physics_checks.py` to report the maximum and RMS
+- Extend `scripts/data/phase2_physics_checks.py` to report the maximum and RMS
   fractional difference between exact Feeney modulation and first-order
   additive injection across the production amplitude/radius grid.
 - For the same-grid classical benchmark, either:
@@ -336,17 +336,17 @@ Local evidence:
 - Astropy FITS-header inspection confirms all local PR3 files
   `COM_CMB_IQU-{commander,nilc,sevem,smica}_2048_R3.00_full.fits` have
   `TUNIT1 = K_CMB`.
-- `scripts/phase3_classical_filters.py:45-57` rejects maps with max absolute
+- `scripts/analysis/phase3_classical_filters.py:45-57` rejects maps with max absolute
   anisotropy above `1 K`, which catches many microkelvin/Kelvin confusions but
   is not a full FITS unit audit.
 
 Required fix:
 
-- Add `scripts/phase0_planck_unit_audit.py`.
+- Add `scripts/data/phase0_planck_unit_audit.py`.
 - It should read FITS headers, record `TUNIT*`, `BUNIT`, `NSIDE`, `ORDERING`,
   map min/max/RMS in K and uK, and fail if the units do not match the requested
   map family.
-- It should write a JSON report and be called by `scripts/audit_remediated_flow.py`.
+- It should write a JSON report and be called by `scripts/ops/audit_remediated_flow.py`.
 
 Acceptance criteria:
 
@@ -383,7 +383,7 @@ Verdict: `partly valid`.
 
 Local evidence:
 
-- `scripts/phase3_emit_tile_constrained_candidates.py:69` defaults to
+- `scripts/followup/phase3_emit_tile_constrained_candidates.py:69` defaults to
   `--cluster-radius-deg 15.0`.
 - `PROJECT_HANDOFF.md:286-288` already says the paper narrative still needs a
   final cluster-radius convention.
@@ -410,7 +410,7 @@ Verdict: `valid`.
 
 Local evidence:
 
-- `scripts/phase2_physics_checks.py:116-138` already computes gnomonic geometry
+- `scripts/data/phase2_physics_checks.py:116-138` already computes gnomonic geometry
   diagnostics.
 - Current patches are `55.47 deg` wide, so large signals near patch edges can be
   distorted in Euclidean patch space.
@@ -667,21 +667,21 @@ Action:
   - `PROJECT_HANDOFF.md:112-121`: add Feeney 2013 benchmark context.
   - `PROJECT_HANDOFF.md:281-285`: keep the split between low-amplitude
     CMB-confusion and higher-SNR algorithmic targets.
-- `scripts/phase2_signal_model.py`
-  - `scripts/phase2_signal_model.py:149-183`: keep the Feeney implementation,
+- `scripts/core/phase2_signal_model.py`
+  - `scripts/core/phase2_signal_model.py:149-183`: keep the Feeney implementation,
     name the convention explicitly, and expose the first-order additive
     alternative for benchmark generation.
-- `scripts/phase2_observing_model.py`
-  - `scripts/phase2_observing_model.py:192-233`: keep convention metadata and
+- `scripts/core/phase2_observing_model.py`
+  - `scripts/core/phase2_observing_model.py:192-233`: keep convention metadata and
     additive alternative.
-- `scripts/phase2_physics_checks.py`
-  - `scripts/phase2_physics_checks.py:85-113`: test Feeney full-temperature
+- `scripts/data/phase2_physics_checks.py`
+  - `scripts/data/phase2_physics_checks.py:85-113`: test Feeney full-temperature
     modulation and McEwen first-order additive; quantify the cross term.
-- `scripts/phase3_real_sky_injection.py`,
-  `scripts/phase3_real_sky_smoothed_sensitivity.py`,
-  `scripts/phase3_two_pass_policy.py`,
-  `scripts/phase3_visualize_smoothed_examples.py`, and
-  `scripts/phase3_nside512_probe.py`
+- `scripts/analysis/phase3_real_sky_injection.py`,
+  `scripts/legacy/phase3_real_sky_smoothed_sensitivity.py`,
+  `scripts/legacy/phase3_two_pass_policy.py`,
+  `scripts/legacy/phase3_visualize_smoothed_examples.py`, and
+  `scripts/legacy/phase3_nside512_probe.py`
   - These should reconstruct positives through the shared convention helper and
     write convention metadata.
 - `docs/phase3_matched_fpr_sensitivity_decision.md:140` and

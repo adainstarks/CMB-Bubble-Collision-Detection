@@ -2,7 +2,7 @@
 
 Date: 2026-04-21
 Repo baseline inspected: `remediated_v1`
-Primary local files inspected: `README.md`, `PROJECT_HANDOFF.md`, `RESEARCHREVIEW`, `scripts/phase_config.py`, `scripts/phase3_train_unet.py`, `scripts/phase3_eval_tta_ensemble.py`, `scripts/phase3_cache_matched_filter_channel.py`, `scripts/phase3_classical_filters.py`, `scripts/phase3_matched_filter_snr_curve.py`, `runs/phase3_unet/remediated_v1_matched_filter_snr/`, `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/`, `work/tta_ensemble_eval.md`
+Primary local files inspected: `README.md`, `PROJECT_HANDOFF.md`, `RESEARCHREVIEW`, `scripts/core/phase_config.py`, `scripts/ml/phase3_train_unet.py`, `scripts/legacy/phase3_eval_tta_ensemble.py`, `scripts/analysis/phase3_cache_matched_filter_channel.py`, `scripts/analysis/phase3_classical_filters.py`, `scripts/analysis/phase3_matched_filter_snr_curve.py`, `runs/phase3_unet/remediated_v1_matched_filter_snr/`, `runs/phase3_unet/remediated_v1_mf_channel_tile_audit/`, `work/tta_ensemble_eval.md`
 
 ## Assumptions First
 
@@ -15,10 +15,10 @@ Primary local files inspected: `README.md`, `PROJECT_HANDOFF.md`, `RESEARCHREVIE
 
 ## What I Verified Locally Before Drawing Conclusions
 
-- The repo already contains a real spherical Wiener/Feeney matched-filter implementation in `scripts/phase3_classical_filters.py`.
+- The repo already contains a real spherical Wiener/Feeney matched-filter implementation in `scripts/analysis/phase3_classical_filters.py`.
 - The repo already contains an ideal matched-filter SNR artifact in `runs/phase3_unet/remediated_v1_matched_filter_snr/`, and the true same-grid ML-versus-classical benchmark is now `complete` in `runs/phase3_unet/remediated_v1_same_grid_fullsky_manifest/`.
-- The current so-called matched-filter input channel is not a Wiener matched filter. `scripts/phase3_cache_matched_filter_channel.py` explicitly caches a circular-template response map.
-- Test-time augmentation is already implemented in `scripts/phase3_eval_tta_ensemble.py`, and the existing mixed-geometry report shows essentially no recall gain from D4 TTA.
+- The current so-called matched-filter input channel is not a Wiener matched filter. `scripts/analysis/phase3_cache_matched_filter_channel.py` explicitly caches a circular-template response map.
+- Test-time augmentation is already implemented in `scripts/legacy/phase3_eval_tta_ensemble.py`, and the existing mixed-geometry report shows essentially no recall gain from D4 TTA.
 - Hard-example emphasis already exists in partial form through `--hard-positive-mining-json` and `--snr-sample-weight-json`.
 - The focal-loss ablation and the SNR-guided hard-example ablation are now complete, and neither changes the main scientific conclusion. The remediated true-Wiener two-stream retrain and its corrected full-cache sensitivity comparison are now complete.
 
@@ -34,7 +34,7 @@ Primary local files inspected: `README.md`, `PROJECT_HANDOFF.md`, `RESEARCHREVIE
 - True-Wiener two-stream status: `complete`, with one corrected rerun.
   - The first sensitivity comparison was invalid because only the first `12000 / 33000` sensitivity rows had a populated Wiener auxiliary channel.
   - The full-cache rerun raises mean `P_det` from `0.34875` to `0.36839` overall (`+0.01964`), helps moderate/high-amplitude cells (`+0.03881`) and large-radius cells (`+0.02226`), but remains worse in the hardest low-amplitude subset (`-0.00592`).
-  - `scripts/phase3_train_unet.py` now raises on non-finite auxiliary channels so this partial-cache failure mode cannot silently reoccur.
+  - `scripts/ml/phase3_train_unet.py` now raises on non-finite auxiliary channels so this partial-cache failure mode cannot silently reoccur.
 - Projection/clustering audit status: `complete`.
   - The audit artifact is `runs/phase3_unet/remediated_v1_projection_clustering_audit/projection_clustering_audit.json`.
   - The fixed `15 deg` clustering radius materially changes candidate volume, and `17 / 24` frozen candidates are already flagged for projection caution in the downstream Bayesian/template handoff.
@@ -291,8 +291,8 @@ What could go wrong:
 
 Exactly how to test it:
 
-1. Keep `scripts/phase3_matched_filter_snr_curve.py` as the ideal ceiling diagnostic.
-2. Close the true same-grid benchmark with `scripts/phase3_same_grid_fullsky_benchmark.py` so ML and spherical Wiener/SMHW methods are evaluated on the same injected full-sky realizations and same null calibration.
+1. Keep `scripts/analysis/phase3_matched_filter_snr_curve.py` as the ideal ceiling diagnostic.
+2. Close the true same-grid benchmark with `scripts/analysis/phase3_same_grid_fullsky_benchmark.py` so ML and spherical Wiener/SMHW methods are evaluated on the same injected full-sky realizations and same null calibration.
 3. Report recall/FPR and burden at matched operating points.
 
 What counts as success:
@@ -365,7 +365,7 @@ Why it might help:
 Evidence:
 
 - Local repo evidence is stronger than the literature here:
-  - `scripts/phase3_eval_tta_ensemble.py` implements D4 TTA.
+  - `scripts/legacy/phase3_eval_tta_ensemble.py` implements D4 TTA.
   - `work/tta_ensemble_eval.md` shows mixed-geometry recall `0.486` with and without D4 TTA for the current mixed-geometry model, with only a small Dice improvement.
 
 What could go wrong:
@@ -411,7 +411,7 @@ What could go wrong:
 
 Exactly how to test it:
 
-1. Use the new `scripts/phase3_train_unet.py` focal-loss option.
+1. Use the new `scripts/ml/phase3_train_unet.py` focal-loss option.
 2. Compare:
   - baseline BCE+Dice;
   - focal+Dice with `gamma = 2`, `alpha disabled`;
@@ -547,7 +547,7 @@ Current conclusion:
 Focal-loss ablation, same baseline as current mixed-geometry training except for the pixel loss:
 
 ```bash
-python scripts/phase3_train_unet.py \
+python scripts/ml/phase3_train_unet.py \
   --data-h5 data/remediated_v1/training_data.h5 \
   --run-name remediated_v1_unet_imagenet_b64_aux_focal_g2 \
   --encoder-name efficientnet-b0 \
@@ -562,7 +562,7 @@ python scripts/phase3_train_unet.py \
 Persistent hard-example emphasis using the existing matched-filter headroom artifact:
 
 ```bash
-python scripts/phase3_train_unet.py \
+python scripts/ml/phase3_train_unet.py \
   --data-h5 data/remediated_v1/training_data.h5 \
   --run-name remediated_v1_unet_imagenet_b64_aux_snr_gap \
   --encoder-name efficientnet-b0 \
@@ -579,7 +579,7 @@ python scripts/phase3_train_unet.py \
 Checkpoint-based focal fine-tune from the current best ImageNet baseline:
 
 ```bash
-python scripts/phase3_train_unet.py \
+python scripts/ml/phase3_train_unet.py \
   --data-h5 data/remediated_v1/training_data.h5 \
   --run-name remediated_v1_unet_imagenet_b64_aux_focal_g2_ft \
   --epochs 10 \

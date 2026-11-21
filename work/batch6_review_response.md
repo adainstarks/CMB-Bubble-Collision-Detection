@@ -21,8 +21,8 @@ Artifacts:
 - `runs/phase3_unet/batch6_fullsky_nside32_*/fullsky_tile_report.{json,md}`
 - `runs/phase3_unet/batch6_fullsky_nside32_smica/crossmap_recalibration_nside32.{json,md}`
 - `work/teammate_review_response.json` — machine-readable ablation results
-- `scripts/batch6_overnight_orchestrator.sh` — runs all 4 maps paired on 2 GPUs
-- `scripts/batch6_overnight_analysis.py` — produces the cross-map recal report
+- `scripts/ops/batch6_overnight_orchestrator.sh` — runs all 4 maps paired on 2 GPUs
+- `scripts/ops/batch6_overnight_analysis.py` — produces the cross-map recal report
 
 ## Part A: Nside=32 full-sky audit
 
