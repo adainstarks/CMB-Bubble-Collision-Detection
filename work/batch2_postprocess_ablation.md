@@ -14,7 +14,7 @@ Result: mixed success.
 - **Portfolio decision stands.** Post-processing alone does not close the
   v7-vs-v6 gap on real-SMICA contained geometry.
 
-Harness: `scripts/phase3_postprocess_ablation.py` (new).
+Harness: `scripts/analysis/phase3_postprocess_ablation.py` (new).
 Artifacts: `runs/phase3_unet/batch2_postprocess_ablation_v1/`.
 
 ## Setup

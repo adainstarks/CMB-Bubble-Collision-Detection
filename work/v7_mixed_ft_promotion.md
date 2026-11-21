@@ -76,9 +76,10 @@ shrunk:
    v7_mixed_ft as the preferred ML branch and v6_aux_only as deprecated-but-kept
    for reproducibility.
 2. Re-run real-SMICA injection sensitivity (`phase3_real_sky_injection.py` /
-   `phase3_real_sky_smoothed_sensitivity.py`) using v7_mixed_ft and the existing
-   matched-template baseline. Mixed-geometry training should be reflected in real-sky
-   numbers too, especially for any candidate disc whose center sits near the
+   `scripts/legacy/phase3_real_sky_smoothed_sensitivity.py`) using v7_mixed_ft
+   and the existing matched-template baseline. Mixed-geometry training should
+   be reflected in real-sky numbers too, especially for any candidate disc whose
+   center sits near the
    galactic mask edge.
 3. Optional second-pass fine-tune: increase truncated-positive fraction in training
    to 0.50, run another 6-12 epochs. Expected payoff is bounded by the

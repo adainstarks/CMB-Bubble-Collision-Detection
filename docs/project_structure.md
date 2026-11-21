@@ -7,64 +7,64 @@ specific compact artifact is promoted.
 
 ## Active Source
 
-- `scripts/phase_config.py`: shared physical constants and remediated defaults.
-- `scripts/phase2_signal_model.py`: Feeney-style signal template,
+- `scripts/core/phase_config.py`: shared physical constants and remediated defaults.
+- `scripts/core/phase2_signal_model.py`: Feeney-style signal template,
   full-temperature modulation, and first-order additive benchmark utilities.
-- `scripts/phase2_observing_model.py`: CAMB/synfast observing-model utilities.
-- `scripts/phase2_generate_training.py`: current remediated training-data
+- `scripts/core/phase2_observing_model.py`: CAMB/synfast observing-model utilities.
+- `scripts/data/phase2_generate_training.py`: current remediated training-data
   generator.
-- `scripts/phase2_extract_smica_null_controls.py`: per-map real-null extraction.
-- `scripts/phase2_audit_dataset.py`: split/provenance/data sanity checks.
-- `scripts/phase3_train_unet.py`: U-Net training harness.
-- `scripts/phase3_evaluate_run.py`: primary held-out evaluator.
-- `scripts/phase3_template_baseline.py`: circular-template patch baseline.
-- `scripts/phase3_classical_filters.py`: full-sky Wiener Feeney matched filter
+- `scripts/data/phase2_extract_smica_null_controls.py`: per-map real-null extraction.
+- `scripts/data/phase2_audit_dataset.py`: split/provenance/data sanity checks.
+- `scripts/ml/phase3_train_unet.py`: U-Net training harness.
+- `scripts/ml/phase3_evaluate_run.py`: primary held-out evaluator.
+- `scripts/analysis/phase3_template_baseline.py`: circular-template patch baseline.
+- `scripts/analysis/phase3_classical_filters.py`: full-sky Wiener Feeney matched filter
   and SMHW screen maps.
-- `scripts/phase3_sensitivity_curve.py`: remediated sensitivity-grid builder.
-- `scripts/phase3_ml_gain_heatmap.py`: paired ML-vs-circular-template
+- `scripts/analysis/phase3_sensitivity_curve.py`: remediated sensitivity-grid builder.
+- `scripts/analysis/phase3_ml_gain_heatmap.py`: paired ML-vs-circular-template
   sensitivity analysis.
-- `scripts/phase3_circular_template_features.py`: shared circular-template
+- `scripts/core/phase3_circular_template_features.py`: shared circular-template
   response feature-map utilities for two-channel U-Net experiments.
-- `scripts/phase3_noise_floor_analysis.py`: empirical signal-scale and CMB
+- `scripts/analysis/phase3_noise_floor_analysis.py`: empirical signal-scale and CMB
   confusion diagnostics for the remediated sensitivity grid.
-- `scripts/phase3_matched_filter_snr_curve.py`: ideal harmonic-space Feeney
+- `scripts/analysis/phase3_matched_filter_snr_curve.py`: ideal harmonic-space Feeney
   matched-filter SNR curves under repo beam/noise/CAMB assumptions.
-- `scripts/phase3_upper_limit_calculator.py`: efficiency-weighted
+- `scripts/analysis/phase3_upper_limit_calculator.py`: efficiency-weighted
   detectable-collision upper-limit post-processing.
-- `scripts/phase3_deployment_burden_table.py`: full-sky patch and clustered
+- `scripts/analysis/phase3_deployment_burden_table.py`: full-sky patch and clustered
   candidate-volume accounting from Batch 6 tile caches.
-- `scripts/phase3_policy_pareto_search.py`: composite-policy recall-vs-FP
+- `scripts/analysis/phase3_policy_pareto_search.py`: composite-policy recall-vs-FP
   search over remediated score caches.
-- `scripts/phase3_deployment_policy_decision.py`: promotion/rejection decision
+- `scripts/analysis/phase3_deployment_policy_decision.py`: promotion/rejection decision
   report for composite policies under explicit cross-map burden constraints.
-- `scripts/phase3_tile_constrained_policy_search.py`: exhaustive
+- `scripts/analysis/phase3_tile_constrained_policy_search.py`: exhaustive
   tile-constrained policy search after cheap FPR, pooled-null, and
   trigger-fraction filters.
-- `scripts/phase3_emit_tile_constrained_candidates.py`: canonical-mask
+- `scripts/followup/phase3_emit_tile_constrained_candidates.py`: canonical-mask
   candidate and cluster-representative emitter for the constrained policy.
-- `scripts/phase3_calibrate_candidate_scores.py`: calibration-split empirical
+- `scripts/followup/phase3_calibrate_candidate_scores.py`: calibration-split empirical
   null-survival scores for emitted candidate representatives.
-- `scripts/phase3_classical_same_grid_status.py`: guard report for true
+- `scripts/analysis/phase3_classical_same_grid_status.py`: guard report for true
   Wiener/SMHW same-grid benchmark claims.
-- `scripts/phase3_same_grid_fullsky_benchmark.py`: guarded full-sky
+- `scripts/analysis/phase3_same_grid_fullsky_benchmark.py`: guarded full-sky
   same-grid pilot/production driver for Wiener/SMHW and optional ML scoring.
-- `scripts/phase3_remediated_null_policy_audit.py`: larger held-out real-null
+- `scripts/analysis/phase3_remediated_null_policy_audit.py`: larger held-out real-null
   audit for remediated composite policies.
-- `scripts/phase3_remediated_policy_tile_audit.py`: full-sky overlapping-tile
+- `scripts/analysis/phase3_remediated_policy_tile_audit.py`: full-sky overlapping-tile
   burden audit for remediated composite policies.
-- `scripts/phase3_mf_channel_tile_audit.py`: recall-development tile-burden
+- `scripts/analysis/phase3_mf_channel_tile_audit.py`: recall-development tile-burden
   audit for the legacy two-channel circular-template-response U-Net.
-- `scripts/phase3_fullsky_tile.py`: full-sky tile calibration audit.
-- `scripts/phase3_geometry_router.py`: score-router experiments.
-- `scripts/phase5_half_mission_signflip_null.py`: downstream HM1/HM2
+- `scripts/analysis/phase3_fullsky_tile.py`: full-sky tile calibration audit.
+- `scripts/analysis/phase3_geometry_router.py`: score-router experiments.
+- `scripts/followup/phase5_half_mission_signflip_null.py`: downstream HM1/HM2
   sign-flip null calibration and preflight checks for emitted candidates.
-- `scripts/batch6_overnight_orchestrator.sh`: current Nside=32 tile audit
+- `scripts/ops/batch6_overnight_orchestrator.sh`: current Nside=32 tile audit
   launcher.
-- `scripts/batch6_overnight_analysis.py`: current cross-map deployment summary.
-- `scripts/audit_remediated_flow.py`: lightweight artifact graph audit.
-- `scripts/create_reproducibility_manifest.py`: compact environment/source/
+- `scripts/ops/batch6_overnight_analysis.py`: current cross-map deployment summary.
+- `scripts/ops/audit_remediated_flow.py`: lightweight artifact graph audit.
+- `scripts/ops/create_reproducibility_manifest.py`: compact environment/source/
   artifact manifest for researchers.
-- `scripts/run_quality_gates.py`: compile/physics/artifact quality gate.
+- `scripts/ops/run_quality_gates.py`: compile/physics/artifact quality gate.
 - `docs/evaluation_inventory.md`: active/deferred/historical evaluation map.
 - `docs/phase5_half_mission_signflip_null.md`: real-data half-mission
   sign-flip null design and CLI usage notes.
@@ -116,6 +116,8 @@ specific compact artifact is promoted.
 
 These are retained for provenance, not as current instructions:
 
+- `scripts/legacy/`: historical or pre-remediation command-line scripts that
+  are no longer part of the active science path.
 - `data/training_v4/`
 - `data/training_v5_mixed_geometry/`
 - `data/validation_stratified_v1/`

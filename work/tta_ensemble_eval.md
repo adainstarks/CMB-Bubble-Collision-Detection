@@ -2,7 +2,7 @@
 
 ## Setup
 
-- Harness: `scripts/phase3_eval_tta_ensemble.py` (new). D4 TTA averages the 8
+- Harness: `scripts/legacy/phase3_eval_tta_ensemble.py` (historical). D4 TTA averages the 8
   flip/rotation augmentations of the *probability mask* before computing
   detection scores and Dice at the matched-FPR threshold. Ensembling averages
   each model's TTA-averaged probability mask with equal weights before

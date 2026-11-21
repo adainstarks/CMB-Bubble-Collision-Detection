@@ -1,0 +1,149 @@
+{
+  "synthetic_split_report": {
+    "path": "/data/william/CMB-Collision-Bubbles/data/remediated_v1/training_data.h5",
+    "num_rows": 20000,
+    "positive": 10000,
+    "negative": 10000,
+    "split_rows": {
+      "train": {
+        "count": 16000,
+        "positive": 8000,
+        "negative": 8000
+      },
+      "val": {
+        "count": 2000,
+        "positive": 1000,
+        "negative": 1000
+      },
+      "calibration": {
+        "count": 2000,
+        "positive": 1000,
+        "negative": 1000
+      },
+      "test": {
+        "count": 2000,
+        "positive": 1000,
+        "negative": 1000
+      }
+    },
+    "split_overlaps": {
+      "calibration__test": 0,
+      "calibration__train": 0,
+      "calibration__val": 2000,
+      "test__train": 0,
+      "test__val": 0,
+      "train__val": 0
+    },
+    "allowed_split_overlaps": {
+      "calibration__val": "Existing remediated_v1 training_data.h5 uses the validation rows as calibration rows. Pure-ML training must not report validation and calibration as independent evidence."
+    },
+    "blocking_split_overlap_pairs": [],
+    "realization_by_split_count": {
+      "train": 307,
+      "val": 38,
+      "calibration": 38,
+      "test": 39
+    },
+    "blocking_split_overlap_ok": true
+  },
+  "synthetic_forbidden_features": {
+    "path": "/data/william/CMB-Collision-Bubbles/data/remediated_v1/training_data.h5",
+    "feature_datasets": [
+      "features/wiener_feeney_response",
+      "features/wiener_feeney_response_smoke"
+    ],
+    "forbidden_deployed_inputs": [
+      "features/wiener_feeney_response",
+      "features/wiener_feeney_response_smoke"
+    ],
+    "pure_ml_input_contract": "Allowed deployed input is patches only for this experiment track."
+  },
+  "same_grid_report": {
+    "path": "/data/william/CMB-Collision-Bubbles/runs/phase3_unet/remediated_v1_same_grid_fullsky_manifest/same_grid_fullsky_patches.h5",
+    "source_h5": "/data/william/CMB-Collision-Bubbles/runs/phase3_unet/remediated_v1_sensitivity_curve/sensitivity_data.h5",
+    "source_rows_comparable_to_synthetic": false,
+    "num_rows": 12000,
+    "positive": 7000,
+    "negative": 5000,
+    "amplitude_values": [
+      9.999999974752427e-07,
+      1.9999999949504854e-06,
+      4.999999873689376e-06,
+      9.999999747378752e-06,
+      1.9999999494757503e-05,
+      4.999999873689376e-05,
+      9.999999747378752e-05
+    ],
+    "theta_values_deg": [
+      5.0,
+      10.0,
+      15.0,
+      20.0,
+      25.0
+    ],
+    "realization_count": 384,
+    "source_row_count": 12000
+  },
+  "null_controls": {
+    "smica": {
+      "path": "/data/william/CMB-Collision-Bubbles/data/remediated_v1/null_controls_smica_mask090.h5",
+      "exists": true,
+      "num_rows": 16000,
+      "positive_labels": 0,
+      "negative_labels": 16000,
+      "train_count": 13064,
+      "val_count": 1442,
+      "calibration_count": 1442,
+      "test_count": 1494
+    },
+    "nilc": {
+      "path": "/data/william/CMB-Collision-Bubbles/data/remediated_v1/null_controls_nilc_mask090.h5",
+      "exists": true,
+      "num_rows": 16000,
+      "positive_labels": 0,
+      "negative_labels": 16000,
+      "train_count": 13064,
+      "val_count": 1442,
+      "calibration_count": 1442,
+      "test_count": 1494
+    },
+    "sevem": {
+      "path": "/data/william/CMB-Collision-Bubbles/data/remediated_v1/null_controls_sevem_mask090.h5",
+      "exists": true,
+      "num_rows": 16000,
+      "positive_labels": 0,
+      "negative_labels": 16000,
+      "train_count": 13064,
+      "val_count": 1442,
+      "calibration_count": 1442,
+      "test_count": 1494
+    },
+    "commander": {
+      "path": "/data/william/CMB-Collision-Bubbles/data/remediated_v1/null_controls_commander_mask090.h5",
+      "exists": true,
+      "num_rows": 16000,
+      "positive_labels": 0,
+      "negative_labels": 16000,
+      "train_count": 13064,
+      "val_count": 1442,
+      "calibration_count": 1442,
+      "test_count": 1494
+    }
+  },
+  "contract": {
+    "allowed_deployed_inputs": [
+      "patches"
+    ],
+    "forbidden_deployed_inputs": [
+      "features/wiener_feeney_response",
+      "features/*matched*",
+      "features/*template*",
+      "features/*smhw*",
+      "any external classical score used as a model feature"
+    ],
+    "benchmark_to_beat": {
+      "method": "wiener_feeney_matched_filter",
+      "mean_same_grid_recall_at_fpr_0p05": 0.3841
+    }
+  }
+}

@@ -10,7 +10,7 @@ a single-model promotion.
 
 ## Setup
 
-- Gate harness: `scripts/phase3_real_sky_v7_gate.py` (new).
+- Gate harness: `scripts/analysis/phase3_real_sky_v7_gate.py` (new).
 - Injection dataset: 500 unmasked SMICA patches, 7 amplitudes × 5 θ × 4
   sign-quadrants = 17500 positives per geometry mode.
 - Null source: `data/training_v4/smica_null_controls_all.h5` (5000 SMICA
