@@ -543,3 +543,70 @@ from Osborne et al. Fig. 3 was settled. Entries (g) and (h) then showed the temp
 physics (source terms add up; the Doppler term is visible directly in the transfer function), and on that
 basis this benchmark was run. The comparison with the published figure is still open, and the exact edge
 shape would change these numbers somewhat; the ordering of the methods is less likely to depend on it.
+
+## (o) 2026-11-21 03:50 CST. Pre-registration: fine-tune the ImageNet U-Net on the transfer-function templates
+
+Committed and pushed at 03:48: the benchmark script, its report and entries (l) to (n) (commit ab1bf2e).
+
+Question. Entry (n) left a gap: the April ImageNet U-Net detects 0.24, 0.45, 0.90 at 2e-5, 3e-5, 5e-5 where the
+6 deg matched filter detects 0.32, 0.59, 0.98. Does training on the right signal close it?
+
+Design (`scripts/ml/finetune_on_transfer_template.py`).
+- Start from the April ImageNet U-Net checkpoint; fine-tune all weights for 12 epochs, AdamW, learning rate
+  1e-4 with cosine decay, batch 64, loss = cross-entropy + Dice on the mask + 0.2 x cross-entropy on the
+  image-level head, dihedral augmentation.
+- Training data made in memory with the benchmark's recipe and a different seed (20261122): 3,000 skies,
+  24,000 patches, half with a signal; 21 template sizes from 5 to 25 deg; amplitudes log-uniform from 1e-5 to
+  1.2e-4 in observed peak; signal centre within 5 deg of the patch centre; target mask = where the template
+  exceeds 10% of its peak. Validation: 300 more skies.
+- Test: the fixed benchmark of entry (m) (seed 20261121), untouched by training. The last epoch is used; no
+  selection on the test set. Score = largest mask probability, as before; the image-level head is reported
+  as a second score.
+- Check built in: the starting model scored through this code path must reproduce the benchmark's saved
+  scores.
+
+Predictions.
+1. The fine-tuned network beats the April ImageNet U-Net at 2e-5 and at 3e-5 by more than the interval
+   half-width (about 0.03).
+2. It does not exceed the 6 deg filter by more than 0.03 at any amplitude.
+3. At 3e-5 it reaches at least 0.50 (85% of the filter's 0.594).
+If 2 fails, the filter is not the optimum for this prior (a maximum over a bank is not the Bayes test), and
+the right reference becomes the marginal likelihood ratio.
+
+## (p) 2026-11-21 04:16 CST. Fine-tuning on the transfer-function templates closes most of the gap to the matched filter
+
+Job 82911 (node c3, 24 min in total; 12 epochs at 84 s each on one RTX 5000 Ada).
+Check: the starting model scored through the fine-tuning code path reproduces the benchmark's saved scores
+(largest difference 8e-4). Validation detection between 2e-5 and 5e-5 rose from 0.62 after one epoch to 0.69
+after two and stayed there. The last epoch is used.
+
+Test on the fixed benchmark of (m), 12,000 patches, 5% false positives, all sizes pooled:
+
+| method | 1e-5 | 2e-5 | 3e-5 | 5e-5 | 7e-5 |
+|---|---:|---:|---:|---:|---:|
+| matched filter bank, 6 deg search | 0.087 | 0.317 | 0.594 | 0.976 | 1.000 |
+| matched filter bank, 12 deg search | 0.076 | 0.245 | 0.499 | 0.959 | 0.999 |
+| U-Net, ImageNet, April | 0.075 | 0.241 | 0.447 | 0.898 | 0.990 |
+| U-Net, ImageNet, fine-tuned (mask maximum) | 0.083 | 0.283 | 0.568 | 0.970 | 1.000 |
+| U-Net, ImageNet, fine-tuned (image head) | 0.093 | 0.289 | 0.571 | 0.960 | 0.998 |
+
+Intervals are about +-0.03 at 2e-5 and 3e-5 and +-0.012 at 5e-5 (1,000 signals per amplitude).
+
+Predictions from (o): 1. beats the April network at 2e-5 and 3e-5 by more than 0.03: **held** (+0.042 and
++0.121). 2. does not exceed the 6 deg filter by more than 0.03 anywhere: **held** (it is at or below the
+filter at every amplitude with the mask score; the image head is 0.006 above it at 1e-5, within noise).
+3. at least 0.50 at 3e-5: **held** (0.568).
+
+Reading.
+- Seventeen minutes of fine-tuning on the right signal takes the network from 75% to 96% of the matched
+  filter's detection rate at 3e-5, from 76% to 89% at 2e-5, and from 92% to 99% at 5e-5.
+- It does not pass the filter, as detection theory says it should not on Gaussian skies with a known
+  template family. This is the first measurement in the project of a network against the right filter on
+  the right signal, and the answer is "about equal".
+- The image-level head, which was the weaker score in April, now matches the mask score.
+- What a network can add beyond the filter is therefore not sensitivity on Gaussian skies. The open
+  questions are real-sky backgrounds, where the filter's Gaussian assumption fails and April saw the
+  network's false-positive rate rise from 0.05 to 0.185, and discs wider than the patch.
+
+Limits: Gaussian skies; ramp template only; signal centres within 5 deg of the patch centre in both training
+and test; one training run, one seed.

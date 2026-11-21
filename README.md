@@ -33,7 +33,9 @@ First benchmark on the new template (`scripts/analysis/benchmark_transfer_templa
 (l) to (n)): 12,000 patches of Gaussian sky, signals quoted by observed peak amplitude, 5% false positives.
 A filter bank built from the same templates and searching within 6 degrees of the patch centre detects
 0.32, 0.59 and 0.98 at 2e-5, 3e-5 and 5e-5. The April ImageNet U-Net, never trained on these templates,
-detects 0.24, 0.45 and 0.90, and behaves like the filter with a 12 degree search.
+detects 0.24, 0.45 and 0.90, and behaves like the filter with a 12 degree search. Fine-tuned for 12 epochs
+on the new templates (`scripts/ml/finetune_on_transfer_template.py`, entries (o), (p)) it detects 0.28, 0.57
+and 0.97: about equal to the filter and not above it, as detection theory predicts for Gaussian skies.
 
 ## Assumptions
 
