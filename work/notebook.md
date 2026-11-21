@@ -610,3 +610,317 @@ Reading.
 
 Limits: Gaussian skies; ramp template only; signal centres within 5 deg of the patch centre in both training
 and test; one training run, one seed.
+
+## (q) 2026-11-21 05:17 CST. Pre-registration: the real-sky test
+
+Merged at 04:55: `geometry-template-fixes` into `main` (merge commit dd6365d). The public repository's main
+branch now holds everything through entry (p).
+
+State when this was written: the script below exists and passes a syntax check; it has not been run. The
+connection to the cluster dropped at about 04:59 and nothing can run until it is restored.
+
+Questions. Entries (m) to (p) used Gaussian skies only. On the Planck maps:
+1. Do thresholds set on simulated skies give the same false-positive rate on the real sky?
+2. Do the detectors keep their sensitivity when the background is the real sky?
+3. How unusual are the strongest responses of the corrected filter bank on the real sky?
+
+Design (`scripts/analysis/benchmark_real_sky.py`).
+- Maps: PR3 SMICA (primary), NILC, SEVEM, Commander, temperature, `ud_grade` to Nside 256. PR3 common
+  intensity mask, kept where the degraded value is at least 0.9.
+- Preparation, the same for real and simulated skies: monopole and dipole fitted on unmasked pixels and
+  removed; masked pixels filled with a smooth local mean (10 deg Gaussian) and relaxed by 200 sweeps of
+  neighbour averaging so the fill meets the sky without a step.
+- Tiles: Nside 16 centres whose 256 x 256 patch is at least 90% unmasked and whose 6 deg search disc is at
+  least half unmasked.
+- Methods: matched filter bank with 6 deg search (statistic = largest |SNR| over the bank and the unmasked
+  pixels of the disc); April ImageNet U-Net; fine-tuned U-Net of entry (p). Networks scored by the largest
+  mask probability.
+- Simulations: 300 Gaussian skies (the benchmark's recipe) with the same mask, preparation and tiles. The
+  filter is evaluated on all tiles, the networks on a fixed random 300 tiles.
+- Thresholds: (a) 5% of simulated tiles; (b) 5% of the real map's own tiles.
+- Question 1 is answered per sky: the fraction of a sky's tiles above threshold (a), real against the 300
+  simulated skies on the same tiles (rank probability, resolution 1/301).
+- Question 2: ramp templates, 5 to 25 deg, six amplitudes, centre within 5 deg of the tile centre, one
+  position per (tile, size) shared by all amplitudes. Added analytically (fast path); the exact path
+  (template added to the raw map, then the full preparation and filtering) on 24 tiles measures the fast
+  path's error. Reference: the same injections on 8 simulated skies at threshold (a).
+- Question 3: the largest |SNR| over the searched region, per bank size and over the bank, ranked among the
+  300 simulated skies; the eight strongest peaks at least 10 deg apart, with the nearest McEwen 2012 entry
+  and the distance to the Cold Spot.
+- Added after writing the first draft of this entry and before any run: an "unfilled" variant for the
+  networks, where masked pixels keep the map's own values. April's tiles were made that way, and April
+  measured the ImageNet network's false-positive rate rising from 0.05 on simulations to 0.185 on real-sky
+  patches. Simulated counterpart: the plain Gaussian sky. Trigger fractions are also split into tiles at
+  least 97% unmasked and the rest.
+
+Limits, stated beforehand.
+- One sky. Tiles overlap heavily (centres 3.7 deg apart, patches 55 deg wide), so tile counts are not
+  independent trials; the only valid yardstick for a trigger fraction is the spread across simulated skies.
+- The simulations are Gaussian with white noise. They have no foreground residuals and no real noise
+  pattern. Planck's own FFP10 simulations would be the proper null and are not on the cluster.
+- The fill is my choice; simulated skies get the same one, which removes it from the comparison but not
+  from the sensitivity.
+- Threshold (b) is set on the same tiles it is used on.
+- Ramp template only; signals near the tile centre; no step, no discs wider than the patch.
+
+Predictions.
+1. Filter, SMICA: the trigger fraction at threshold (a) lies inside the central 95% of the simulated skies.
+   I expect it at or below their median, because the real sky has less power at low multipoles than the model.
+2. Networks on filled patches, SMICA: both inside the central 95% of their simulated skies. I am less sure
+   for the fine-tuned network, which has only ever seen Gaussian skies.
+3. April ImageNet U-Net on unfilled patches, SMICA: above the 97.5th percentile of its simulated skies (the
+   April rise reproduces), with the excess concentrated in tiles that are less than 97% unmasked. If 2 and 3
+   both hold, the April false-positive problem came from what lies under the mask and filling removes it.
+4. Detection on the real sky at threshold (b): filter >= fine-tuned > April ImageNet at 2e-5 and 3e-5
+   (differences under 0.03 count as equal), and each method's pooled detection at 3e-5 is within 0.10 of its
+   value on the simulated skies.
+5. Strongest filter response on SMICA: not unusual, P(simulated >= real) above 0.05 for the bank.
+6. Fast-path injection: mean difference from the exact path below 5% of the filter statistic. Above 10%, the
+   detection tables are approximate and are labelled so.
+7. The four maps agree: trigger fractions within 0.02 of SMICA's for the filter, and the strongest peak at
+   the same place (within 3 deg) in at least three maps.
+
+If 1 fails on the high side: suspects are foreground residuals near the mask edge and the fill; the split by
+unmasked fraction and the agreement between maps decide. If a network fails 2 while the filter passes 1, the
+network sees a difference between simulated and real skies that the filter does not, and thresholds from
+simulations cannot be used for it.
+
+Addition at 05:46, before any run. Job 82913 (submitted before the connection dropped) shows what the April
+real-sky training patches held under the mask: exact zeros (`null_controls_smica_mask090.h5`, about 1,900 zero
+pixels per patch on average; `project_patch` refuses a map with unseen pixels, so the masked array was filled
+with 0). The April full-sky tiles, made earlier, hold the map's own values there (job 82912). The networks are
+therefore scored on three versions of each tile: filled (new), unfilled (April tile scan) and zeroed (April
+training). Prediction for the zeroed version, April ImageNet U-Net, SMICA: inside the central 95% of its
+simulated skies, since this is the form it was trained on. No prediction for the fine-tuned network on it.
+
+## (r) 2026-11-21 06:24 CST. Real-sky test: the filter behaves as on simulated skies; the April false-positive rise comes from masked pixels, not from the sky
+
+Job 82914 (node c3, 33 min; a small run first, then the full run of (q)). 1,287 of 3,072 tile centres are
+eligible, 770 of them at least 97% unmasked; the searched region is 47.6% of the sky; the mask keeps 77.2%.
+300 simulated skies. The connection came back at 05:44; the job was submitted at 05:46.
+
+Checks. Patch indices reproduce `hp.gnomview`. Standard deviation of the simulated SNR maps over the searched
+region: 0.997, 0.998, 0.996, 0.991, 0.981 (5 to 25 deg). Exact injection against the fast path, 24 tiles at
+5e-5: filter statistic 5.42 against 5.44 on average, mean difference 0.021 (0.4%), largest 0.46; patches differ
+by 1.9 uK rms; network scores differ by 0.001 on average.
+
+**1. False-positive rate.** Thresholds at 5% of simulated tiles. "Same tiles" is the fraction on the tiles the
+simulations used (all 1,287 for the filter, a fixed 300 for the networks); the rank is the share of the 300
+simulated skies with a fraction at least as high.
+
+| method, input | threshold | SMICA, all tiles | SMICA, same tiles | rank P | central 95% of simulated skies | tiles >=97% unmasked | other tiles |
+|---|---:|---:|---:|---:|---|---:|---:|
+| matched filter bank | 3.58 sigma | 0.039 | 0.039 | 0.605 | 0.007 to 0.117 | 0.026 | 0.058 |
+| April U-Net, filled | 0.9958 | 0.056 | 0.053 | 0.419 | 0.030 to 0.082 | 0.001 | 0.137 |
+| April U-Net, zeroed | 0.9953 | 0.057 | 0.060 | 0.216 | 0.033 to 0.075 | 0.001 | 0.141 |
+| April U-Net, unfilled | 0.9475 | 0.042 | 0.040 | 0.605 | 0.003 to 0.130 | 0.014 | 0.083 |
+| fine-tuned, filled | 0.99996 | 0.071 | 0.057 | 0.206 | 0.040 to 0.063 | 0.000 | 0.176 |
+| fine-tuned, zeroed | 1.0000 | 0.067 | 0.060 | 0.056 | 0.040 to 0.060 | 0.000 | 0.166 |
+| fine-tuned, unfilled | 0.8981 | 0.052 | 0.060 | 0.349 | 0.010 to 0.113 | 0.019 | 0.101 |
+
+The other three maps: filter 0.035, 0.040, 0.040 (NILC, SEVEM, Commander); networks on filled and zeroed
+input within 0.003 of SMICA; on unfilled input lower (April 0.023, 0.024, 0.036; fine-tuned 0.026, 0.026,
+0.037), so what the maps hold under the mask differs between them. The fine-tuned network on zeroed input sits
+at 0.063 on the same tiles for those three maps, rank P 0.010: above all but 1% of simulated skies, by a
+small amount.
+
+**2. Sensitivity.** Detection probability of injected ramp templates, all sizes pooled.
+
+| method | where, threshold | 1e-5 | 2e-5 | 3e-5 | 5e-5 | 7e-5 | 1e-4 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| matched filter bank | SMICA, its own 5% (3.43 sigma) | 0.087 | 0.297 | 0.664 | 0.987 | 1.000 | 1.000 |
+| | SMICA, simulation threshold (3.58) | 0.063 | 0.230 | 0.586 | 0.982 | 1.000 | 1.000 |
+| | simulated skies, same mask | 0.105 | 0.286 | 0.610 | 0.976 | 1.000 | 1.000 |
+| | Gaussian benchmark, no mask (entry (n)) | 0.087 | 0.317 | 0.594 | 0.976 | 1.000 | 1.000 |
+| April U-Net, filled input | SMICA, its own 5% (0.9969) | 0.053 | 0.066 | 0.140 | 0.572 | 0.792 | 0.839 |
+| | simulated skies, same mask | 0.065 | 0.102 | 0.216 | 0.604 | 0.805 | 0.856 |
+| | Gaussian benchmark, no mask (entry (n)) | 0.075 | 0.241 | 0.447 | 0.898 | 0.990 | 1.000 |
+| fine-tuned, filled input | SMICA, its own 5% (0.999999) | 0.051 | 0.051 | 0.053 | 0.055 | 0.072 | 0.090 |
+| | SMICA, simulation threshold (0.99996) | 0.072 | 0.072 | 0.079 | 0.215 | 0.607 | 0.822 |
+| | simulated skies, same mask | 0.051 | 0.051 | 0.063 | 0.229 | 0.607 | 0.821 |
+| | Gaussian benchmark, no mask (entry (p)) | 0.083 | 0.283 | 0.568 | 0.970 | 1.000 | 1.000 |
+
+Filter by template size at 3e-5, SMICA, own threshold: 0.47, 0.63, 0.73, 0.73, 0.77 (5 to 25 deg); simulated
+skies 0.42, 0.58, 0.68, 0.69, 0.68. NILC, SEVEM and Commander give the same table within 0.02.
+
+**3. Strongest filter responses, SMICA.** Standard deviation of the real SNR maps over the searched region:
+0.956, 0.937, 0.911, 0.908, 0.866 (5 to 25 deg), against 0.98 to 1.00 on simulated skies. Largest |SNR| over
+the bank: 4.68. 32 of 300 simulated skies have a larger one (P = 0.11; median simulated maximum 4.17). SEVEM
+4.73 (22 of 300), Commander 4.70 (23), NILC 4.68 (32). Per bank size, P = 0.027, 0.26, 0.43, 0.13, 0.69.
+
+| peak (lon, lat) | SNR | bank size | P for that tile | nearest McEwen 2012 entry | separation | their z0 |
+|---|---:|---:|---:|---|---:|---:|
+| (213.7, -59.1) | -4.68 | 5 deg | 0.003 | no. 7, 5 deg (the Cold Spot is 3.3 deg away) | 3.9 deg | -0.16 mK |
+| (159.0, -58.7) | +4.26 | 20 deg | 0.013 | no. 10, 20 deg | 14.6 deg | +0.11 mK |
+| (176.1, -49.3) | +3.90 | 15 deg | 0.020 | no. 10, 20 deg | 3.6 deg | +0.11 mK |
+| (215.0, -41.0) | -3.59 | 25 deg | 0.050 | no. 11, 26 deg | 4.1 deg | -0.09 mK |
+| (325.9, -34.0) | +3.54 | 5 deg | 0.050 | no. 8, 5 deg | 3.9 deg | +0.15 mK |
+| (136.1, 35.1) | -3.51 | 15 deg | 0.066 | no. 5, 3 deg | 21.9 deg | |
+| (229.8, 47.9) | -3.43 | 20 deg | 0.073 | no. 9, 7 deg | 21.9 deg | |
+| (188.8, 25.1) | -3.39 | 5 deg | 0.086 | no. 1, 2 deg | 17.8 deg | |
+
+Four of the five strongest peaks lie within 4.1 deg of a published WMAP 7-year candidate (McEwen et al. 2012,
+Table I, numbers 7, 10, 11, 8), with the published size in the same class and the same sign each time. The
+four maps give the same list; in Commander the eighth peak is (217.3, 26.4), 2.9 deg from number 9. These are
+the same features of the sky seen by a second satellite through a different pipeline, which is what a correct
+pipeline should return. None is significant after the search over the region is counted (P = 0.08 to 0.11
+for the largest), which agrees with the published conclusion of no detection. The matching was not
+pre-registered as a test; the script only reports the nearest entry.
+
+Predictions of (q).
+1. Filter trigger fraction inside the central 95%, at or below the median: **held** (0.039; 60% of simulated
+   skies are higher).
+2. Both networks on filled patches inside the central 95%: **held** (rank P 0.42 and 0.21).
+3. April U-Net on unfilled patches above the 97.5th percentile, excess in the less clean tiles: **failed**.
+   0.040, rank P 0.61: no excess at all. I had the mechanism backwards; see below.
+4. Detection at own thresholds: order filter >= fine-tuned > April, each within 0.10 of the simulated skies
+   at 3e-5: the second part **held** (0.664 against 0.610; 0.140 against 0.216; 0.053 against 0.063); the
+   order **failed**: on masked skies the fine-tuned network is the worst of the three.
+5. Largest filter response not unusual (P above 0.05): **held** (0.11; 0.08 on SEVEM and Commander).
+6. Fast-path error below 5%: **held** (0.4%).
+7. Four maps agree: **held** (filter fractions 0.035 to 0.040; the strongest peak is the same pixel in all
+   four).
+Addition of 05:46 (April U-Net on zeroed patches inside the central 95%): **held** (rank P 0.22).
+
+Not pre-registered, computed from the saved scores after seeing the table above.
+- The April situation rebuilt: a threshold taken from simulated patches without holes (0.9475 for the April
+  U-Net) and applied to real patches whose masked pixels are zero, as in the April training file. Fraction
+  of real tiles above it: 0.146 on SMICA (0.145 to 0.147 on the others), against the nominal 0.05. The same
+  threshold on simulated skies with the same holes gives 0.161. So the rise appears on simulated skies too and
+  is the holes: 0.017 of real tiles that are at least 97% unmasked trigger, 0.338 of the rest (simulated: 0.054
+  and 0.348). April measured 0.185 on its own tiles (Nside 32 centres, a different mix). For the fine-tuned
+  network the same calculation gives 0.216 real, 0.220 simulated.
+- With holes, the networks' triggers follow the mask and not the sky. Over 300 different simulated skies the
+  5% most-triggering tiles carry 72% (April U-Net) and 88% (fine-tuned) of all triggers on filled input, 89%
+  of tiles never trigger for the fine-tuned network, and the per-tile trigger rate correlates with the masked
+  fraction at +0.5 to +0.6. On unfilled input and for the filter the same 5% of tiles carry 8%.
+- Saturation: on filled or zeroed input the fine-tuned network gives exactly 1.0 on 2.7% of simulated null
+  tiles and 3.9% of SMICA tiles (0.999 or more on 8% and 11%), so its 5% threshold is 0.99996 to 0.999999
+  and an injected signal has nowhere to go. On unfilled input nothing saturates.
+
+Reading.
+- The matched filter needs no correction on the real sky. Its false-positive rate at simulation thresholds is
+  3.5 to 4.0% for a nominal 5%, inside the spread of simulated skies, and its sensitivity is what the
+  simulations give (0.66 at 3e-5, 0.99 at 5e-5). The real sky gives a slightly quieter filter output than the
+  model (standard deviation 0.87 to 0.96), most for the largest templates, which is the known shortage of
+  large-scale power; that is why the trigger fraction is below 5% and the real sky's own threshold is lower.
+- The April false-positive problem was a difference in preparation between real and simulated patches, not
+  something in the sky. The networks treat masked pixels, zeroed or smoothly filled, as signal. Real patches
+  had them, simulated patches did not, and a threshold set on the simulated ones then lets three times too
+  many real tiles through. When simulated skies get the same mask the rate transfers (5.3 to 6.0%).
+- The cost is sensitivity. On tiles with masked pixels neither network can be trusted, and the fine-tuned
+  network, which never saw a hole in training, is the worst: 0.06 at 3e-5 on masked simulated skies against
+  0.57 without a mask. On the real sky as prepared here the order is filter 0.66, April U-Net 0.14, fine-tuned
+  0.05. The "about equal to the filter" of entry (p) holds for skies without a mask only.
+- Two ways out, both open: give the networks the values the map itself holds under the mask (the unfilled
+  input, where nothing saturates and false positives are 0.04 to 0.05), or train with holes in the patches.
+- Limits as in (q). The April-situation numbers use the tiles of this test, not those of April.
+
+Follow-up, not pre-registered, written before it runs: `benchmark_real_sky.py --inject-inputs
+filled,unfilled,zeroed` repeats the injection test for the networks on all three inputs (same design
+otherwise; job file `realsky_v2.sbatch`). Expectation: on the unfilled input both networks get back, on
+simulated skies, roughly what they reach without a mask (about 0.45 and 0.57 at 3e-5), the real sky is within
+0.10 of the simulated skies, and the order filter >= fine-tuned > April returns. On the zeroed input I expect
+the same picture as on the filled one.
+
+## (s) 2026-11-21 07:21 CST. Follow-up to (r), not pre-registered: with the map's own values under the mask the networks recover, and the fine-tuned network is level with the filter on the real sky
+
+Job 82915 (node c3, 51 min): the run of (r) repeated with `--inject-inputs filled,unfilled,zeroed`, so the
+networks also get injections on patches whose masked pixels keep the map's own values (unfilled) or are set
+to zero (zeroed). Same seed. Every number the two runs share is identical (largest difference 0), so the
+tables of (r) stand as written and this entry only adds rows.
+
+Detection probability, all template sizes pooled. Real maps: each method at the 5% threshold of that map's
+own signal-free tiles. Simulated skies: 8 skies, same mask and tiles, simulation thresholds.
+
+| where | method, input | 1e-5 | 2e-5 | 3e-5 | 5e-5 | 7e-5 | 1e-4 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| simulated skies | matched filter bank | 0.105 | 0.286 | 0.610 | 0.976 | 1.000 | 1.000 |
+| | fine-tuned, unfilled | 0.100 | 0.281 | 0.576 | 0.964 | 1.000 | 1.000 |
+| | April U-Net, unfilled | 0.085 | 0.218 | 0.457 | 0.886 | 0.994 | 1.000 |
+| | April U-Net, zeroed | 0.063 | 0.090 | 0.180 | 0.535 | 0.757 | 0.837 |
+| | fine-tuned, zeroed | 0.048 | 0.049 | 0.050 | 0.100 | 0.286 | 0.546 |
+| SMICA | matched filter bank | 0.087 | 0.297 | 0.664 | 0.987 | 1.000 | 1.000 |
+| | fine-tuned, unfilled | 0.066 | 0.203 | 0.497 | 0.940 | 0.983 | 0.995 |
+| | April U-Net, unfilled | 0.061 | 0.164 | 0.386 | 0.870 | 0.965 | 0.987 |
+| NILC | matched filter bank | 0.090 | 0.292 | 0.659 | 0.989 | 1.000 | 1.000 |
+| | fine-tuned, unfilled | 0.127 | 0.371 | 0.703 | 0.988 | 1.000 | 1.000 |
+| | April U-Net, unfilled | 0.073 | 0.227 | 0.504 | 0.927 | 0.997 | 1.000 |
+| SEVEM | matched filter bank | 0.096 | 0.316 | 0.684 | 0.989 | 1.000 | 1.000 |
+| | fine-tuned, unfilled | 0.115 | 0.366 | 0.701 | 0.987 | 1.000 | 1.000 |
+| | April U-Net, unfilled | 0.074 | 0.234 | 0.501 | 0.932 | 0.998 | 1.000 |
+| Commander | matched filter bank | 0.095 | 0.305 | 0.671 | 0.989 | 1.000 | 1.000 |
+| | fine-tuned, unfilled | 0.086 | 0.282 | 0.614 | 0.979 | 1.000 | 1.000 |
+| | April U-Net, unfilled | 0.063 | 0.186 | 0.438 | 0.911 | 0.996 | 1.000 |
+
+At the simulation thresholds instead, on the four real maps at 3e-5: filter 0.59 to 0.60, fine-tuned unfilled
+0.51 to 0.53, April unfilled 0.35 to 0.36. The real maps' own thresholds are lower than the simulation ones for
+every method (filter 3.41 to 3.44 against 3.58 sigma; fine-tuned 0.78 to 0.90 against 0.90; April 0.88 to 0.93
+against 0.95), which is the quieter real sky of entry (r). On zeroed input the real maps give the same picture
+as on filled input (April 0.12, fine-tuned 0.05 at 3e-5).
+
+By template size at 3e-5 on simulated skies (5, 10, 15, 20, 25 deg): filter 0.42, 0.58, 0.68, 0.69, 0.68;
+fine-tuned unfilled 0.44, 0.61, 0.67, 0.64, 0.52; April unfilled 0.21, 0.42, 0.58, 0.59, 0.48. The fine-tuned
+network matches the filter up to 15 deg and falls behind at 25 deg, where the disc with its offset no longer
+fits inside the 55 deg patch.
+
+How sure. Tiles overlap, so tile counts overstate the evidence. Block bootstrap: the sky cut into 30 x 30 deg
+cells (48 hold tiles), cells resampled 1,000 times, every threshold recomputed in each resample
+(`scripts/analysis/real_sky_post_hoc.py`). Difference to the filter at 3e-5, with 95% intervals:
+
+| map | fine-tuned, unfilled | April U-Net, unfilled |
+|---|---|---|
+| SMICA | -0.17 [-0.39, +0.03] | -0.28 [-0.42, -0.07] |
+| NILC | +0.04 [-0.06, +0.12] | -0.16 [-0.25, +0.01] |
+| SEVEM | +0.02 [-0.06, +0.11] | -0.18 [-0.26, -0.03] |
+| Commander | -0.06 [-0.28, +0.07] | -0.23 [-0.31, -0.07] |
+
+At 5e-5 the fine-tuned network is within 0.01 of the filter on NILC, SEVEM and Commander and 0.05 below on
+SMICA (interval -0.14 to -0.003); the April network is 0.06 to 0.12 below on all four.
+
+Expectations written in (r) before the run.
+- Unfilled input on simulated skies gives back what the networks reach without a mask (0.45 and 0.57 at
+  3e-5): **held** (0.457 and 0.576).
+- The real sky within 0.10 of the simulated skies: **held** for the April network on all four maps and for
+  the fine-tuned network on SMICA and Commander; **not held** for the fine-tuned network on NILC and SEVEM,
+  where it is 0.13 higher than on simulated skies.
+- Order filter >= fine-tuned > April: **held** on simulated skies, SMICA and Commander. On NILC and SEVEM
+  the fine-tuned network is nominally above the filter by 0.02 to 0.04, inside the interval.
+- Zeroed input like filled input: **held**.
+
+Reading.
+- The masked pixels were the whole problem. Given the map's own values there, both networks behave on the
+  real sky as they do on simulated skies without a mask, false positives included (2.3 to 5.2% at simulation
+  thresholds, entry (r)).
+- On the real sky the fine-tuned network and the matched filter cannot be told apart at 2e-5 and 3e-5 on any
+  of the four maps, and at 5e-5 on three of them. The April network is behind the filter by 0.16 to 0.28 at
+  3e-5. This is the same ordering as on Gaussian skies in (p), now on Planck data.
+- Which map matters for the networks and not for the filter. The filter never sees the masked pixels. The
+  networks do: on SMICA and Commander the partly masked tiles trigger more often without any signal (0.083
+  and 0.070 for the April network against 0.039 and 0.041 on NILC and SEVEM), which raises their thresholds
+  and costs sensitivity. What each map holds under the mask is that map's processing, not sky.
+- For use on real data: do not zero or fill masked pixels in the network input; calibrate on simulated skies
+  only if they go through the same preparation; prefer NILC or SEVEM for the networks, or train with masked
+  pixels in the patches. April's full-sky tile scan already used the unfilled input. The 0.185 came from the
+  null-control patches, whose masked pixels were zero.
+- The 25 deg result is a patch-size limit, not a network limit, and is the first measured reason to widen
+  the footprint.
+
+Limits. One sky, 1,287 overlapping tiles, intervals from 48 sky cells. Thresholds at a map's own 5% are set
+on the tiles they are applied to. Simulated skies are Gaussian with white noise. Ramp template only, signal
+centres within 5 deg of the tile centre, one fine-tuning run. The unfilled input is only as good as what a
+map holds under the mask. Nothing here is a search result: the injected signals are synthetic, and the
+strongest real responses are those of entry (r).
+
+Two corrections to (s), 07:32, found while checking it before publication.
+- The sentence on thresholds is wrong for one case. The real maps' own thresholds are lower than the
+  simulation ones for the filter and the April network on all four maps, and for the fine-tuned network on
+  three. On SMICA the fine-tuned network's own threshold is 0.903 against 0.898 from the simulations.
+- "The 0.185 came from the null-control patches" names the wrong file. The April figure (recall 0.372,
+  false-positive rate 0.185 for the ImageNet branch) is from the real-SMICA injection diagnostic of 19 April,
+  `runs/phase3_unet/remediated_v1_real_sky_injection_smica_mask090`: 200 real backgrounds with 90.3 to 98.8%
+  of the patch unmasked. Job 82916 opened its patch file: every sampled patch holds exact zeros, and their
+  number equals the number of masked pixels (1343 against 1343, 2592 against 2604, 2706 against 2718). So the
+  April measurement was a threshold from hole-free simulated patches applied to real patches with zeroed
+  masked pixels, which is the situation rebuilt in (r): 0.146 here on a different tile mix, 0.185 there on 200
+  backgrounds. The null-control training file was made the same way.

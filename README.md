@@ -37,6 +37,25 @@ detects 0.24, 0.45 and 0.90, and behaves like the filter with a 12 degree search
 on the new templates (`scripts/ml/finetune_on_transfer_template.py`, entries (o), (p)) it detects 0.28, 0.57
 and 0.97: about equal to the filter and not above it, as detection theory predicts for Gaussian skies.
 
+Real-sky test (`scripts/analysis/benchmark_real_sky.py`, entries (q) to (s); numbers in
+`work/results_2026-11-21/benchmark_real_sky_report.json`): the four PR3 maps, 1,287 tiles at least 90%
+unmasked, thresholds from 300 simulated skies prepared with the same mask.
+
+- The matched filter needs no correction on the real sky. 3.5 to 4.0% of real tiles exceed a threshold set
+  for 5% on simulated skies, and it detects 0.30, 0.66 and 0.99 of injected templates at 2e-5, 3e-5 and 5e-5.
+- Four of its five strongest real-sky responses lie within 4.1 degrees of WMAP 7-year candidates of
+  McEwen et al. 2012 (numbers 7, 10, 11 and 8; number 7 is the Cold Spot region), with the same sign and
+  size class. The largest is 4.7 sigma and 32 of 300 simulated skies hold a larger one. This is a
+  consistency check of the pipeline and a null result, not a detection.
+- The real-sky false-positive inflation reported below (0.185 for a nominal 0.05) is reproduced on
+  simulated skies and comes from masked pixels. The networks treat zeroed or filled pixels as signal; the
+  April real-sky patches had them and the simulated patches did not. With the same preparation on both
+  sides the rate is 5 to 6%.
+- Given the map's own values under the mask, the fine-tuned network is level with the filter on the real
+  sky within the uncertainty (0.50 to 0.70 against 0.66 to 0.68 at 3e-5, depending on the map) and the April
+  network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
+  sensitivity.
+
 ## Assumptions
 
 - This repository implements a **candidate-screening front end**, not a
