@@ -924,3 +924,48 @@ Two corrections to (s), 07:32, found while checking it before publication.
   April measurement was a threshold from hole-free simulated patches applied to real patches with zeroed
   masked pixels, which is the situation rebuilt in (r): 0.146 here on a different tile mix, 0.185 there on 200
   backgrounds. The null-control training file was made the same way.
+
+## (t) 2026-11-21 16:09 CST. Where the open notes stand
+
+Entries are not rewritten, so several notes above still read "not yet done" although a later entry did the
+work. This entry lists them once, then what is open now. No new measurement.
+
+Closed by a later entry.
+- (b) "Planned fix (not yet done)", the template from the curvature profile through CAMB: built in (f),
+  shown converged and split into source terms in (g), Doppler term confirmed in (h). Of the three checks
+  planned there, the Sachs-Wolfe limit is done, the comparison with Osborne et al. is done and disagrees
+  (item 1 below), and the comparison with the 2015 templates was never made (item 1 below).
+- (e) "Not yet done: fix the three functions ... re-run clustering and follow-up": helpers written and
+  tested in (h); positions, clustering, cross-match and chance probability redone in (i). The
+  candidate-centred re-extraction is not redone (item 2 below).
+- (f) "Next check: decompose CAMB's temperature source ... denser k grid": done in (g).
+- (f) "no data are generated from the new template" until the Osborne question is settled: lifted in (n),
+  with the reason given there.
+- (i) two verification steps "being rerun": done in (j) and (k), both reproduce April.
+- (p) "open questions are real-sky backgrounds ... and discs wider than the patch": the real sky is (q) to
+  (s); wider discs are item 6 below.
+- (r) "Two ways out, both open": the unfilled input is (s); training with masked pixels is item 5 below.
+
+Open now: loose ends in what exists.
+1. The template against Osborne et al. Fig. 3, entries (f) and (g): edge-to-centre ratio 0.48 here against
+   about 0.17 in their figure for an 11.39 deg disc. Every number from (l) on uses this template. Ways to
+   settle it named in (g): a second Boltzmann code, a published number that depends on the profile shape,
+   or the authors. The comparison with the templates of Feeney et al. 2015 planned in (b) is also missing.
+2. The candidate-centred re-extraction at the corrected peaks, entry (e): April's "centre-unstable" verdict
+   for tile 9628 was measured 21 deg from the true peak. The half-mission and frequency tests work on whole
+   tiles and stand.
+3. Item 2 of the verification list in (d): the project's full quality-gate script has not been run in the
+   new environment, only `phase2_physics_checks.py`, entry (k).
+4. The April code and data are unchanged. B1 to B4 are still in the April scripts, which is why April's
+   numbers reproduce; the April data sets were not regenerated; the README below its status note is the
+   April text. New work uses `scripts/core/patch_geometry.py` and the filter bank built inside the
+   benchmark scripts.
+
+Open now: not started.
+5. A network trained with masked pixels in its patches, entry (r), so that it no longer depends on what a
+   map holds under the mask.
+6. Discs of 25 deg and wider, where the patch is the limit, entry (s).
+7. The ramp+step template is built but not benchmarked; the quadratic term of the 2015 template is not
+   built. The fine-tuned network is one run with one seed. Simulated skies are Gaussian with white noise.
+
+None of 1 to 7 is running or scheduled.

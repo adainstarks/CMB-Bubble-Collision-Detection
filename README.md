@@ -7,8 +7,9 @@ bubble-collision signatures in the Cosmic Microwave Background.
 
 Work continued in November 2026 on a new cluster. The April results below reproduce exactly from the saved
 checkpoints and data (identical test-split confusion counts; sensitivity scores equal to numerical noise).
-A code review then found four defects that change what those results mean. Until the benchmark is redone,
-read the sections below with these in mind. Measurements and reasoning are in `work/notebook.md`.
+A code review then found four defects that change what those results mean. The sections below this note
+are the April text and have not been rewritten; read them with these in mind. Measurements and reasoning
+are in `work/notebook.md`.
 
 1. **Signal geometry.** Injected discs were drawn on a pixel grid that is not the gnomonic projection used
    for the backgrounds. Radius labels are up to 6% (centred) or 13% (off-centre) too large.
@@ -55,6 +56,21 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   sky within the uncertainty (0.50 to 0.70 against 0.66 to 0.68 at 3e-5, depending on the map) and the April
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
+
+Open as of 21 November 2026 (notebook entry (t)):
+
+- The new template has an edge-to-centre ratio of 0.48 for an 11.39 degree disc where Fig. 3 of Osborne,
+  Senatore and Smith (arXiv:1305.1970) shows about 0.17. The calculation passes five internal checks
+  (entries (f) to (h)), but the difference is not explained and every number in this note from the first
+  benchmark on uses the template. The exact edge shape would change the detection rates somewhat; the
+  ordering of the methods is less likely to depend on it.
+- The April scripts and data sets are unchanged, so the April results still reproduce. Defects 1 to 4 are
+  still in them; the corrected helpers (`scripts/core/patch_geometry.py`) are used by new work only.
+- Not redone: the candidate-centred re-extraction at the corrected positions, and the project's full
+  quality-gate script in the new environment.
+- Not started: a network trained with masked pixels in its patches, discs of 25 degrees and wider (the
+  patch is the limit there), and the ramp+step and quadratic templates. The fine-tuned network is one run
+  with one seed, and the simulated skies are Gaussian with white noise.
 
 ## Assumptions
 
