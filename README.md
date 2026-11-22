@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (ab)):
+Open as of 22 November 2026 (notebook entries (t) to (ac)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook

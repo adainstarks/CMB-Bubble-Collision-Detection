@@ -1463,3 +1463,23 @@ caption's r and the stated cosmology account for the curve. The curve sits about
 that reading, and its smoothness is unexplained as before. The transfer functions of the WMAP runs in (v),
 (z) and (aa) carried the same neutrino; the fitted depth is defined from each run's own last-scattering
 distance, so it is not shifted by this.
+
+## (ac) 2026-11-22 03:21 CST. Addition to (ab): the label's distance with and without radiation
+
+The table of (v) had a column "distance to z* without radiation". It was computed with the 0.06 eV neutrino
+counted as matter, the same slip as in (ab). For the cosmology the paper states (WMAP7+BAO+H0, massless
+neutrinos, z* = 1089.0), distance to last scattering in Mpc, against the 14,165.6 the label needs:
+
+| radiation in the distance integral | mean parameters | maximum-likelihood parameters | label minus this |
+|---|---:|---:|---:|
+| photons and three neutrinos (CAMB) | 14,071.9 | 14,069.6 | +94 to +96 |
+| photons only | 14,100.7 | 14,098.3 | +65 to +67 |
+| none | 14,145.7 | 14,143.2 | +20 to +22 |
+
+Leaving radiation out of the integral closes 74 of the 94 Mpc. The remaining 20 Mpc would need the integral
+to run to z = 1185 instead of 1089 (14,148 at z = 1100, 14,169 at z = 1200). The conformal age is 14,356
+Mpc, far off. So a distance computed without radiation is the closest simple origin of the label that I can
+find, and it is not a match. It stays a guess; the authors would know.
+
+Nothing here touches this project's own runs: the Planck set-up carries photons, neutrinos and one 0.06 eV
+neutrino, which is the Planck convention.
