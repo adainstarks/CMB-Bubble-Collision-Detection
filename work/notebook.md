@@ -1483,3 +1483,56 @@ find, and it is not a match. It stays a guess; the authors would know.
 
 Nothing here touches this project's own runs: the Planck set-up carries photons, neutrinos and one 0.06 eV
 neutrino, which is the Planck convention.
+
+## (ad) 2026-11-22 03:39 CST. Where the label's distance comes from: the WMAP 5-year maximum-likelihood parameters
+
+Entries (z) to (ac) left the distance of the Osborne et al. label, 14,165.5 Mpc, without an origin. Asked what
+the WMAP 5-year distance to last scattering was, I computed it with CAMB (massless neutrinos) for the
+parameter sets of every WMAP release:
+
+| parameter set (H0, 100 Omega_b h^2, Omega_c h^2) | distance to last scattering | label minus this |
+|---|---:|---:|
+| WMAP 1-year (71.0, 2.24, 0.1126) | 14,044.0 Mpc | +121.6 |
+| WMAP 3-year, WMAP alone (73.2, 2.229, 0.1054) | 14,267.0 | -101.5 |
+| WMAP 5-year, WMAP alone, mean (71.9, 2.273, 0.1099) | 14,106.7 | +58.9 |
+| WMAP 5-year, WMAP alone, maximum likelihood (72.4, 2.27, 0.108) | 14,168.5 | -2.9 |
+| WMAP 5-year + BAO + SN (70.5, 2.267, 0.1131) | 14,032.2 | +133.4 |
+| WMAP 7-year, WMAP alone (71.0, 2.258, 0.1109) | 14,106.9 | +58.7 |
+| WMAP 7-year + BAO + H0 (70.4, 2.260, 0.1123) | 14,071.9 | +93.7 |
+| WMAP 9-year, WMAP alone (70.0, 2.264, 0.1138) | 14,024.7 | +140.9 |
+| WMAP 9-year + eCMB + BAO + H0 (69.32, 2.223, 0.1153) | 14,007.7 | +157.9 |
+
+The parameter values are from memory except the 5-year maximum-likelihood row, which I read from Table 2 of
+Dunkley et al. (arXiv:0803.0586): H0 72.4, 100 Omega_b h^2 2.27, Omega_c h^2 0.108. The published 5-year
+distances are 14,115 (+188, -191) Mpc for WMAP alone and 14,034 Mpc with BAO and supernovae (table of Hinshaw
+et al., arXiv:0803.0732, as returned by a web search).
+
+The 5-year maximum-likelihood set gives 14,168.5 Mpc, 3 Mpc from the label. The rounding of the three
+printed numbers allows 14,143 to 14,194 Mpc. With four-digit values that I remembered (2.268 and 0.1081) but
+did not find printed, CAMB gives 14,165.1 Mpc. No other set is within 58 Mpc. So the label's distance is,
+to within what the published table can show, the distance to last scattering of the WMAP 5-year
+maximum-likelihood parameters. The paper's text says it uses the WMAP7+BAO+H0 parameters throughout
+(14,071.9 Mpc).
+
+What this changes in (z) and (ab).
+- "Where the distance of the label comes from" is no longer open. The guess of (ac), a distance without
+  radiation, is dropped.
+- The label is not arbitrary: for the 5-year maximum-likelihood cosmology a wall at r = 13,886.6 Mpc is
+  279 Mpc deep and the disc is 11.39 deg. The summary line of (z), "the curve is consistent with this
+  calculation, the label is not", was too neat. Two readings remain, and I cannot tell them apart:
+  1. The transfer functions of the figure were also computed with the 5-year maximum-likelihood
+     parameters. Then label and curve belong together, the wall is 279 Mpc deep, and the published ramp
+     (edge-to-centre 0.16) is not what CAMB, CLASS or the fluid model give there (0.48 to 0.49).
+  2. The transfer functions were computed with the stated WMAP7+BAO+H0 parameters and only the conversion
+     to an angle used the older distance. Then the wall is 185 Mpc deep, where the template fits the
+     published ramp to about 6%.
+  In neither reading is the published curve reproduced as well as at the best depth of 140 Mpc (3.1%),
+  and its smoothness is unexplained in both.
+- Unchanged: the template and its confirmation by CLASS and the fluid model; that the figure as labelled
+  is not reproduced.
+
+So the disagreement with the paper is now this, stated without a theory of how it arose: for a wall 279
+Mpc inside the last-scattering surface three independent calculations give a profile with a centre 2.5
+times the Sachs-Wolfe value and an edge at 0.49 of the centre, and the paper's figure for a bubble labelled
+that way shows a ramp close to the Sachs-Wolfe one. Which parameters went into the figure is a question for
+its authors.
