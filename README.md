@@ -57,13 +57,21 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 21 November 2026 (notebook entry (t)):
+Open as of 22 November 2026 (notebook entries (t) to (w)):
 
-- The new template has an edge-to-centre ratio of 0.48 for an 11.39 degree disc where Fig. 3 of Osborne,
-  Senatore and Smith (arXiv:1305.1970) shows about 0.17. The calculation passes five internal checks
-  (entries (f) to (h)), but the difference is not explained and every number in this note from the first
-  benchmark on uses the template. The exact edge shape would change the detection rates somewhat; the
-  ordering of the methods is less likely to depend on it.
+- The template against two published figures (entries (u), (v)). The plotted curves of Osborne, Senatore
+  and Smith (arXiv:1305.1970) Fig. 3 and of Feeney et al. (arXiv:1506.01716) Fig. 6 were read as numbers
+  from the vector figures in the arXiv sources. The Feeney et al. curve, the real-space transfer function
+  at l = 20, is reproduced: peak at 14,057 against 14,058 Mpc, first moment about the last-scattering
+  distance +494 against +496 Mpc. The Osborne et al. figure is not reproduced at its labelled depth of
+  279 Mpc (edge-to-centre ratio 0.16 there, 0.48 here), but its ramp is matched to 3% by the same template
+  with the wall 130 to 140 Mpc deep. Why the figure corresponds to that depth is not known, and by the
+  criteria fixed beforehand the fit counts as inconclusive. Not done: a second Boltzmann code. The template
+  is unchanged.
+- A full-sky filter search after McEwen et al. (arXiv:1202.2861) is pre-registered in entry (w)
+  (`scripts/analysis/fullsky_filter_search.py`): every unmasked position, 33 sizes from 1 to 90 degrees,
+  first on the WMAP 7-year W-band map as a check against their published table, then on the four Planck
+  maps. Its results are not in this note yet.
 - The April scripts and data sets are unchanged, so the April results still reproduce. Defects 1 to 4 are
   still in them; the corrected helpers (`scripts/core/patch_geometry.py`) are used by new work only.
 - Not redone: the candidate-centred re-extraction at the corrected positions, and the project's full

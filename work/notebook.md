@@ -969,3 +969,238 @@ Open now: not started.
    built. The fine-tuned network is one run with one seed. Simulated skies are Gaussian with white noise.
 
 None of 1 to 7 is running or scheduled.
+
+## (u) 2026-11-22 00:35 CST. Osborne et al. Fig. 3 read from its vector file; pre-registration of a depth fit
+
+Work resumes on the open list of entry (t), item 1 first: the template against Fig. 3 of Osborne, Senatore
+and Smith (arXiv:1305.1970).
+
+The figure as numbers. The arXiv source of the paper holds the figure as a vector file
+(`bubble_profile.pdf`). Its drawing commands give every plotted curve as coordinates, and the tick marks
+drawn in the same file calibrate both axes (0, 5, 10, 15 deg and 0.0 to 1.0, all major ticks reproduced to
+0.001). The comparison no longer rests on reading the figure by eye. The cosine profile is 1 at the centre;
+the other normalisations are arbitrary (their caption):
+
+| theta (deg) | cosine | ramp | step |
+|---:|---:|---:|---:|
+| 0 | 1.000 | 0.892 | 0.311 |
+| 4 | 0.876 | 0.802 | 0.316 |
+| 5.695 | 0.749 | 0.710 | 0.319 |
+| 8 | 0.506 | 0.526 | 0.351 |
+| 9 | 0.375 | 0.422 | 0.356 |
+| 10 | 0.229 | 0.308 | 0.353 |
+| 11 | 0.067 | 0.186 | 0.332 |
+| 11.39 | 0.000 | 0.141 | 0.271 |
+| 12 | | 0.098 | 0.132 |
+| 13.39 | | 0.052 | 0.056 |
+| 15 | | 0.024 | 0.025 |
+| 16 | | 0.014 | 0.014 |
+
+Ramp edge-to-centre 0.141 / 0.892 = 0.158 (entry (f) read "about 0.17" by eye). The step curve is flat near
+0.31, rises to 0.356 at 9 deg and drops between 11 and 12 deg.
+
+What the paper states. Caption: "bubbles at comoving distance r = 13886.6 Mpc (corresponding to angular size
+theta_bubble = 11.39 deg) and arbitrary normalization". With cos(theta) = r / D_dc that fixes D_dc = 14,165.5
+Mpc and a depth D_dc - r = 278.9 Mpc at the disc centre (r / D_dc = 249/254, a grid value). Their printed
+b_l formulas for the ramp and the step, even and odd l, are the ones in `collision_template_transfer.py`,
+checked term by term, and they also use CAMB. Their text: the Sachs-Wolfe approximation for the ramp is
+"excellent for most bubble sizes" and breaks down only for theta below about 1 deg and near 90 deg.
+
+How the two curves differ. Inside the disc both are linear in cos(theta). Their ramp follows
+(cos theta - 0.97592) / 0.02408 to within 0.01 from 0 to 8 deg, so its straight part runs to zero at
+12.6 deg. In depth-equivalent that is the Sachs-Wolfe ramp of a 278.9 Mpc deep disc plus a constant of about
+60 Mpc. The calculation of entries (f), (g) gives about 400 Mpc for the same disc (centre 2.445 against 1 for
+the Sachs-Wolfe ramp), so its straight part runs to zero near 17.7 deg and is cut off at the wall.
+
+Why about 60 Mpc cannot be right for a 279 Mpc deep disc. For a uniform gradient of the potential the
+standard long-wavelength result (the cancellation of the dipole of a superhorizon mode: Grishchuk and
+Zel'dovich 1978; Erickcek, Carroll and Kamionkowski 2008, both quoted from memory, to be re-read before they
+are cited) is
+    dT/T = (1/3) n.grad(Psi) r_dec  -  n.v_dec  +  n.v_obs,   v = -(tau/3) grad(Psi) in matter domination,
+and the three terms cancel only because r_dec + tau_dec = tau_0. The middle term is the Doppler term of the
+emitting fluid: it has the sign of the Sachs-Wolfe term and the size tau_dec / r_dec of it. Inside a
+collision region the observer term is absent (the observer sits outside), so the temperature is
+proportional to (r_dec + tau_dec) cos(theta) - r: the Sachs-Wolfe ramp plus a plateau of tau_dec, about 280
+Mpc before radiation corrections. This does not depend on any Boltzmann code. Entry (g) measured 325 to 347
+Mpc for the Doppler part in CAMB.
+
+Hypothesis H. The published curves were computed with a transfer function whose last-scattering distance D*
+is not the D_dc = 14,165.5 Mpc used for the label, so the wall in the figure sits at a depth d = D* - r
+different from 278.9 Mpc. Small discs are sensitive to this: 100 Mpc is 0.7% of D but a third of the depth.
+
+Pre-registered test (script `scripts/analysis/compare_osborne_fig3.py`, written before any fit was run):
+- Model: ramp and step profiles from `collision_template_transfer.py`, CAMB with every multipole to
+  l = 2000, no beam, for depths d = D* - r from -60 to 320 Mpc in steps of 5 and for d = 278.9. Two
+  cosmologies: Planck 2018 (project default) and WMAP 7-year. The monopole and dipole, which the template
+  drops, are restored by subtracting a constant and a cos(theta) term fitted to the profile at theta >= 30
+  deg, where the true signal is zero.
+- Fit: each published curve against the model with one free amplitude, theta from 0 to 16 deg. Statistic:
+  RMS residual divided by the maximum of the published curve. A second fit with a free constant is reported
+  as a robustness check only.
+- Outcome A, "the figure's label and its transfer function are inconsistent": one depth other than 278.9
+  fits both curves with RMS at or below 3% each, the best depths of the two curves agree within 20 Mpc, and
+  d = 278.9 is worse by a factor of 3 or more on both.
+- Outcome B, "this template disagrees with the published one": no depth reaches 5% on the ramp. Item 1 then
+  stays open and the next step is a second Boltzmann code and the authors.
+- Anything else is reported as inconclusive.
+- Also reported, with no criterion: D* and tau_0 for Planck 2018, Planck 2013, WMAP 7-year, WMAP 9-year and
+  the CAMB default parameters of 2013, to see which distance equals 14,165.5 Mpc.
+
+## (v) 2026-11-22 00:54 CST. Result of the depth fit; Feeney et al. 2015 Fig. 6 reproduced
+
+Pre-registered test of entry (u), job 82917 (`runs/template_check/osborne_fig3/`). RMS residual divided by the
+maximum of the published curve, one free amplitude:
+
+| cosmology | best depth, ramp | best depth, step | at the label depth 278.9 Mpc |
+|---|---|---|---|
+| Planck 2018 | 140 Mpc, 3.06% | 130 Mpc, 16.4% | ramp 13.9%, step 46.0% |
+| WMAP 7-year | 140 Mpc, 3.06% | 130 Mpc, 16.5% | ramp 13.7%, step 45.7% |
+
+With a free constant: ramp 130 Mpc at 2.5%, step 125 Mpc at 11.5%. The vectorised integrator agrees with
+`ct.b_ell` to 2e-15; the profiles are zero beyond 30 deg to 3e-3 (ramp) and 9e-3 (step) of their maximum.
+
+Outcome by the criteria fixed in (u): inconclusive. A is not met (the ramp reaches 3.06%, not 3%, and the
+step is far from 3%). B is not met either (the ramp does get below 5%).
+
+What the run shows all the same:
+- The published curves are not reproduced at the labelled depth. The ramp residual there is 4.5 times the
+  best one and the step residual 2.8 times.
+- The published ramp is matched best by a wall 130 to 140 Mpc inside the last-scattering surface, in both
+  cosmologies. Model against published at 130 Mpc (Planck 2018): 0.877 / 0.892 at the centre, 0.801 / 0.802
+  at 4 deg, 0.547 / 0.526 at 8 deg, 0.300 / 0.308 at 10 deg, then the model falls faster: 0.129 / 0.186 at
+  11 deg, 0.059 / 0.141 at 11.39 deg, 0.020 / 0.052 at 13.39 deg.
+- The published step is smoother than the model at every depth: the model has a peak near 11 deg (0.49
+  against 0.26 at its centre) and drops to 0.02 by 12 deg; the published curve rises from 0.31 to 0.36 and
+  falls over 3 deg.
+
+Distances (CAMB background, Mpc), against the figure's D = 14,165.5 and r = 13,886.6:
+
+| parameters | D* | tau_0 | D* - r | distance to z* without radiation |
+|---|---:|---:|---:|---:|
+| Planck 2018 | 13,872.8 | 14,153.3 | -13.8 | 13,937.2 |
+| Planck 2013 | 13,883.3 | 14,163.7 | -3.3 | 13,947.7 |
+| WMAP 7-year | 14,049.3 | 14,333.8 | +162.7 | 14,118.7 |
+| WMAP 9-year | 14,002.4 | 14,286.1 | +115.8 | 14,070.8 |
+| CAMB default 2013 | 14,077.6 | 14,362.2 | +191.0 | 14,147.2 |
+
+No parameter set has D* = 14,165.5. Two things come close: the conformal age tau_0 of the Planck 2013
+parameters (1.9 Mpc away, and then r is 3.3 Mpc from that D*), and, more loosely, the WMAP sets, for which
+the stated r puts the wall 116 to 163 Mpc deep, which brackets the fitted 130 to 140 Mpc. I cannot tell from
+the paper which, if either, happened.
+
+Not pre-registered, job 82919 (`runs/template_check/osborne_fig3_with_smoothing/`): the same fit with a
+smoothing of the model. Gaussian smoothing from 0 to 4 deg FWHM lowers the residuals steadily (ramp 3.2% to
+0.9%, step 16.4% to 6.5%, both cosmologies) and the best value is the last one tried, so this does not
+determine a smoothing scale; a sharp cut in l does not help. The fitted depth stays at 120 to 140 Mpc for
+every variant, and the label depth never does better than 12.8% (ramp) and 35% (step).
+
+Second published curve, also not pre-registered (`scripts/analysis/compare_feeney2015_kernel.py`,
+`runs/template_check/feeney2015_fig6/`). Fig. 6 of Feeney, Elsner, Johnson and Peiris (arXiv:1506.01716) shows
+r^2 alpha_l(r) for l = 20, alpha_l(r) = (2/pi) integral dk k^2 Delta_l(k) j_l(kr), the real-space form of the
+transfer function. A pure Sachs-Wolfe transfer function would give a spike at D*; a Doppler term moves
+weight beyond D* and leaves a negative lobe inside. The figure is a vector file in the arXiv source and was
+read the same way (139 and 138 points). Computed from this project's transfer functions with their
+parameters (Planck 2013 + WP + highL + BAO, D* = 13,907.8 Mpc):
+
+| | published | this work |
+|---|---:|---:|
+| temperature, peak position | 14,058 Mpc | 14,057 Mpc (D* + 149) |
+| temperature, negative / positive area | 0.67 | 0.70 |
+| temperature, first moment about D* / integral | +496 Mpc | +494 Mpc |
+| temperature, correlation of the two curves | | 0.963 |
+| polarization, peak position | 13,783 Mpc | 13,785 Mpc |
+| polarization, correlation; RMS / maximum | | 0.996; 2.9% |
+
+The temperature residual (8.5% of the maximum) is ringing in my curve next to the spike: CAMB gives
+Delta_20(k) only up to k = 0.132 /Mpc. The overall sign is opposite, as it should be (they use
+dT/T = +R/5). So an independent implementation shows the same displaced spike and negative lobe, with the
+same first moment of about +495 Mpc at l = 20. That is the feature that produces the plateau.
+
+Where item 1 of the open list stands.
+- For the template: five internal checks (entries (f) to (h)), the long-wavelength argument of entry (u),
+  and now the reproduction of a published transfer-function curve from a different group.
+- Against it: nothing measured. Fig. 3 of Osborne et al. is not reproduced as labelled, but it is
+  reproduced in its main part (the ramp to 3%, or to 1% with smoothing) by the same template with the wall
+  130 to 140 Mpc deep instead of 279.
+- Not explained: why their figure corresponds to that depth, and why their curves are smoother. Only the
+  authors can answer that. Not done: a second Boltzmann code (all three groups and this project use CAMB).
+- The template is unchanged, and so is every number from (l) on.
+- The full-sky search that comes next will be run with the edge-free template of McEwen et al. as well, so
+  its results do not rest on this point.
+
+## (w) 2026-11-22 01:10 CST. Pre-registration: full-sky filter search, WMAP 7-year W band first, then Planck
+
+Purpose. The real-sky test of entries (q) to (s) searched 48% of the sky for five sizes between 5 and 25 deg,
+because it was built around the network's patches. The filter itself runs on the whole sphere. This entry
+fixes a search done the way McEwen, Feeney, Johnson and Peiris (arXiv:1202.2861) did theirs: every unmasked
+position, their 33 sizes from 1 to 90 deg, significance per position from simulated skies with the same
+mask. It is run first on their own data, as a check of this implementation against their published table,
+and then on the four Planck PR3 maps.
+
+Script: `scripts/analysis/fullsky_filter_search.py`; the procedure and every choice of mine are in its
+header. Written from the text of their Secs. III C and IV. State when this entry was written: the code had
+run on simulated skies only (test jobs 82920, 82922: template coefficients against quadrature 4e-5; region
+finder exact on three test caps, one over a pole and one over the longitude seam; injected amplitude
+recovered to 0.2% on an unmasked sky; the per-pixel mean of the filtered simulations consistent with zero).
+No real map had been searched with it.
+
+One thing the test changed. I first set the threshold of a size as the lowest value above which a simulated
+sky has on average at most two connected regions. On the small test that gave 3.6 to 4.9, far above the
+significances in their table (3.03 to 4.67), and about 40 candidates per simulated sky. Their text counts
+detections after the step across sizes ("detections on one scale can be eliminated by stronger detections
+made on adjacent scales"), so their thresholds are lower than a count before that step allows. The same
+group printed its thresholds in Feeney et al. (arXiv:1210.2725, Table 1). Those are used here.
+
+Fixed before the runs.
+- Sizes: 1, 1.5, 2, 3 ... 10, 12 ... 30, 35 ... 90 deg (their grid). Adjacent sizes: within 5 deg (theirs).
+- Two templates, each with its own filters, thresholds and candidate list: "cosine", their template with
+  z_crit = 0; "transfer", the ramp through the transfer functions (entries (f), (v)).
+- Preparation of every sky: monopole and dipole fitted on the unmasked pixels and removed, masked pixels set
+  to zero. The search runs over all unmasked pixels.
+- Simulated skies: sigma maps from 3,000 (their number); the distribution under no signal from 1,000 more.
+  Seed 20261122. Gaussian, no foreground residuals.
+- Thresholds: Feeney et al. (2013) Table 1, for both templates and every data set: 4.25 at 1 to 2 deg, 4.00
+  at 3 to 8, 3.75 at 9 to 16, 3.50 at 18 to 26, 3.25 at 28 to 75, 3.00 at 80 to 90 deg. They were set on
+  one end-to-end simulation of WMAP with the KQ85 mask, "at most three false detections on each scale",
+  which gave 12 false detections on that simulation. McEwen et al. (2012) do not print theirs; they are
+  described as more conservative, with 13 false detections on the same kind of simulation.
+- A potential detection is one connected region above the threshold. It is dropped if a region of an
+  adjacent size overlaps it, has the same sign and a larger amplitude estimate inside it (their rule, as I
+  read it). What is left is a candidate.
+- Match to a published candidate, and between maps: same sign, size within 5 deg, centres within the larger
+  of 3 deg and a quarter of the size.
+- Masks at Nside 256, pixel kept where the degraded mask is at least 0.9: WMAP KQ75y7 (69.7% of the sky;
+  70.6% at full resolution, the number in their paper), Planck common mask (77.2%).
+
+Part 1, the check on WMAP. Data: the foreground-reduced W-band map of the 7-year release
+(`wmap_band_forered_iqumap_r9_7yr_W_v4.fits`), noise sigma_0 / sqrt(N_obs) with sigma_0 = 6.549 mK, 13.2
+arcmin beam, l up to 256 as in their paper, WMAP 7-year parameters. Their table lists 16 candidates with S
+from 3.03 to 4.67. Differences I cannot remove: Nside 256 instead of 512; the noise enters my filter;
+thresholds from Gaussian skies instead of one end-to-end simulation; the mask threshold; my reading of
+"localized peaks".
+- Criterion (a), filters and significance maps: at their 16 positions and sizes, the largest S within the
+  larger of 1.5 deg and a quarter of the size is within 0.5 of the published S for at least 12 of the 16.
+- Criterion (b), the whole procedure: 11 of the 16 have a published S at or above the threshold of their
+  size in the table used here (nos. 0, 4 to 10, 12, 14, 15; three of them, nos. 0, 5 and 14, by 0.03 or
+  less). At least 7 of these 11 come out as candidates by the match rule.
+- If (a) fails, the implementation is not validated and no Planck number from this script is used until
+  the cause is found. If (a) holds and (b) fails, the filters agree and the difference lies in the
+  thresholds or in the step across sizes; it is reported as that.
+- Reported without a criterion: the number of candidates next to the 1,000 simulated skies (they found 16,
+  and 13 on their end-to-end simulation), and the same search on the W-band map without foreground
+  reduction.
+
+Part 2, Planck: SMICA, NILC, SEVEM, Commander, 5 arcmin beam, the simulated skies of entry (q), l up to 256
+as in their search (data set "planck"). The same with l up to 767, the limit of the Nside 256 maps, is run
+as a second data set ("planck767") and reported separately; the like-for-like result is the first.
+Reported per map and template: the candidates; their number and its rank among the simulated skies; the
+largest S over all sizes and its rank; which of the 16 published candidates are recovered; which candidates
+are found in all four maps.
+- What would count as an excess: the number of candidates, or the largest S, with p below 0.01 in all four
+  maps for the same template. An excess would not be a detection. It would go to the frequency and
+  half-mission checks first.
+- Expectation, written before the run: no excess. The Cold Spot (their no. 7) is the strongest feature at
+  the small sizes. Published candidates that are masked here or have no counterpart are listed as such.
+
+Not part of this stage: injection tests over the full searched area (the sensitivity as a function of size
+and amplitude), the Planck end-to-end simulations, any Bayesian step.

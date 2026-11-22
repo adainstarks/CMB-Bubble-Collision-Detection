@@ -1,0 +1,62 @@
+{
+ "D_star": 13907.790985699261,
+ "ell": 20,
+ "temperature": {
+  "amplitude": -115.58557652209929,
+  "rms_over_max": 0.08460892919016177,
+  "correlation": -0.9627379452661494,
+  "published": {
+   "peak_r": 14057.7,
+   "peak_minus_Dstar": 149.90901430073973,
+   "positive_area": 51.072701749999695,
+   "negative_area": -34.11822925000001,
+   "negative_over_positive": 0.6680325904239092,
+   "first_moment_about_Dstar_over_integral": 495.525271842082
+  },
+  "this_work_at_published_radii": {
+   "peak_r": 14057.0,
+   "peak_minus_Dstar": 149.209014300739,
+   "positive_area": 63.80799458086273,
+   "negative_area": -46.55658259752522,
+   "negative_over_positive": 0.7296355715822552,
+   "first_moment_about_Dstar_over_integral": 576.7573874656646
+  },
+  "this_work_fine": {
+   "peak_r": 14057.0,
+   "peak_minus_Dstar": 149.209014300739,
+   "positive_area": 65.07252611039571,
+   "negative_area": -45.445601343767294,
+   "negative_over_positive": 0.6983838504543178,
+   "first_moment_about_Dstar_over_integral": 493.5608137514922
+  }
+ },
+ "polarization": {
+  "amplitude": -434614299.9475708,
+  "rms_over_max": 0.029420309665488704,
+  "correlation": -0.996390088643708,
+  "published": {
+   "peak_r": 13783.3,
+   "peak_minus_Dstar": -124.49098569926173,
+   "positive_area": 611.3763180000005,
+   "negative_area": 0.0,
+   "negative_over_positive": -0.0,
+   "first_moment_about_Dstar_over_integral": -73.89347434231134
+  },
+  "this_work_at_published_radii": {
+   "peak_r": 13784.7,
+   "peak_minus_Dstar": -123.09098569926027,
+   "positive_area": 622.5553328546293,
+   "negative_area": 0.0,
+   "negative_over_positive": -0.0,
+   "first_moment_about_Dstar_over_integral": -73.05664447211846
+  },
+  "this_work_fine": {
+   "peak_r": 13785.0,
+   "peak_minus_Dstar": -122.790985699261,
+   "positive_area": 622.5298861170481,
+   "negative_area": 0.0,
+   "negative_over_positive": -0.0,
+   "first_moment_about_Dstar_over_integral": -73.04826344462681
+  }
+ }
+}
