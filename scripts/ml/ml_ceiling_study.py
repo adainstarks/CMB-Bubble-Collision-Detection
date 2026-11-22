@@ -196,8 +196,9 @@ def full_positions(rng, n, min_sep_deg=50.0):
 
 def project(sky, lon, lat):
     import healpy as hp
+    from healpy.projector import GnomonicProj  # not reachable as hp.projector in healpy 1.20 until a plot function is imported
 
-    proj = hp.projector.GnomonicProj(rot=(lon, lat), xsize=P, ysize=P, reso=pg.RESO_ARCMIN)
+    proj = GnomonicProj(rot=(lon, lat), xsize=P, ysize=P, reso=pg.RESO_ARCMIN)
     return np.asarray(proj.projmap(sky, lambda x, y, z: hp.vec2pix(NSIDE, x, y, z)), dtype=np.float64)
 
 

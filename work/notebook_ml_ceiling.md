@@ -112,3 +112,19 @@ bank's `glrt` stays near the matched bank.
 Limits, stated beforehand: Gaussian skies with white noise; no mask (the masked-sky and real-map tests
 come after this one and are not part of this entry); signal centres within 5 degrees; one architecture;
 the band-limited step of entry (A); thresholds set on the test set's own signal-free patches.
+
+## (C) 2026-11-22 08:52 CST. Environment on Babbage; first smoke job found a bug
+
+Environment `/projects/gmarcum/envs/cmb`: python 3.11.18, torch 2.6.0+cu124, healpy 1.20.1, camb 2.0.5,
+segmentation-models-pytorch 0.5.0, timm 1.0.31, scipy 1.17.1 (newer than `environment.yml`: healpy 1.19.0,
+camb 1.6.6, torch 2.5.1). ImageNet weights for the encoder cached under `/projects/gmarcum/cmb/cache`.
+
+Smoke job 93901 (node c11, RTX 2080 Ti): python starts on the compute node, CUDA is available, the
+templates give 0.932 and 1.111 ideal SNR per 1e-5 at 5 and 25 degrees (as on the PC). Then it stopped:
+`AttributeError: module 'healpy' has no attribute 'projector'`.
+
+**Bug C1.** `ml_ceiling_study.project` used `hp.projector.GnomonicProj`. In healpy 1.20.1 the submodule is
+not an attribute of the package until a plotting function has been imported; November's scripts call
+`hp.gnomview` first, mine did not. Fixed by importing `GnomonicProj` from `healpy.projector` directly. No
+result existed yet, so nothing is affected. The built-in guard (projected patch must equal `hp.gnomview`
+output) stays and will run in the next smoke job.
