@@ -1,0 +1,511 @@
+{
+ "lmax": 1000,
+ "normalisation_check": {
+  "2": {
+   "TT": 1.0000000000000004,
+   "EE": 0.9999999999999994,
+   "TE": 1.0
+  },
+  "10": {
+   "TT": 0.9999999999999997,
+   "EE": 1.0000000000000033,
+   "TE": 0.9999999999999998
+  },
+  "30": {
+   "TT": 0.9999999999999986,
+   "EE": 1.0000000000000013,
+   "TE": 1.0000000000000007
+  },
+  "100": {
+   "TT": 0.9999999999999994,
+   "EE": 0.9999999999999992,
+   "TE": 1.0000000000000002
+  },
+  "300": {
+   "TT": 1.000000000000002,
+   "EE": 1.0000000000000002,
+   "TE": 1.000000000000002
+  },
+  "600": {
+   "TT": 0.9999999999999991,
+   "EE": 1.0000000000000004,
+   "TE": 1.0000000000000016
+  },
+  "900": {
+   "TT": 1.0000000000000009,
+   "EE": 1.0000000000000004,
+   "TE": 0.9999999999999989
+  }
+ },
+ "rows": [
+  {
+   "theta_c_deg": 5.0,
+   "peak_over_sachs_wolfe_centre": 7.864381590320006,
+   "experiments": {
+    "cosmic-variance limit": {
+     "snr_T": 0.9325504995779201,
+     "snr_E": 0.11663897668633426,
+     "snr_joint": 1.1094162862014179,
+     "snr_E_given_T": 0.6009609486696436,
+     "joint_over_T": 1.189658132941378
+    },
+    "Planck-like, white 52 uK-arcmin polarization down to l=2": {
+     "snr_T": 0.9325464352157363,
+     "snr_E": 0.08150754302384838,
+     "snr_joint": 0.9802619864090562,
+     "snr_E_given_T": 0.3021104237941005,
+     "joint_over_T": 1.051166943962722
+    },
+    "Planck-like, polarization usable from l=30": {
+     "snr_T": 0.9325464352157363,
+     "snr_E": 0.02808153705594671,
+     "snr_joint": 0.9370685904111864,
+     "snr_E_given_T": 0.09194938445487437,
+     "joint_over_T": 1.0048492547123447
+    },
+    "Planck-like, polarization noise knee at l=50": {
+     "snr_T": 0.9325464352157363,
+     "snr_E": 0.04075259397214703,
+     "snr_joint": 0.9398369916368224,
+     "snr_E_given_T": 0.11683628295771449,
+     "joint_over_T": 1.0078179017642157
+    },
+    "ground wide survey 14 uK-arcmin, l>=300, Planck-like below": {
+     "snr_T": 0.9325501278010804,
+     "snr_E": 0.08150878629038114,
+     "snr_joint": 0.9802804317390723,
+     "snr_E_given_T": 0.3021588720999776,
+     "joint_over_T": 1.0511825611461105
+    },
+    "ground wide survey 9 uK-arcmin, knee l=700, from l=30": {
+     "snr_T": 0.932550365737696,
+     "snr_E": 0.027038296098277164,
+     "snr_joint": 0.9371298998174666,
+     "snr_E_given_T": 0.09253250506921648,
+     "joint_over_T": 1.004910763266012
+    },
+    "ground small aperture 3 uK-arcmin, l=30-300": {
+     "snr_T": 0.9323630871011647,
+     "snr_E": 0.038842010057409976,
+     "snr_joint": 0.9416925003709039,
+     "snr_E_given_T": 0.13222646885548647,
+     "joint_over_T": 1.0100062018743639
+    },
+    "space mission 2.2 uK-arcmin, 30 arcmin beam, l<=600": {
+     "snr_T": 0.9325439223995857,
+     "snr_E": 0.11644360026758485,
+     "snr_joint": 1.1080955223062245,
+     "snr_E_given_T": 0.5985294640622967,
+     "joint_over_T": 1.1882502214532868
+    }
+   },
+   "multipole_holding_half_of_snr2": {
+    "T": 16,
+    "E": 20
+   },
+   "multipole_holding_90pct_of_E_snr2": 31
+  },
+  {
+   "theta_c_deg": 10.0,
+   "peak_over_sachs_wolfe_centre": 2.86914100227915,
+   "experiments": {
+    "cosmic-variance limit": {
+     "snr_T": 1.0356585560058231,
+     "snr_E": 0.18437127672928713,
+     "snr_joint": 1.1949862978896395,
+     "snr_E_given_T": 0.5961573680798717,
+     "joint_over_T": 1.1538419597461622
+    },
+    "Planck-like, white 52 uK-arcmin polarization down to l=2": {
+     "snr_T": 1.0356541112224429,
+     "snr_E": 0.10328221638355822,
+     "snr_joint": 1.0999300092814797,
+     "snr_E_given_T": 0.3704950569521919,
+     "joint_over_T": 1.0620630936164277
+    },
+    "Planck-like, polarization usable from l=30": {
+     "snr_T": 1.0356541112224429,
+     "snr_E": 0.042928638658694895,
+     "snr_joint": 1.0399175976026238,
+     "snr_E_given_T": 0.09407003620528988,
+     "joint_over_T": 1.0041167087872114
+    },
+    "Planck-like, polarization noise knee at l=50": {
+     "snr_T": 1.0356541112224429,
+     "snr_E": 0.049846840037256805,
+     "snr_joint": 1.0449429109156094,
+     "snr_E_given_T": 0.13901887994383796,
+     "joint_over_T": 1.0089690173509787
+    },
+    "ground wide survey 14 uK-arcmin, l>=300, Planck-like below": {
+     "snr_T": 1.0356581520985562,
+     "snr_E": 0.10329272976742941,
+     "snr_joint": 1.099977197698594,
+     "snr_E_given_T": 0.3706238355106907,
+     "joint_over_T": 1.06210451341469
+    },
+    "ground wide survey 9 uK-arcmin, knee l=700, from l=30": {
+     "snr_T": 1.0356584105975162,
+     "snr_E": 0.041903935951277116,
+     "snr_joint": 1.0405521368374504,
+     "snr_E_given_T": 0.10079883945567347,
+     "joint_over_T": 1.0047252319778979
+    },
+    "ground small aperture 3 uK-arcmin, l=30-300": {
+     "snr_T": 1.035064160853911,
+     "snr_E": 0.059877334511214,
+     "snr_joint": 1.0433904030517465,
+     "snr_E_given_T": 0.13155119192266881,
+     "joint_over_T": 1.008044179783953
+    },
+    "space mission 2.2 uK-arcmin, 30 arcmin beam, l<=600": {
+     "snr_T": 1.0356397218731517,
+     "snr_E": 0.18391119768128664,
+     "snr_joint": 1.19424551461969,
+     "snr_E_given_T": 0.5947038890639181,
+     "joint_over_T": 1.153147652988502
+    }
+   },
+   "multipole_holding_half_of_snr2": {
+    "T": 12,
+    "E": 16
+   },
+   "multipole_holding_90pct_of_E_snr2": 31
+  },
+  {
+   "theta_c_deg": 15.0,
+   "peak_over_sachs_wolfe_centre": 1.7855187748246166,
+   "experiments": {
+    "cosmic-variance limit": {
+     "snr_T": 1.1057446513816,
+     "snr_E": 0.2718825646883992,
+     "snr_joint": 1.285676020971848,
+     "snr_E_given_T": 0.6559661552572569,
+     "joint_over_T": 1.1627241600178018
+    },
+    "Planck-like, white 52 uK-arcmin polarization down to l=2": {
+     "snr_T": 1.1057389870163539,
+     "snr_E": 0.15467598342337555,
+     "snr_joint": 1.1929240136753783,
+     "snr_E_given_T": 0.4476706322682129,
+     "joint_over_T": 1.0788477458810404
+    },
+    "Planck-like, polarization usable from l=30": {
+     "snr_T": 1.1057389870163539,
+     "snr_E": 0.06080809520920682,
+     "snr_joint": 1.1131712236666746,
+     "snr_E_given_T": 0.12841910212896412,
+     "joint_over_T": 1.0067215108968668
+    },
+    "Planck-like, polarization noise knee at l=50": {
+     "snr_T": 1.1057389870163539,
+     "snr_E": 0.07237443659757158,
+     "snr_joint": 1.1193798159669388,
+     "snr_E_given_T": 0.17421958841136445,
+     "joint_over_T": 1.0123363914185501
+    },
+    "ground wide survey 14 uK-arcmin, l>=300, Planck-like below": {
+     "snr_T": 1.1057441444089908,
+     "snr_E": 0.15472012451334222,
+     "snr_joint": 1.1930183392220888,
+     "snr_E_given_T": 0.4479091926110242,
+     "joint_over_T": 1.0789280189765285
+    },
+    "ground wide survey 9 uK-arcmin, knee l=700, from l=30": {
+     "snr_T": 1.1057444688660756,
+     "snr_E": 0.0614418909855039,
+     "snr_joint": 1.1134259355244136,
+     "snr_E_given_T": 0.1305621823902158,
+     "joint_over_T": 1.006946873237553
+    },
+    "ground small aperture 3 uK-arcmin, l=30-300": {
+     "snr_T": 1.1043657833295044,
+     "snr_E": 0.08465206916041194,
+     "snr_joint": 1.1195911364421849,
+     "snr_E_given_T": 0.18401230777019598,
+     "joint_over_T": 1.0137865128950103
+    },
+    "space mission 2.2 uK-arcmin, 30 arcmin beam, l<=600": {
+     "snr_T": 1.1056482866201398,
+     "snr_E": 0.2712700850652727,
+     "snr_joint": 1.2848456980345564,
+     "snr_E_given_T": 0.6545000642107346,
+     "joint_over_T": 1.162074516447003
+    }
+   },
+   "multipole_holding_half_of_snr2": {
+    "T": 10,
+    "E": 14
+   },
+   "multipole_holding_90pct_of_E_snr2": 29
+  },
+  {
+   "theta_c_deg": 20.0,
+   "peak_over_sachs_wolfe_centre": 1.3774078072703444,
+   "experiments": {
+    "cosmic-variance limit": {
+     "snr_T": 1.1155153737874244,
+     "snr_E": 0.33801022040536693,
+     "snr_joint": 1.3022495277243202,
+     "snr_E_given_T": 0.6719220812729092,
+     "joint_over_T": 1.167397203413604
+    },
+    "Planck-like, white 52 uK-arcmin polarization down to l=2": {
+     "snr_T": 1.1155080827927468,
+     "snr_E": 0.20467448799938806,
+     "snr_joint": 1.2161802984455563,
+     "snr_E_given_T": 0.4844958571042407,
+     "joint_over_T": 1.0902478585370445
+    },
+    "Planck-like, polarization usable from l=30": {
+     "snr_T": 1.1155080827927468,
+     "snr_E": 0.0925420469489674,
+     "snr_joint": 1.1258500884131855,
+     "snr_E_given_T": 0.15225025058773403,
+     "joint_over_T": 1.0092711167045485
+    },
+    "Planck-like, polarization noise knee at l=50": {
+     "snr_T": 1.1155080827927468,
+     "snr_E": 0.0993885115313301,
+     "snr_joint": 1.133726652601846,
+     "snr_E_given_T": 0.20242983980588677,
+     "joint_over_T": 1.0163320822951705
+    },
+    "ground wide survey 14 uK-arcmin, l>=300, Planck-like below": {
+     "snr_T": 1.1155147379480355,
+     "snr_E": 0.20479799895274725,
+     "snr_joint": 1.2163305306641559,
+     "snr_E_given_T": 0.4848575350002026,
+     "joint_over_T": 1.0903760293670066
+    },
+    "ground wide survey 9 uK-arcmin, knee l=700, from l=30": {
+     "snr_T": 1.1155151448701732,
+     "snr_E": 0.09075269780752944,
+     "snr_joint": 1.126493102116305,
+     "snr_E_given_T": 0.15688425886905363,
+     "joint_over_T": 1.0098411548212636
+    },
+    "ground small aperture 3 uK-arcmin, l=30-300": {
+     "snr_T": 1.1132252427945954,
+     "snr_E": 0.13019299249222138,
+     "snr_joint": 1.1343322074746411,
+     "snr_E_given_T": 0.21780522426977378,
+     "joint_over_T": 1.0189601923030955
+    },
+    "space mission 2.2 uK-arcmin, 30 arcmin beam, l<=600": {
+     "snr_T": 1.1152500391409093,
+     "snr_E": 0.33733316994791473,
+     "snr_joint": 1.3012884345095244,
+     "snr_E_given_T": 0.6704990231047687,
+     "joint_over_T": 1.1668131708938767
+    }
+   },
+   "multipole_holding_half_of_snr2": {
+    "T": 8,
+    "E": 18
+   },
+   "multipole_holding_90pct_of_E_snr2": 37
+  },
+  {
+   "theta_c_deg": 25.0,
+   "peak_over_sachs_wolfe_centre": 1.164817610391915,
+   "experiments": {
+    "cosmic-variance limit": {
+     "snr_T": 1.1113305925380574,
+     "snr_E": 0.40370217167066,
+     "snr_joint": 1.285185504905468,
+     "snr_E_given_T": 0.6454812902851117,
+     "joint_over_T": 1.1564385193161655
+    },
+    "Planck-like, white 52 uK-arcmin polarization down to l=2": {
+     "snr_T": 1.1113216160836483,
+     "snr_E": 0.25334774022445433,
+     "snr_joint": 1.2124258328335213,
+     "snr_E_given_T": 0.4847067832693144,
+     "joint_over_T": 1.0909765591586071
+    },
+    "Planck-like, polarization usable from l=30": {
+     "snr_T": 1.1113216160836483,
+     "snr_E": 0.1231587303439283,
+     "snr_joint": 1.1236331275329399,
+     "snr_E_given_T": 0.1658784823739481,
+     "joint_over_T": 1.011078261478147
+    },
+    "Planck-like, polarization noise knee at l=50": {
+     "snr_T": 1.1113216160836483,
+     "snr_E": 0.1261973489725729,
+     "snr_joint": 1.1329558872556298,
+     "snr_E_given_T": 0.22034815200591007,
+     "joint_over_T": 1.0194671559149742
+    },
+    "ground wide survey 14 uK-arcmin, l>=300, Planck-like below": {
+     "snr_T": 1.111329828397492,
+     "snr_E": 0.25362530680808737,
+     "snr_joint": 1.2126961728607872,
+     "snr_E_given_T": 0.48536380189008876,
+     "joint_over_T": 1.0912117553881038
+    },
+    "ground wide survey 9 uK-arcmin, knee l=700, from l=30": {
+     "snr_T": 1.1113303174196083,
+     "snr_E": 0.12272450875114403,
+     "snr_joint": 1.1254238588399854,
+     "snr_E_given_T": 0.1775493949027032,
+     "joint_over_T": 1.0126816853634488
+    },
+    "ground small aperture 3 uK-arcmin, l=30-300": {
+     "snr_T": 1.1081091405592778,
+     "snr_E": 0.17504281265254013,
+     "snr_joint": 1.1333467790973057,
+     "snr_E_given_T": 0.2378424989340969,
+     "joint_over_T": 1.0227754086797716
+    },
+    "space mission 2.2 uK-arcmin, 30 arcmin beam, l<=600": {
+     "snr_T": 1.11083723298097,
+     "snr_E": 0.40285869531002644,
+     "snr_joint": 1.28411348367024,
+     "snr_E_given_T": 0.6441956851507948,
+     "joint_over_T": 1.1559870749239087
+    }
+   },
+   "multipole_holding_half_of_snr2": {
+    "T": 7,
+    "E": 16
+   },
+   "multipole_holding_90pct_of_E_snr2": 44
+  },
+  {
+   "theta_c_deg": 40.0,
+   "peak_over_sachs_wolfe_centre": 0.8421029072202019,
+   "experiments": {
+    "cosmic-variance limit": {
+     "snr_T": 1.1434058136623109,
+     "snr_E": 0.5847744116337021,
+     "snr_joint": 1.294333226122103,
+     "snr_E_given_T": 0.6065654503241011,
+     "joint_over_T": 1.1319981153291272
+    },
+    "Planck-like, white 52 uK-arcmin polarization down to l=2": {
+     "snr_T": 1.1433936888281697,
+     "snr_E": 0.422567237599985,
+     "snr_joint": 1.2318176114192547,
+     "snr_E_given_T": 0.4582853915962723,
+     "joint_over_T": 1.0773346253832379
+    },
+    "Planck-like, polarization usable from l=30": {
+     "snr_T": 1.1433936888281697,
+     "snr_E": 0.1773175807024519,
+     "snr_joint": 1.1586840294519778,
+     "snr_E_given_T": 0.1876154376776666,
+     "joint_over_T": 1.0133727698282808
+    },
+    "Planck-like, polarization noise knee at l=50": {
+     "snr_T": 1.1433936888281697,
+     "snr_E": 0.21139758188099755,
+     "snr_joint": 1.1653882138151217,
+     "snr_E_given_T": 0.22534542650586542,
+     "joint_over_T": 1.0192361784063138
+    },
+    "ground wide survey 14 uK-arcmin, l>=300, Planck-like below": {
+     "snr_T": 1.1434048373516952,
+     "snr_E": 0.42354418751535405,
+     "snr_joint": 1.2323737930517225,
+     "snr_E_given_T": 0.45975052335090716,
+     "joint_over_T": 1.0778105468803973
+    },
+    "ground wide survey 9 uK-arcmin, knee l=700, from l=30": {
+     "snr_T": 1.143405462121625,
+     "snr_E": 0.1861190699722079,
+     "snr_joint": 1.162087590125501,
+     "snr_E_given_T": 0.20753678303888146,
+     "joint_over_T": 1.0163390228775109
+    },
+    "ground small aperture 3 uK-arcmin, l=30-300": {
+     "snr_T": 1.1395746307491108,
+     "snr_E": 0.2427298876620941,
+     "snr_joint": 1.1695880738426832,
+     "snr_E_given_T": 0.2632601820026445,
+     "joint_over_T": 1.0263374089627133
+    },
+    "space mission 2.2 uK-arcmin, 30 arcmin beam, l<=600": {
+     "snr_T": 1.142368274121545,
+     "snr_E": 0.5834349588663906,
+     "snr_joint": 1.2926826390395685,
+     "snr_E_given_T": 0.604998455828497,
+     "joint_over_T": 1.1315813545623996
+    }
+   },
+   "multipole_holding_half_of_snr2": {
+    "T": 4,
+    "E": 13
+   },
+   "multipole_holding_90pct_of_E_snr2": 51
+  },
+  {
+   "theta_c_deg": 60.0,
+   "peak_over_sachs_wolfe_centre": 0.5861135124987572,
+   "experiments": {
+    "cosmic-variance limit": {
+     "snr_T": 1.3009568827842113,
+     "snr_E": 0.946294084809331,
+     "snr_joint": 1.4301490620414794,
+     "snr_E_given_T": 0.5940012868626726,
+     "joint_over_T": 1.0993055042537463
+    },
+    "Planck-like, white 52 uK-arcmin polarization down to l=2": {
+     "snr_T": 1.3009466693630498,
+     "snr_E": 0.8269628632684242,
+     "snr_joint": 1.3828216477019282,
+     "snr_E_given_T": 0.4687573709567274,
+     "joint_over_T": 1.06293492290423
+    },
+    "Planck-like, polarization usable from l=30": {
+     "snr_T": 1.3009466693630498,
+     "snr_E": 0.23091182183799616,
+     "snr_joint": 1.3189069199921588,
+     "snr_E_given_T": 0.21691755824826714,
+     "joint_over_T": 1.013805524124907
+    },
+    "Planck-like, polarization noise knee at l=50": {
+     "snr_T": 1.3009466693630498,
+     "snr_E": 0.40052391243116436,
+     "snr_joint": 1.3239254248424195,
+     "snr_E_given_T": 0.24559375809936312,
+     "joint_over_T": 1.017663103354283
+    },
+    "ground wide survey 14 uK-arcmin, l>=300, Planck-like below": {
+     "snr_T": 1.3009560837342649,
+     "snr_E": 0.8287141565640851,
+     "snr_joint": 1.3841059397457809,
+     "snr_E_given_T": 0.4725066355453177,
+     "joint_over_T": 1.0639144219018082
+    },
+    "ground wide survey 9 uK-arcmin, knee l=700, from l=30": {
+     "snr_T": 1.3009565950542734,
+     "snr_E": 0.23671255183601667,
+     "snr_joint": 1.3203754826059468,
+     "snr_E_given_T": 0.22561771395809824,
+     "joint_over_T": 1.014926622168254
+    },
+    "ground small aperture 3 uK-arcmin, l=30-300": {
+     "snr_T": 1.2982809083614442,
+     "snr_E": 0.29719098703636176,
+     "snr_joint": 1.328819782454535,
+     "snr_E_given_T": 0.2832467073536792,
+     "joint_over_T": 1.0235225473134575
+    },
+    "space mission 2.2 uK-arcmin, 30 arcmin beam, l<=600": {
+     "snr_T": 1.2998567862143473,
+     "snr_E": 0.9442823760843507,
+     "snr_joint": 1.427721106934132,
+     "snr_E_given_T": 0.5905589678581908,
+     "joint_over_T": 1.0983680064418264
+    }
+   },
+   "multipole_holding_half_of_snr2": {
+    "T": 3,
+    "E": 4
+   },
+   "multipole_holding_90pct_of_E_snr2": 31
+  }
+ ]
+}
