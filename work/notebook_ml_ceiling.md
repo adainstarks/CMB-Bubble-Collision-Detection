@@ -135,3 +135,17 @@ environment had no matplotlib, and healpy then loads without its plotting functi
 `hp.projector` attribute path). The healpy version is not the cause. Fix: matplotlib added to the
 environment, `MPLBACKEND=Agg` set in `cluster/babbage/env.sh`. The direct import of `GnomonicProj` stays;
 it is correct either way.
+
+## (D) 2026-11-22 09:03 CST. Smoke job 93904: test-set path passes its guards; training needs more than 11 GB
+
+Job 93904 (node c11, RTX 2080 Ti, 1 min 26 s), six skies, three bank sizes:
+- projector output identical to `hp.gnomview`: passed (both test sets);
+- standard deviation of signal-free SNR maps: 1.002, 1.012, 1.034 (5, 15, 25 degrees; six skies);
+- SNR at the signal centre against A * sqrt(norm): worst deviation 1.47 standard errors;
+- reference tables are written for the ramp set and for a mix 1.0 set on the SNR grid (too few rows to read
+  anything from: 12 signals per level).
+- Training stopped at the first step: CUDA out of memory, 10.3 GiB in use on an 11 GiB card at batch 64.
+
+Not a code defect. c11 is the only node with 11 GiB cards (2080 Ti); the others have 24 GiB (A5000) or
+32 GiB (RTX 5000 Ada). Job files now exclude c11 as well as c14, and the training array runs at most four
+jobs at a time so that it does not take every free GPU of the partition.

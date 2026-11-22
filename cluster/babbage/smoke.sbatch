@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=24G
 #SBATCH --time=00:20:00
-#SBATCH --exclude=c14
+#SBATCH --exclude=c11,c14
 #SBATCH --output=/projects/%u/cmb/logs/smoke-%j.out
 # Three-minute check of the whole path on a compute node before anything long is queued:
 # the environment's python starts, the GPU is visible, healpy and CAMB work, the pretrained weights load

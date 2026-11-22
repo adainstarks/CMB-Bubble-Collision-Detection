@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
 #SBATCH --time=06:00:00
-#SBATCH --exclude=c14
-#SBATCH --array=0-12
+#SBATCH --exclude=c11,c14
+#SBATCH --array=0-12%4
 #SBATCH --output=/projects/%u/cmb/logs/train-%A_%a.out
 # The thirteen training runs of notebook_ml_ceiling.md entry (B):
 #   0-4  arm R  ramp only, ImageNet initialisation, seeds 1-5
