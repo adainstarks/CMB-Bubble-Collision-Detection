@@ -1,0 +1,826 @@
+{
+ "lmax": 767,
+ "bank_sizes_deg": [
+  2.0,
+  3.0,
+  4.0,
+  5.0,
+  6.0,
+  7.0,
+  8.0,
+  9.0,
+  10.0,
+  11.0,
+  12.0,
+  13.0,
+  14.0,
+  15.0,
+  16.0,
+  17.0,
+  18.0,
+  19.0,
+  20.0,
+  22.0,
+  24.0,
+  26.0,
+  28.0,
+  30.0,
+  33.0,
+  36.0,
+  40.0,
+  45.0,
+  50.0,
+  55.0,
+  60.0,
+  65.0,
+  70.0,
+  80.0,
+  90.0
+ ],
+ "rows": [
+  {
+   "truth": "tf_ramp",
+   "theta_c_deg": 5.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9999999999999976,
+    "sw_ramp bank": 0.9936601201894525,
+    "tf_ramp + tf_step bank": 0.9999999999999976,
+    "sw_step bank": 0.6127684102935379
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 5 deg",
+    "sw_ramp bank": "sw_ramp 10 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 5 deg",
+    "sw_step bank": "sw_step 8 deg"
+   }
+  },
+  {
+   "truth": "sw_ramp",
+   "theta_c_deg": 5.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.42012463787504667,
+    "sw_ramp bank": 1.0000000000000009,
+    "tf_ramp + tf_step bank": 0.42012463787504667,
+    "sw_step bank": 0.8632922292918725
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 2 deg",
+    "sw_ramp bank": "sw_ramp 5 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 2 deg",
+    "sw_step bank": "sw_step 4 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.25",
+   "theta_c_deg": 5.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9889247420153603,
+    "sw_ramp bank": 0.9877240269392227,
+    "tf_ramp + tf_step bank": 0.9889247420153603,
+    "sw_step bank": 0.6189139304475837
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 5 deg",
+    "sw_ramp bank": "sw_ramp 10 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 5 deg",
+    "sw_step bank": "sw_step 9 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.5",
+   "theta_c_deg": 5.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9898860999227137,
+    "sw_ramp bank": 0.9650763368852391,
+    "tf_ramp + tf_step bank": 0.9898860999227137,
+    "sw_step bank": 0.6215819917145413
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 6 deg",
+    "sw_ramp bank": "sw_ramp 10 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 6 deg",
+    "sw_step bank": "sw_step 9 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_1",
+   "theta_c_deg": 5.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.959826072238243,
+    "sw_ramp bank": 0.9247529324175644,
+    "tf_ramp + tf_step bank": 0.959826072238243,
+    "sw_step bank": 0.6158033489273843
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 6 deg",
+    "sw_ramp bank": "sw_ramp 11 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 6 deg",
+    "sw_step bank": "sw_step 9 deg"
+   }
+  },
+  {
+   "truth": "tf_step",
+   "theta_c_deg": 5.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.6020570180377124,
+    "sw_ramp bank": 0.5332339782917912,
+    "tf_ramp + tf_step bank": 1.0000000000000033,
+    "sw_step bank": 0.7788467970968764
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 7 deg",
+    "sw_ramp bank": "sw_ramp 11 deg",
+    "tf_ramp + tf_step bank": "tf_step 5 deg",
+    "sw_step bank": "sw_step 10 deg"
+   }
+  },
+  {
+   "truth": "sw_step",
+   "theta_c_deg": 5.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.43906239435252187,
+    "sw_ramp bank": 0.7842752964727098,
+    "tf_ramp + tf_step bank": 0.43906239435252187,
+    "sw_step bank": 1.0000000000000642
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 2 deg",
+    "sw_ramp bank": "sw_ramp 6 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 2 deg",
+    "sw_step bank": "sw_step 5 deg"
+   }
+  },
+  {
+   "truth": "tf_ramp",
+   "theta_c_deg": 10.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9999999999999997,
+    "sw_ramp bank": 0.9755442752605135,
+    "tf_ramp + tf_step bank": 0.9999999999999997,
+    "sw_step bank": 0.5073071582819255
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 10 deg",
+    "sw_ramp bank": "sw_ramp 13 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 10 deg",
+    "sw_step bank": "sw_step 12 deg"
+   }
+  },
+  {
+   "truth": "sw_ramp",
+   "theta_c_deg": 10.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9936601201894489,
+    "sw_ramp bank": 1.0000000000000075,
+    "tf_ramp + tf_step bank": 0.9936601201894489,
+    "sw_step bank": 0.5905006565771136
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 5 deg",
+    "sw_ramp bank": "sw_ramp 10 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 5 deg",
+    "sw_step bank": "sw_step 8 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.25",
+   "theta_c_deg": 10.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9479648599841787,
+    "sw_ramp bank": 0.9180228906162947,
+    "tf_ramp + tf_step bank": 0.9479648599841787,
+    "sw_step bank": 0.676467740085192
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 11 deg",
+    "sw_ramp bank": "sw_ramp 14 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 11 deg",
+    "sw_step bank": "sw_step 13 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.5",
+   "theta_c_deg": 10.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.865684496655712,
+    "sw_ramp bank": 0.8083343329111584,
+    "tf_ramp + tf_step bank": 0.865684496655712,
+    "sw_step bank": 0.805331900123837
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 11 deg",
+    "sw_ramp bank": "sw_ramp 14 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 11 deg",
+    "sw_step bank": "sw_step 13 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_1",
+   "theta_c_deg": 10.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.7276718248960667,
+    "sw_ramp bank": 0.6475973063360827,
+    "tf_ramp + tf_step bank": 0.9225423355670753,
+    "sw_step bank": 0.8761501384094357
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 11 deg",
+    "sw_ramp bank": "sw_ramp 14 deg",
+    "tf_ramp + tf_step bank": "tf_step 10 deg",
+    "sw_step bank": "sw_step 13 deg"
+   }
+  },
+  {
+   "truth": "tf_step",
+   "theta_c_deg": 10.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.4581413261084398,
+    "sw_ramp bank": 0.3594364771659695,
+    "tf_ramp + tf_step bank": 1.0000000000000473,
+    "sw_step bank": 0.8715516857484695
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 12 deg",
+    "sw_ramp bank": "sw_ramp 15 deg",
+    "tf_ramp + tf_step bank": "tf_step 10 deg",
+    "sw_step bank": "sw_step 13 deg"
+   }
+  },
+  {
+   "truth": "sw_step",
+   "theta_c_deg": 10.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.5740447874347394,
+    "sw_ramp bank": 0.522781146001702,
+    "tf_ramp + tf_step bank": 0.7788467970969315,
+    "sw_step bank": 0.999999999999738
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 7 deg",
+    "sw_ramp bank": "sw_ramp 11 deg",
+    "tf_ramp + tf_step bank": "tf_step 5 deg",
+    "sw_step bank": "sw_step 10 deg"
+   }
+  },
+  {
+   "truth": "tf_ramp",
+   "theta_c_deg": 15.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9999999999999934,
+    "sw_ramp bank": 0.9568274651073772,
+    "tf_ramp + tf_step bank": 0.9999999999999934,
+    "sw_step bank": 0.43075012004794894
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 15 deg",
+    "sw_ramp bank": "sw_ramp 18 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 15 deg",
+    "sw_step bank": "sw_step 16 deg"
+   }
+  },
+  {
+   "truth": "sw_ramp",
+   "theta_c_deg": 15.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.973191741043326,
+    "sw_ramp bank": 0.9999999999999986,
+    "tf_ramp + tf_step bank": 0.973191741043326,
+    "sw_step bank": 0.406741450549826
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 12 deg",
+    "sw_ramp bank": "sw_ramp 15 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 12 deg",
+    "sw_step bank": "sw_step 13 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.25",
+   "theta_c_deg": 15.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.8265952817391112,
+    "sw_ramp bank": 0.7466570986795712,
+    "tf_ramp + tf_step bank": 0.8265952817391112,
+    "sw_step bank": 0.5252618039816359
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 16 deg",
+    "sw_ramp bank": "sw_ramp 18 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 16 deg",
+    "sw_step bank": "sw_step 17 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.5",
+   "theta_c_deg": 15.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.6652768998251269,
+    "sw_ramp bank": 0.5735396162745264,
+    "tf_ramp + tf_step bank": 0.9107292288295689,
+    "sw_step bank": 0.5187321095563843
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 16 deg",
+    "sw_ramp bank": "sw_ramp 19 deg",
+    "tf_ramp + tf_step bank": "tf_step 15 deg",
+    "sw_step bank": "sw_step 17 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_1",
+   "theta_c_deg": 15.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.5211995794439741,
+    "sw_ramp bank": 0.4255523828358955,
+    "tf_ramp + tf_step bank": 0.9737658175651982,
+    "sw_step bank": 0.48984422317021065
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 16 deg",
+    "sw_ramp bank": "sw_ramp 19 deg",
+    "tf_ramp + tf_step bank": "tf_step 15 deg",
+    "sw_step bank": "sw_step 17 deg"
+   }
+  },
+  {
+   "truth": "tf_step",
+   "theta_c_deg": 15.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.34348194565011037,
+    "sw_ramp bank": 0.23410215004440205,
+    "tf_ramp + tf_step bank": 0.9999999999997429,
+    "sw_step bank": 0.4323020245688285
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 17 deg",
+    "sw_ramp bank": "sw_ramp 20 deg",
+    "tf_ramp + tf_step bank": "tf_step 15 deg",
+    "sw_step bank": "sw_step 17 deg"
+   }
+  },
+  {
+   "truth": "sw_step",
+   "theta_c_deg": 15.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.44212566326019487,
+    "sw_ramp bank": 0.36715062032986007,
+    "tf_ramp + tf_step bank": 0.4976881328936366,
+    "sw_step bank": 0.9999999999999786
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 14 deg",
+    "sw_ramp bank": "sw_ramp 17 deg",
+    "tf_ramp + tf_step bank": "tf_step 12 deg",
+    "sw_step bank": "sw_step 15 deg"
+   }
+  },
+  {
+   "truth": "tf_ramp",
+   "theta_c_deg": 20.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9999999999999993,
+    "sw_ramp bank": 0.9590280019808863,
+    "tf_ramp + tf_step bank": 0.9999999999999993,
+    "sw_step bank": 0.34521258745319927
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 20 deg",
+    "sw_ramp bank": "sw_ramp 22 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 20 deg",
+    "sw_step bank": "sw_step 20 deg"
+   }
+  },
+  {
+   "truth": "sw_ramp",
+   "theta_c_deg": 20.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9586686787917718,
+    "sw_ramp bank": 0.9999999999999982,
+    "tf_ramp + tf_step bank": 0.9586686787917718,
+    "sw_step bank": 0.3089593869289743
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 18 deg",
+    "sw_ramp bank": "sw_ramp 20 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 18 deg",
+    "sw_step bank": "sw_step 17 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.25",
+   "theta_c_deg": 20.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.6066980899453918,
+    "sw_ramp bank": 0.5813105363491065,
+    "tf_ramp + tf_step bank": 0.8671074817711868,
+    "sw_step bank": 0.4384159008180466
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 22 deg",
+    "sw_ramp bank": "sw_ramp 24 deg",
+    "tf_ramp + tf_step bank": "tf_step 20 deg",
+    "sw_step bank": "sw_step 22 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.5",
+   "theta_c_deg": 20.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.46418743218700714,
+    "sw_ramp bank": 0.4096036991356515,
+    "tf_ramp + tf_step bank": 0.9591832618767749,
+    "sw_step bank": 0.44169502273684247
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 22 deg",
+    "sw_ramp bank": "sw_ramp 24 deg",
+    "tf_ramp + tf_step bank": "tf_step 20 deg",
+    "sw_step bank": "sw_step 22 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_1",
+   "theta_c_deg": 20.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.3676593879526974,
+    "sw_ramp bank": 0.2971664153930607,
+    "tf_ramp + tf_step bank": 0.9890257860422662,
+    "sw_step bank": 0.43223065216910933
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 22 deg",
+    "sw_ramp bank": "sw_ramp 24 deg",
+    "tf_ramp + tf_step bank": "tf_step 20 deg",
+    "sw_step bank": "sw_step 22 deg"
+   }
+  },
+  {
+   "truth": "tf_step",
+   "theta_c_deg": 20.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.2564933243752552,
+    "sw_ramp bank": 0.17045962062046824,
+    "tf_ramp + tf_step bank": 1.0000000000003573,
+    "sw_step bank": 0.41292597382968144
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 22 deg",
+    "sw_ramp bank": "sw_ramp 24 deg",
+    "tf_ramp + tf_step bank": "tf_step 20 deg",
+    "sw_step bank": "sw_step 22 deg"
+   }
+  },
+  {
+   "truth": "sw_step",
+   "theta_c_deg": 20.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.3611815470737766,
+    "sw_ramp bank": 0.2846750721202348,
+    "tf_ramp + tf_step bank": 0.6651241402242923,
+    "sw_step bank": 0.999999999999363
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 19 deg",
+    "sw_ramp bank": "sw_ramp 22 deg",
+    "tf_ramp + tf_step bank": "tf_step 18 deg",
+    "sw_step bank": "sw_step 20 deg"
+   }
+  },
+  {
+   "truth": "tf_ramp",
+   "theta_c_deg": 30.0,
+   "fitting_factor": {
+    "tf_ramp bank": 1.0000000000000022,
+    "sw_ramp bank": 0.9348954867843141,
+    "tf_ramp + tf_step bank": 1.0000000000000022,
+    "sw_step bank": 0.32989958307652806
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 30 deg",
+    "sw_ramp bank": "sw_ramp 33 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 30 deg",
+    "sw_step bank": "sw_step 30 deg"
+   }
+  },
+  {
+   "truth": "sw_ramp",
+   "theta_c_deg": 30.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9651241788314585,
+    "sw_ramp bank": 0.9999999999999988,
+    "tf_ramp + tf_step bank": 0.9651241788314585,
+    "sw_step bank": 0.24703272748283964
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 28 deg",
+    "sw_ramp bank": "sw_ramp 30 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 28 deg",
+    "sw_step bank": "sw_step 28 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.25",
+   "theta_c_deg": 30.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.36837997444624415,
+    "sw_ramp bank": 0.39260697048185095,
+    "tf_ramp + tf_step bank": 0.9499031936855677,
+    "sw_step bank": 0.20732100967176786
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 33 deg",
+    "sw_ramp bank": "sw_ramp 33 deg",
+    "tf_ramp + tf_step bank": "tf_step 30 deg",
+    "sw_step bank": "sw_step 30 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.5",
+   "theta_c_deg": 30.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.2585221972266413,
+    "sw_ramp bank": 0.2581660408022152,
+    "tf_ramp + tf_step bank": 0.9864906265875353,
+    "sw_step bank": 0.17696029100503713
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 33 deg",
+    "sw_ramp bank": "sw_ramp 33 deg",
+    "tf_ramp + tf_step bank": "tf_step 30 deg",
+    "sw_step bank": "sw_step 33 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_1",
+   "theta_c_deg": 30.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.19770369954214645,
+    "sw_ramp bank": 0.18418156049339124,
+    "tf_ramp + tf_step bank": 0.9965383701923968,
+    "sw_step bank": 0.17397396537712476
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 33 deg",
+    "sw_ramp bank": "sw_ramp 33 deg",
+    "tf_ramp + tf_step bank": "tf_step 30 deg",
+    "sw_step bank": "sw_step 33 deg"
+   }
+  },
+  {
+   "truth": "tf_step",
+   "theta_c_deg": 30.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.13411385207633042,
+    "sw_ramp bank": 0.10904942906322754,
+    "tf_ramp + tf_step bank": 0.9999999999999124,
+    "sw_step bank": 0.16972730352973384
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 33 deg",
+    "sw_ramp bank": "sw_ramp 36 deg",
+    "tf_ramp + tf_step bank": "tf_step 30 deg",
+    "sw_step bank": "sw_step 33 deg"
+   }
+  },
+  {
+   "truth": "sw_step",
+   "theta_c_deg": 30.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.32989958307652684,
+    "sw_ramp bank": 0.23600893161192768,
+    "tf_ramp + tf_step bank": 0.32989958307652684,
+    "sw_step bank": 0.9999999999999142
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 30 deg",
+    "sw_ramp bank": "sw_ramp 33 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 30 deg",
+    "sw_step bank": "sw_step 30 deg"
+   }
+  },
+  {
+   "truth": "tf_ramp",
+   "theta_c_deg": 45.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9999999999999936,
+    "sw_ramp bank": 0.9325045275092612,
+    "tf_ramp + tf_step bank": 0.9999999999999936,
+    "sw_step bank": 0.24052881132849893
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 45 deg",
+    "sw_ramp bank": "sw_ramp 45 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 45 deg",
+    "sw_step bank": "sw_step 45 deg"
+   }
+  },
+  {
+   "truth": "sw_ramp",
+   "theta_c_deg": 45.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9325045275092609,
+    "sw_ramp bank": 1.0,
+    "tf_ramp + tf_step bank": 0.9325045275092609,
+    "sw_step bank": 0.19262290288472744
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 45 deg",
+    "sw_ramp bank": "sw_ramp 45 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 45 deg",
+    "sw_step bank": "sw_step 40 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.25",
+   "theta_c_deg": 45.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.253902381739829,
+    "sw_ramp bank": 0.271944734769717,
+    "tf_ramp + tf_step bank": 0.97641003104261,
+    "sw_step bank": 0.18340319660503315
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 45 deg",
+    "sw_ramp bank": "sw_ramp 50 deg",
+    "tf_ramp + tf_step bank": "tf_step 45 deg",
+    "sw_step bank": "sw_step 45 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.5",
+   "theta_c_deg": 45.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.17051429840093113,
+    "sw_ramp bank": 0.18126061991651327,
+    "tf_ramp + tf_step bank": 0.9938903215163332,
+    "sw_step bank": 0.1646355540846347
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 50 deg",
+    "sw_ramp bank": "sw_ramp 50 deg",
+    "tf_ramp + tf_step bank": "tf_step 45 deg",
+    "sw_step bank": "sw_step 45 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_1",
+   "theta_c_deg": 45.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.1275657922679519,
+    "sw_ramp bank": 0.13378417237126639,
+    "tf_ramp + tf_step bank": 0.9984553394810355,
+    "sw_step bank": 0.1542432917584924
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 50 deg",
+    "sw_ramp bank": "sw_ramp 50 deg",
+    "tf_ramp + tf_step bank": "tf_step 45 deg",
+    "sw_step bank": "sw_step 45 deg"
+   }
+  },
+  {
+   "truth": "tf_step",
+   "theta_c_deg": 45.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.08377281593679438,
+    "sw_ramp bank": 0.0853964452966857,
+    "tf_ramp + tf_step bank": 0.9999999999998218,
+    "sw_step bank": 0.14326753384727303
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 50 deg",
+    "sw_ramp bank": "sw_ramp 50 deg",
+    "tf_ramp + tf_step bank": "tf_step 45 deg",
+    "sw_step bank": "sw_step 45 deg"
+   }
+  },
+  {
+   "truth": "sw_step",
+   "theta_c_deg": 45.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.24052881132849893,
+    "sw_ramp bank": 0.18131260554444042,
+    "tf_ramp + tf_step bank": 0.24052881132849893,
+    "sw_step bank": 1.0000000000006866
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 45 deg",
+    "sw_ramp bank": "sw_ramp 50 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 45 deg",
+    "sw_step bank": "sw_step 45 deg"
+   }
+  },
+  {
+   "truth": "tf_ramp",
+   "theta_c_deg": 60.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9999999999999976,
+    "sw_ramp bank": 0.9662914168724859,
+    "tf_ramp + tf_step bank": 0.9999999999999976,
+    "sw_step bank": 0.16733178972240936
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 60 deg",
+    "sw_ramp bank": "sw_ramp 60 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 60 deg",
+    "sw_step bank": "sw_step 60 deg"
+   }
+  },
+  {
+   "truth": "sw_ramp",
+   "theta_c_deg": 60.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.9662914168724859,
+    "sw_ramp bank": 1.0000000000000002,
+    "tf_ramp + tf_step bank": 0.9662914168724859,
+    "sw_step bank": 0.16003626318775166
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 60 deg",
+    "sw_ramp bank": "sw_ramp 60 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 60 deg",
+    "sw_step bank": "sw_step 55 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.25",
+   "theta_c_deg": 60.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.2269704109185464,
+    "sw_ramp bank": 0.23739041430544822,
+    "tf_ramp + tf_step bank": 0.9832981489893292,
+    "sw_step bank": 0.18941533554776604
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 65 deg",
+    "sw_ramp bank": "sw_ramp 65 deg",
+    "tf_ramp + tf_step bank": "tf_step 60 deg",
+    "sw_step bank": "sw_step 60 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_0.5",
+   "theta_c_deg": 60.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.15031762699331094,
+    "sw_ramp bank": 0.15817618630659633,
+    "tf_ramp + tf_step bank": 0.9957210489342099,
+    "sw_step bank": 0.17898885338554033
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 65 deg",
+    "sw_ramp bank": "sw_ramp 65 deg",
+    "tf_ramp + tf_step bank": "tf_step 60 deg",
+    "sw_step bank": "sw_step 60 deg"
+   }
+  },
+  {
+   "truth": "tf_mix_1",
+   "theta_c_deg": 60.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.11074436738754805,
+    "sw_ramp bank": 0.11727160931077148,
+    "tf_ramp + tf_step bank": 0.9989220676165225,
+    "sw_step bank": 0.17310671926914425
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 65 deg",
+    "sw_ramp bank": "sw_ramp 65 deg",
+    "tf_ramp + tf_step bank": "tf_step 60 deg",
+    "sw_step bank": "sw_step 60 deg"
+   }
+  },
+  {
+   "truth": "tf_step",
+   "theta_c_deg": 60.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.07065104499660535,
+    "sw_ramp bank": 0.07582345519688304,
+    "tf_ramp + tf_step bank": 1.0000000000000444,
+    "sw_step bank": 0.16681077306109685
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 65 deg",
+    "sw_ramp bank": "sw_ramp 65 deg",
+    "tf_ramp + tf_step bank": "tf_step 60 deg",
+    "sw_step bank": "sw_step 60 deg"
+   }
+  },
+  {
+   "truth": "sw_step",
+   "theta_c_deg": 60.0,
+   "fitting_factor": {
+    "tf_ramp bank": 0.16733178972240587,
+    "sw_ramp bank": 0.14940522136518566,
+    "tf_ramp + tf_step bank": 0.16733178972240587,
+    "sw_step bank": 0.9999999999998612
+   },
+   "best_filter": {
+    "tf_ramp bank": "tf_ramp 60 deg",
+    "sw_ramp bank": "sw_ramp 65 deg",
+    "tf_ramp + tf_step bank": "tf_ramp 60 deg",
+    "sw_step bank": "sw_step 60 deg"
+   }
+  }
+ ]
+}
