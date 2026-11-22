@@ -100,7 +100,7 @@ def main():
                          "xtick.labelcolor": INK2, "ytick.labelcolor": INK2})
     panels = [p for p in rep["pairs"] if p["injected"] == p["searched"]]
     titles = {"transfer": "Ramp through the transfer functions\n(this project's template and filters)",
-              "cosine": "Cosine ramp\n(the template and filters of the published searches)"}
+              "cosine": "Cosine ramp with z_crit = 0\n(the template as the published papers describe it)"}
     fig, axes = plt.subplots(1, len(panels), figsize=(11.0, 5.0), sharey=True, facecolor=SURFACE)
     ymax = 0.0
     for ax, pair in zip(np.atleast_1d(axes), panels):

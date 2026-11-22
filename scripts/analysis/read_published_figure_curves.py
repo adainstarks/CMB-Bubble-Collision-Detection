@@ -9,18 +9,26 @@
   mcewen-regions  figures/exclusion_regions_uK_nolabels_psfrag.pdf, same source (Fig. 6): the exclusion,
                   sensitivity and unprobed cells on their grid of sizes and amplitudes. This figure is a
                   picture inside the PDF; its pixels are decoded and the cell colours are read.
+  mcewen-profile  figures/bubble_profile_thetac010_A100uK_psfrag.pdf, same source (Fig. 1a): the radial profile
+                  of the collision template for z0 = 100 uK and a size of 10 deg
+  mcewen-spectra  figures/bubble_spectra_thetac010_A100uK_psfrag.pdf, same source (Fig. 1c): the power spectrum
+                  of that template and of the CMB (log axes, l from 1 to 1000, 1e-10 to 1e5 uK^2)
 
 The PDF content stream is decompressed and its path operators are read; nothing is rendered or executed. The
 axes are calibrated from the tick marks drawn in the same file (their labels are checked by eye once: 0, 5,
 10, 15 deg and 0.0 ... 1.0 for the first figure; 13400 ... 14200 Mpc and 0, 1, 2 for the second; 0 ... 90 deg
 and 0 ... 3.5 for the third, whose coordinates sit on a grid of about 0.2 deg and 0.01, with the curve points at
-whole degrees; sizes 2, 5, 10, 25, 50, 90 deg and amplitudes 25, 50, 75, 100, 150, 200, 400 uK for the fourth).
+whole degrees; sizes 2, 5, 10, 25, 50, 90 deg and amplitudes 25, 50, 75, 100, 150, 200, 400 uK for the fourth;
+0 ... 45 deg and 0 ... 100 uK for the profile, whose coordinates sit on a grid of 0.10 deg and 0.34 uK; the
+frame from 1 to 1000 and from 1e-10 to 1e5 for the spectra).
 
 Usage:
   python scripts/analysis/read_published_figure_curves.py osborne-fig3 bubble_profile.pdf out.csv
   python scripts/analysis/read_published_figure_curves.py feeney-fig6 transferfunctions_l20.pdf out.csv
   python scripts/analysis/read_published_figure_curves.py mcewen-snr snr_B1p80_A100uK_psfrag.pdf out.csv
   python scripts/analysis/read_published_figure_curves.py mcewen-regions exclusion_regions_uK_nolabels_psfrag.pdf out.csv
+  python scripts/analysis/read_published_figure_curves.py mcewen-profile bubble_profile_thetac010_A100uK_psfrag.pdf out.csv
+  python scripts/analysis/read_published_figure_curves.py mcewen-spectra bubble_spectra_thetac010_A100uK_psfrag.pdf out.csv
 """
 import re
 import sys
@@ -164,6 +172,31 @@ def mcewen_snr(paths):
     return "curve,theta_crit_deg,snr", rows
 
 
+def _frame(paths):
+    box = [p["pts"] for p in paths if p["op"] == "S" and len(p["pts"]) == 5 and p["pts"][0] == p["pts"][-1]][0]
+    return min(q[0] for q in box), max(q[0] for q in box), min(q[1] for q in box), max(q[1] for q in box)
+
+
+def mcewen_profile(paths):
+    x0, x1, _, _ = _frame(paths)                                   # 0 and 45 deg
+    yt = sorted({round(p["pts"][0][1], 2) for p in paths if p["op"] == "S" and len(p["pts"]) == 2
+                 and abs(p["pts"][0][0] - x0) < 0.01 and abs(p["pts"][0][1] - p["pts"][1][1]) < 0.01
+                 and 3.0 < abs(p["pts"][1][0] - p["pts"][0][0]) < 6.0})
+    assert len(yt) == 6, yt                                        # ticks at 0, 20, ..., 100 uK
+    pts = [p["pts"] for p in paths if p["op"] == "S" and p["stroke"] == [0.0, 0.0, 1.0] and len(p["pts"]) > 50][0]
+    return "curve,theta_deg,delta_t_uK", [("profile", (x - x0) / (x1 - x0) * 45.0, (y - yt[0]) / (yt[5] - yt[0]) * 100.0)
+                                          for x, y in pts]
+
+
+def mcewen_spectra(paths):
+    x0, x1, y0, y1 = _frame(paths)                                 # l = 1 and 1000; 1e-10 and 1e5 uK^2
+    rows = []
+    for name, colour in (("template", [0.0, 0.0, 1.0]), ("cmb", [1.0, 0.0, 0.0])):
+        pts = [p["pts"] for p in paths if p["op"] == "S" and p["stroke"] == colour and len(p["pts"]) > 50][0]
+        rows += [(name, 10.0 ** ((x - x0) / (x1 - x0) * 3.0), 10.0 ** ((y - y0) / (y1 - y0) * 15.0 - 10.0)) for x, y in pts]
+    return "curve,ell,value_uK2", rows
+
+
 def image_rows(path):
     """The RGB picture strips of the file (PNG row predictors undone), stacked with the taller strip on top."""
     raw = open(path, "rb").read()
@@ -231,11 +264,13 @@ def main():
         header, rows = mcewen_regions(pdf)
     else:
         paths = stroked_paths(content_stream(pdf))
-        header, rows = {"osborne-fig3": osborne_fig3, "feeney-fig6": feeney_fig6, "mcewen-snr": mcewen_snr}[which](paths)
+        header, rows = {"osborne-fig3": osborne_fig3, "feeney-fig6": feeney_fig6, "mcewen-snr": mcewen_snr,
+                        "mcewen-profile": mcewen_profile, "mcewen-spectra": mcewen_spectra}[which](paths)
+    fmt = "%s,%.5f,%.6e\n" if which == "mcewen-spectra" else "%s,%.5f,%.6f\n"
     with open(out, "w", newline="\n") as f:
         f.write(header + "\n")
         for name, x, v in rows:
-            f.write("%s,%.5f,%.6f\n" % (name, x, v))
+            f.write(fmt % (name, x, v))
     print(which, {name: sum(1 for r in rows if r[0] == name) for name in dict.fromkeys(r[0] for r in rows)}, "->", out)
 
 

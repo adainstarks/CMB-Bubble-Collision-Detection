@@ -1812,3 +1812,292 @@ So the correction matters for strong large discs, which is where it was found, a
 the real maps overlapping detections on neighbouring large sizes are rare. The numbers of (x) stand. The
 wording "reaches the threshold" stays, as fixed in (ah). `fullsky_filter_search.py` now compares z0 by
 default.
+
+## (aj) 2026-11-22 16:15 CST. z_crit behind the scenes: what McEwen et al.'s own figure shows, and four tests (written before running them)
+
+William's question (22 Nov): does z_crit affect the sensitivity, the signal-to-noise curve (check 2 of (ag)),
+or the agreement with published searches; "you dont know if a parameter could exist behind the scenes on
+accident".
+
+Known before any test:
+
+1. This project's code. `cosine_coefficients` in `fullsky_filter_search.py` integrates
+   (mu - mu_c) / (1 - mu_c) over the disc: zero at the edge by construction, hard cut. There is no z_crit
+   parameter anywhere in the full-sky search. The "transfer" template has no free edge either; its temperature
+   at the causal edge is what the transfer functions give (entry (g)).
+2. Their text (arXiv:1202.2861, TeX source). Profile [c0 + c1 cos(theta)] s(theta; theta_crit) with
+   z0 = c0 + c1 and z_crit = c0 + c1 cos(theta_crit). "We replace the discontinuous Heaviside step function
+   of the bubble collision profile with a 'Schwartz' step function s(theta; theta_crit) that is infinitely
+   differentiable but nevertheless exhibits a smooth but rapid transition to zero about theta_crit"; "we
+   restrict our attention to z_crit ~ 0 uK". Neither the width of the step nor the number behind "~ 0" is
+   given. Also: "on larger scales notice that the matched filter contains only the hot and cold rings that
+   enhance the collision edge".
+3. Their Fig. 1a, the radial profile for z0 = 100 uK, theta_crit = 10 deg (file
+   `bubble_profile_thetac010_A100uK_psfrag.pdf` in the arXiv source; a vector curve of 177 points, read with
+   the tick marks as calibration; the PDF writer rounded it to steps of 0.10 deg and 0.34 uK). This was looked
+   at first and is what started the entry:
+   - inside the disc the drawn curve is a straight line in cos(theta) to 0.3 uK rms, from 100 uK at the
+     centre to 19.0 +- 0.2 uK at 10 deg (fits up to 6, 7, 8, 8.5, 9, 9.5, 9.9 deg give 18.4 to 19.1 uK);
+   - it follows that line to 10.0 to 10.1 deg and then falls smoothly to zero at 10.9 to 11.1 deg; the line
+     itself would reach zero at 11.1 deg, which is 10 deg / 0.9;
+   - the plain z_crit = 0 cosine cut at 10 deg misses the drawn curve by 9.6 uK rms and 19.8 uK at most
+     (5 uK at 5 deg, 12 uK at 8 deg).
+   So the template drawn under "z_crit ~ 0" has about 19% of z0 at the causal edge, followed by a smooth
+   fall about 1 deg wide. Two readings cannot be told apart at one size: (A) z_crit = 0.19 z0 with a smooth
+   step just outside theta_crit; (B) the z_crit = 0 cosine of a disc of radius theta_crit / 0.9, cut
+   smoothly between theta_crit and theta_crit / 0.9.
+
+Not known: whether their filters and published numbers were made with the template as drawn or as
+described. A figure can be an illustration made with other settings. The tests below ask the published
+numbers. The template variants are fixed from Fig. 1a alone:
+
+- `plain`: this project's cosine template (z_crit = 0, hard cut at theta_crit).
+- `edge_rel`: straight line in cos(theta) from z0 to 0.19 z0 at theta_crit, smooth step from 1.005 to
+  1.110 theta_crit.
+- `edge_abs`: the same line, step from theta_crit + 0.05 deg to theta_crit + 1.10 deg.
+- `scaled`: reading (B), step from 1.005 theta_crit to theta_crit / 0.9.
+- `edge_sharp`, for reference only: the line cut at theta_crit, a plain jump of 0.19 z0.
+
+Step shape: the integral of the bump exp(-1 / (1 - t^2)). At the drawing's resolution other smooth shapes
+fit as well (0.55 uK rms each).
+
+Test 1, their Fig. 1c (power spectrum of the 10 deg template, drawn next to the CMB spectrum). Model:
+|a_l0|^2 / (2l + 1) for z0 = 100 uK. Expected if the drawn spectrum belongs to the drawn profile: the edge
+variants follow it from l = 2 to 256, and `plain` falls below it at high l (a kink gives l^-5, a jump l^-3),
+by more than a factor of 3 above l = 100. The red curve of the same figure is compared with the CAMB
+spectrum used here, as a check of the background of check 2.
+
+Test 2, their Fig. 4a, unfiltered curve (dashed red; their formula is the template value at the centre over
+the rms of the background). At 1 to 4 deg it reads 0.96 to 0.97, which is 100 uK / 103 uK, while the CMB rms
+for l up to 256 is 94.3 uK. So the band limit of that figure is in question as well; 256 and 512 are both
+computed. Not a blind test: (ag) already has the plain template 23% too high at 60 deg and 45% at 90 deg,
+and rough hand estimates made before writing this gave about the right level at 30 to 90 deg for an edge
+of 0.2 z0. Counted as reproduced if a variant matches the curve to 3% rms over 2 to 90 deg.
+
+Test 3, their Fig. 4a, matched-filter curve (solid blue). This is the blind one. Now: plain / published =
+0.90 at 2 deg, 0.93 at 5 deg, 0.965 at 10 to 55 deg, 1.00 at 90 deg (check 2 of (ag), cause not found).
+Rule fixed here: "explained" if one variant at one of the two band limits reproduces the published curve
+with an rms deviation below 1.5% over 2 to 90 deg and no size off by more than 3%; "partly" if the rms
+deviation is at most half of the plain template's but the bar is missed; otherwise "not explained". Six
+combinations are tried (three variants, two band limits); the bar is meant to be too strict to pass by
+trying six.
+
+Test 4, only if test 3 gives "explained" or "partly": the WMAP W-band check of (w) rerun with the variant
+that did best in place of the cosine template (filters, sigma maps, thresholds, 1,000 simulated skies), with
+the criteria of (w) unchanged: (a) S within 0.5 of the published value for at least 12 of the 16 published
+candidates; (b) at least 7 of the 11 eligible ones found as candidates. Also reported: S and z0 at their
+nos. 14 and 15 (85 and 90 deg), and the detection fraction at 50 deg and 100 uK at their two positions (the
+cell that failed check 3 of (ag)). Expectation: if their filters carry the edge, (a) and (b) are met and
+nos. 14 and 15 appear. If they are not met, the drawn template is not what their search used, or something
+else differs as well.
+
+Cannot change, whatever comes out: the Planck results of (x) and the sensitivity numbers of (ag). They are
+statements about this project's two templates and stay as measured. Can change: the sentence that the
+cosine template is "their template", the reading of checks 2 and 3 of (ag), and the verdict of (x) on the
+WMAP repeat. No change is made to the Planck search on the strength of these tests without William's word.
+
+Also computed, as a description without a pass mark: the response of the plain filters to a signal with an
+edge z_crit = r z0, relative to r = 0, for the Planck set-up (what an edge in a real signal would do to the
+sensitivity numbers of (ag)).
+
+## (ak) 2026-11-22 16:55 CST. z_crit behind the scenes: the published filter search runs on a template with 0.2 z0 at the edge
+
+Answer to William's question of (aj), in one paragraph. In this project's code there is no hidden z_crit: the
+cosine template is zero at the edge, checked from the formula and from its own coefficients. In the
+published optimal-filter search of McEwen et al. (arXiv:1202.2861) there is one: the text says
+"z_crit ~ 0 uK", the authors' public code sets z_crit = 0.2 z0 with a smooth cut-off out to 1.1 times the
+size, and their figures and their candidate table follow the code. With that template every difference
+between this project's numbers and theirs that was listed as unexplained in (x), (ag) and (ai) goes away or
+shrinks to a few tenths in S. Nothing in the Planck results changes.
+
+Figure: `plots/11_mcewen_template_edge.png`. Scripts: `scripts/analysis/check_mcewen_template.py` (tests 1 to
+3), `fullsky_filter_search.py --cosine-edge` (test 4), `mcewen_template_diagnostics.py`,
+`plot_mcewen_template.py`; the two figures are read by `read_published_figure_curves.py mcewen-profile` and
+`mcewen-spectra`. Reports in `work/results_2026-11-22/`: `check_mcewen_template_report.json`,
+`fullsky_search_summary_wmap7w_v4.json` (z_crit = 0), `_v5.json` (the fit of (aj)), `_v6.json` (their code),
+`fullsky_inject_report_wmap7w_v5_mcewen.json`, `_v6_mcewen.json`,
+`compare_mcewen_sensitivity_report_wmap7w_v5.json`, `_v6.json`, `mcewen_template_masked_positions.json`,
+`mcewen_template_edge_response_planck.json`. Jobs 82940 to 82943.
+
+### Their code (found after (aj) was written and after tests 1 to 3 had been run with the fitted template)
+
+Public repositories of the first author's group: `github.com/astro-informatics/comb` (commit 3bd9996 of
+2015-07-29) and `github.com/astro-informatics/s2fil` (commit aa545b9 of 2015-07-30).
+
+- `comb/src/mod/comb_tmplmap_mod.f90`, function `comb_tmplmap_bubble` ("Written by Jason McEwen", November
+  2011). Defaults: `z0 = 1e0`, `zc = 0.2e0 * z0`, `theta_c = 20e0 / 180e0 * PI`, `theta_0 = 1.1e0 * theta_c`.
+  Value: `c1 = (z0 - zc) / (1 - cos(theta_c))`, `c0 = z0 - c1`, `val = c0 + c1 * cos(theta)`, times k with
+  k = 1 inside theta_c, 0 outside theta_0 and `exp(-1/(1 - ts**2)) * exp(1)` in between,
+  `ts = (theta - theta_c) / (theta_0 - theta_c)`. This is the "Schwartz step" of the paper.
+- `comb/src/prog/comb_objgen.f90`, which draws bubbles of a given size: `bubble_params(1) = 1.0`,
+  `bubble_params(2) = 0.2`, `bubble_params(3) = ` size, `bubble_params(4) = bubble_params(3) * 1.1`.
+- The filters are built by `s2fil_filter_construct -tmpl bubble -tmpl_param FILE`. The only parameter file in
+  the repository (`tmplparam01.txt`: 1.0, -1.0, 10.0, 10.0, a template from +1 to -1 with no cut-off) is not
+  the paper's setting, so the files of the published run are not public. What that run used is read from its
+  output in tests 3 and 4.
+- Also in the repository: their background spectrum, `data_in/wmap_lcdm_pl_model_wmap7baoh0_CAMB.dat`. It
+  agrees with the CAMB spectrum used here to 1.3% (ratio 1.011 at l = 2, 0.995 at 100, 1.004 at 256), so the
+  background of check 2 of (ag) was right.
+
+Three templates from here on: "text" (z_crit = 0, cut at the edge; this project's cosine template), "fit"
+(0.19 z0 at the edge, cut-off from 1.005 to 1.110 of the size; the variant `edge_rel` fixed in (aj)), "code"
+(the defaults above).
+
+### This project's side
+
+`cosine_coefficients` is zero at the edge by construction. Checked numerically: its Legendre series (to l = 4000) gives
+0.0394 at 0.98 of the size for 10 deg (the exact form: 0.0395), 0.0009 at the edge and 0.0001 or less
+outside, and a fit of its coefficients as a * top-hat + b * edge-term gives a = 1.000000, b = -1.000000 at
+every size, which is z_crit = 0. The transfer template has no free edge; its edge value is what the transfer
+functions give (0.5 of the centre at 10 deg, 0.2 at 20 deg, under 0.1 above 40 deg, entry (g)).
+
+### Test 1: the spectrum they drew for the 10 deg template (Fig. 1c)
+
+The model stated in (aj), |a_l0|^2 / (2l + 1), was wrong. The drawn quantity is |a_l0|^2: the ratio of the
+drawn curve to |a_l0|^2 / (2l + 1) of the code template is 5.1, 7.1, 9.1, 11.8, 14.1 at l = 2 to 6 and 41.7
+at l = 20, which is 2l + 1 (5, 7, 9, 11, 13, 41); for the text template it is 7.7 to 28.9 and follows no
+such law. With |a_l0|^2:
+
+| template | log10(drawn / model), l 2 to 20 | l 21 to 60 | largest value in band, drawn / model: l 61-100, 101-160, 161-256 |
+|---|---|---|---|
+| text | +0.090 (16 to 84%: -0.03 to +0.19) | -0.20 (-0.98 to +0.71) | 1.40, 2.26, 1.53 |
+| fit | +0.013 (+0.008 to +0.028) | +0.003 (-0.12 to +0.07) | 1.02, 0.97, 0.66 |
+| code | +0.010 (+0.006 to +0.024) | +0.019 (-0.001 to +0.031) | 0.97, 0.92, 0.63 |
+
+The code template follows the drawn spectrum to 2 to 5% in power up to l = 60, zeros included. The text
+template has its zeros at other multipoles (at l = 25, 28, 40 the drawn curve reads 0.065, 0.19, 0.096 uK^2;
+text gives 0.83, 0.035, 0.33; code 0.063, 0.19, 0.096). The expectation of (aj) that the text template would
+fall short by more than a factor of 3 above l = 100 was wrong: the smooth cut-off removes most of the l^-3
+tail of the edge, the shortfall is 1.5 to 2.3. Above l = 160 every template is off by a third or more. Their CMB curve
+in the same figure over C_l: median 1.04, range 0.99 to 1.09 (a dashed line of 82 points).
+
+### Test 2: unfiltered curve of Fig. 4a
+
+Their curve at 1 to 4 deg reads 0.963 = 100 uK / 103.8 uK. The rms of the CMB is 94.3 uK for l up to 256
+(100 / sigma = 1.060), 101.8 uK up to 384 (0.982), 104.5 uK up to 512 (0.957). With l up to 512 the fit
+template reproduces the curve to 0.8% rms over 2 to 90 deg (mean 0.999), the code template to 1.5% (mean
+0.989; the last point, 90 deg, is 6% low where the curve itself is at 0.15 and is read in steps of 0.01).
+The text template is 24% off (8% at 45 deg, 17% at 60 deg, 63% at 90 deg). With l up to 256 everything is
+10% too high. Reproduced by the rule of (aj) (3%). So Fig. 4a was made with a band limit near 512, not the
+256 of their search.
+
+### Test 3: matched-filter curve of Fig. 4a (blind for the fit template)
+
+Computed / published, CAMB spectrum unless said otherwise:
+
+| template, band limit | 2 | 3 | 5 | 7 | 10 | 14 | 20 | 30 | 45 | 60 | 75 | 90 deg | rms dev | largest |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| text, 256 (check 2 of (ag)) | 0.904 | 0.919 | 0.930 | 0.946 | 0.964 | 0.967 | 0.967 | 0.965 | 0.966 | 0.973 | 0.987 | 0.996 | 3.4% | 9.6% |
+| text, 512 | 0.935 | 0.933 | 0.936 | 0.950 | 0.967 | 0.969 | 0.968 | 0.966 | 0.966 | 0.974 | 0.988 | 0.997 | 3.2% | 6.8% |
+| fit, 256 | 0.954 | 0.960 | 0.965 | 0.979 | 0.995 | 0.997 | 0.998 | 0.999 | 1.001 | 1.000 | 0.996 | 0.989 | 1.1% | 4.6% |
+| fit, 512 | 0.991 | 0.984 | 0.981 | 0.990 | 1.000 | 0.999 | 0.998 | 0.999 | 1.001 | 1.000 | 0.996 | 0.989 | 0.6% | 2.0% |
+| code, 512 | 0.995 | 0.988 | 0.984 | 0.992 | 1.002 | 1.001 | 1.001 | 1.002 | 1.005 | 1.005 | 1.004 | 1.004 | 0.5% | 1.7% |
+| code, 512, their spectrum file | 0.996 | 0.988 | 0.983 | 0.991 | 1.000 | 0.998 | 0.997 | 0.998 | 1.000 | 1.000 | 1.000 | 1.000 | 0.4% | 1.7% |
+
+By the rule of (aj) (rms below 1.5%, no size off by more than 3%): "explained" by the fit template at a
+band limit of 512. The other two variants of (aj) fail (`edge_abs` 43 to 48% rms, `scaled` 3.3% with 0.914
+at 90 deg): the edge is a fixed fraction of z0 and the cut-off grows with the size, which is what the code
+does. The last row is not blind (made after reading the code) and has no free number in it: their template,
+their spectrum file. It is the published curve to the accuracy with which the figure can be read from 10 deg
+up. The 3 to 10% of check 2 of (ag) is the difference between z_crit = 0.2 z0 and z_crit = 0.
+
+Fig. 1a against the code template: 0.71 uK rms, 2.5 uK at most (fit 0.40 and 1.70; text 9.60 and 19.84).
+The value at the edge read from the drawing, 18.4 to 19.1 uK, against the code's 20: the drawing is rounded
+to 0.10 deg and the slope there is 20 uK per degree, so 1 uK is the rounding. The "+- 0.2" of (aj) was the
+scatter between fit ranges only and too small.
+
+### Test 4: the WMAP W-band check of (w) with their template
+
+Same data, mask, band limit, thresholds, 3,000 + 1,000 simulated skies as run v4 of (ai); only the cosine
+template differs. v5 is the fit template as fixed in (aj), v6 the code template (added after the code was
+found). Foreground-reduced map:
+
+| | v4, text | v5, fit | v6, code | needed |
+|---|---:|---:|---:|---:|
+| (a) S within 0.5 of the published S, of 16 | 10 | 14 | 14 | 12 |
+| (b) eligible candidates found, of 11 | 6 | 9 | 9 | 7 |
+| largest difference in z0 over the 16, mK | 0.16 | 0.02 | 0.02 | |
+| S within 0.5 at the published position itself, masked pixels included, of 16 | 5 | 13 | 13 | |
+
+Both criteria of (w) are met with their template; on the plain band map the same (14 and 9). Run v6
+against their table, S at the position (published) and z0 in mK (published):
+
+| no. | size | S | z0 | | no. | size | S | z0 |
+|---:|---:|---|---|---|---:|---:|---|---|
+| 0 | 1.5 | 4.35 (4.25) | +0.235 (+0.24) | | 8 | 5 | 4.32 (4.43) | +0.153 (+0.15) |
+| 1 | 2 | 3.68 (4.15) | +0.181 (+0.20) | | 9 | 7 | 4.36 (4.39) | +0.137 (+0.14) |
+| 2 | 2 | 3.50 (4.08) | +0.195 (+0.20) | | 10 | 20 | 4.09 (3.94) | +0.106 (+0.11) |
+| 3 | 2 | 3.97 (4.05) | -0.190 (-0.19) | | 11 | 26 | 3.30 (3.07) | -0.088 (-0.09) |
+| 4 | 3 | 4.21 (4.26) | -0.166 (-0.17) | | 12 | 35 | 3.65 (3.33) | +0.089 (+0.09) |
+| 5 | 3 | 3.47 (4.02) | +0.158 (+0.17) | | 13 | 40 | 2.93 (3.07) | +0.085 (+0.10) |
+| 6 | 4 | 4.75 (4.56) | -0.154 (-0.16) | | 14 | 85 | 3.62 (3.03) | +0.153 (+0.15) |
+| 7 | 5 | 4.47 (4.67) | -0.157 (-0.16) | | 15 | 90 | 3.24 (3.11) | -0.146 (-0.16) |
+
+(Nos. 11 and 15 are centred on masked pixels; their S here is taken with masked pixels included.)
+
+- Their two largest candidates, which the text template does not see (S 0.3 and 0.6 at the positions, z0
+  -0.01 and -0.02 mK), are there: no. 14 with S 3.6 and z0 +0.153 mK (published 3.03, +0.15), a candidate
+  of this search too; no. 15 with S 3.2 and z0 -0.146 mK (published 3.11, -0.16). No. 15 sits at
+  b = +1.5 deg, inside the mask, and so does no. 11. Their search therefore did not leave masked pixels
+  out; this one does (a stated choice of (w)), which is why no. 15 cannot be a candidate here. The z0
+  values of nos. 10 to 13, 17 to 58% low with the text template, agree to 0.015 mK.
+- What is left: at 2 to 3 deg three candidates (nos. 1, 2, 5) come out 0.5 to 0.6 lower in S at the
+  published position (0.2 to 0.3 lower at the strongest pixel nearby), and nos. 12 and 14 come out 0.3 and
+  0.6 higher. Not followed up. Unknown on their side: the
+  parameter files, the pixel resolution (their scripts use Nside 128), the noise model in the filters.
+- With their template the foreground-reduced map gives 40 candidates where simulated skies give 82 on
+  average (p = 0.88), largest S 4.84 at 9 deg (p = 0.62). Ordinary, as with the text template.
+- Check 3 of (ag), the published exclusion and sensitivity regions: with their template all 8 boundary
+  comparisons from 5 to 60 deg are inside one grid step (before 7 of 8). The 50 deg exclusion boundary
+  moves from 154 to 145 uK (allowed: 150). Their six detections out of six at 50 deg and 100 uK still have
+  a probability of only 5% under the detection rate measured here (0.62 and 0.60 at the two positions;
+  before 0.57 and 0.52, 2.7%). That cell stays the least likely one.
+
+### What an edge does to the sensitivity numbers of (ag)
+
+The numbers of (ag) are for the two templates of this project and stand. For a collision that did carry an
+edge, at the same z0, on the Planck set-up (`mcewen_template_diagnostics.py edge-response`):
+
+| size, deg | 2 | 5 | 10 | 20 | 30 | 50 | 60 | 75 | 90 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| edge of their code: S in the z_crit = 0 filters / S of the no-edge signal | 1.03 | 0.98 | 0.93 | 0.88 | 0.84 | 0.77 | 0.73 | 0.63 | 0.48 |
+| the same in the transfer filters | 1.24 | 1.26 | 1.31 | 1.34 | 1.13 | 0.89 | 0.81 | 0.69 | 0.51 |
+| share of the best possible S reached by the z_crit = 0 filters | 0.97 | 0.94 | 0.90 | 0.85 | 0.81 | 0.75 | 0.71 | 0.63 | 0.48 |
+| plain jump of 0.5 z0: share of the best possible S | 0.90 | 0.80 | 0.68 | 0.53 | 0.43 | 0.31 | 0.26 | 0.18 | 0.10 |
+| plain jump of 0.5 z0: its own filters / the no-edge signal in its filters | 1.24 | 1.34 | 1.52 | 1.88 | 2.24 | 2.93 | 3.32 | 4.04 | 5.07 |
+
+So z0 limits from the z_crit = 0 search do not carry over to signals with an edge: for the 20% smoothed
+edge they would be up to a third weaker below 60 deg and a factor of two at 90 deg, and a sharp edge is a
+different search altogether (its own filters gain a factor 1.2 to 5). The smoothed 20% edge itself adds only
+3 to 6% to the best possible S at a given z0 up to 60 deg (nothing at 90 deg), which is the size of the
+offset in Fig. 4a.
+
+### Corrections to earlier entries
+
+- (ag), check 2 ("anything else", cause not found): the cause is the template. Their curve is for
+  z_crit = 0.2 z0 and a band limit near 512.
+- (ag), check 3 (not passed at 50 deg): passes with their template; the 50 deg cell is still unlikely (5%).
+- (x), (ag), (ai): "the WMAP check misses both criteria, not a validated repeat". True for the text
+  template. With the template of their code the check meets both criteria. The runs with z_crit = 0 remain
+  what they are: the search as their text describes it.
+- (ag), diagnostics on nos. 14 and 15 ("still unexplained"): explained by the template; no. 15 also needs
+  masked pixels in the search.
+- README, the docstring of `fullsky_filter_search.py` and a panel title of
+  `plots/10_fullsky_search_sensitivity.png` called the z_crit = 0 cosine "their template" or "the template
+  and filters of the published searches". Changed to "as the published papers describe it"; the figure is
+  redrawn from the same numbers.
+- (aj): the "+- 0.2 uK" and the spectrum model, both above.
+
+### What is and is not claimed
+
+Claimed: the paper's text gives z_crit ~ 0; the authors' public code has 0.2 z0 as the default and in the
+object generator; Figs. 1a, 1c and 4a and the candidate table are reproduced with 0.2 z0 and not with 0.
+Not claimed: that this is a mistake. "~ 0" may have been meant loosely, or a default may have stayed in;
+only the authors can say, and the parameter files of the published run are not public. Not checked: whether
+later work that started from these candidates (Feeney et al. 2013, which removes the edge parameter from its
+model) used the same filters.
+
+For this project: no result changes. The cosine template of the Planck search is the z_crit = 0 one, the
+transfer template is the physical one, and neither has a free edge. A repeat of their search on Planck with
+their actual template would be one more run (`--cosine-edge 0.2 --cosine-step 1.0,1.1,schwartz`); it has
+not been run and waits for William's word, like the other open steps.

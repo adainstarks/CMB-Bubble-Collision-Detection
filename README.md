@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (ai)):
+Open as of 22 November 2026 (notebook entries (t) to (ak)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
@@ -76,13 +76,31 @@ Open as of 22 November 2026 (notebook entries (t) to (ai)):
   candidates and the largest significance are ordinary among Gaussian skies with the same mask: 31 to 34
   candidates per map where simulated skies give 23 to 106, largest significance 4.8 with p = 0.73 to 0.76,
   32 of 33 candidates common to all four maps, none at 45 degrees or more. Eight of the 16 WMAP candidates
-  of McEwen et al. are found again. The check on their own data (WMAP 7-year W band) missed both criteria
-  fixed beforehand: amplitudes and the strongest features agree with their table, but the significances
-  come out lower by about 0.3 and their two largest candidates do not appear. So this is not a validated
-  repeat of their candidate list. One step of the algorithm was corrected afterwards (detections on
-  neighbouring sizes are now compared in z0, as in their text); the Planck candidate lists did not change
-  and the WMAP check came out the same. Open: the cause of the difference on WMAP, and the Planck
-  end-to-end simulations.
+  of McEwen et al. are found again. The cosine template of this search is the one their text describes
+  (z_crit = 0). With it, the check on their own data (WMAP 7-year W band) missed both criteria fixed
+  beforehand: the significances came out lower by about 0.3 and their two largest candidates did not
+  appear. The cause is the template, see the next item; with the template of their code the same check
+  meets both criteria. One step of the algorithm was corrected on the way (detections on neighbouring
+  sizes are now compared in z0, as in their text); the Planck candidate lists did not change. Open: the
+  Planck end-to-end simulations. The Planck search has not been run with the template of their code.
+- The template behind the published filter search, entries (aj), (ak) (figure
+  `plots/11_mcewen_template_edge.png`, `scripts/analysis/check_mcewen_template.py`). The text of McEwen et
+  al. sets the temperature at the edge of the disc to z_crit ~ 0. The authors' public code (COMB,
+  `comb_tmplmap_bubble`) has z_crit = 0.2 z0 as its default and in its object generator, with a smooth
+  cut-off between 1.0 and 1.1 times the size. Their own figures follow the code: the drawn profile reads 19
+  to 20 uK at the edge of a 100 uK, 10 degree disc; the drawn spectrum of that template matches to 2 to 5%;
+  and their signal-to-noise curve of the matched filter is reproduced to 0.4% (1.7% at most) with the code's
+  template and their own spectrum file, against 3 to 10% too low with z_crit = 0. On the WMAP W band, with
+  the code's template, the significance is within 0.5 of the published value for 14 of their 16 candidates
+  (10 with z_crit = 0; 12 were required), 9 of the 11 eligible ones are found (6 before; 7 required), all 16
+  amplitudes agree to 0.02 mK, and their two largest candidates are there. One of those and one other are
+  centred on masked pixels, which this search leaves out and theirs did not. Whether "~ 0" was meant
+  loosely or a default stayed in is a question for the authors; the parameter files of their run are not
+  public. No theory paper after 2011 supports a temperature jump at the edge, so this project keeps
+  z_crit = 0 for the cosine template and carries the physical edge in the transfer template;
+  `--cosine-edge` exists for comparisons with their paper. For a signal that did carry such an edge, limits
+  on z0 from the z_crit = 0 filters would be up to a third weaker below 60 degrees and a factor of two
+  weaker at 90 degrees.
 - What that search could have seen, entries (ae) to (ag) (figure `plots/10_fullsky_search_sensitivity.png`,
   numbers in `work/results_2026-11-22/fullsky_inject_summary_planck_v1.md`): templates of known size and
   amplitude were added at 150 positions on 100 simulated skies, and on the real maps. A collision whose
@@ -94,10 +112,10 @@ Open as of 22 November 2026 (notebook entries (t) to (ai)):
   Gaussian simulated skies and for multipoles up to 256. The measurement uses a linear shortcut that was
   checked against the full search on 160 cases (identical). On WMAP, at the two positions McEwen et al.
   used, the same measurement agrees with their published exclusion and sensitivity regions within one step
-  of their grid in 7 of 8 comparisons between 5 and 60 degrees; at 50 degrees their exclusion limit is
-  lower than the one measured here, which their six simulated skies cannot settle. Their filter
-  signal-to-noise curve is reproduced to 3 to 4% from 10 to 55 degrees and to 5 to 7% at 5 to 7 degrees;
-  that offset is not explained.
+  of their grid in 7 of 8 comparisons between 5 and 60 degrees with z_crit = 0, and in all 8 with the
+  template of their code. At 50 degrees their six detections out of six still have a probability of only
+  5% under the detection rate measured here. The 3 to 10% by which their filter signal-to-noise curve was
+  missed is the difference between the two templates (previous item).
 - The April scripts and data sets are unchanged, so the April results still reproduce. Defects 1 to 4 are
   still in them; the corrected helpers (`scripts/core/patch_geometry.py`) are used by new work only.
 - Not redone: the candidate-centred re-extraction at the corrected positions, and the project's full

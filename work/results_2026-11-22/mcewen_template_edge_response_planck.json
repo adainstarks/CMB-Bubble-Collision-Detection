@@ -1,0 +1,266 @@
+{
+ "dataset": "planck",
+ "lmax": 256,
+ "rows": [
+  {
+   "size_deg": 2.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.9439973040217842,
+    "code_template": 0.9857445983090347,
+    "jump_0p5": 1.0089837509081132
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 1.0280957196458502,
+    "transfer_filter_same_z0": 1.2399958424333608,
+    "share_of_best_possible": 0.9715390157190464,
+    "own_matched_filter_same_z0": 1.0582135179460042
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 1.1134112796896654,
+    "transfer_filter_same_z0": 1.5081467636828856,
+    "share_of_best_possible": 0.8950845331434024,
+    "own_matched_filter_same_z0": 1.2439174608229817
+   }
+  },
+  {
+   "size_deg": 3.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.993560420004775,
+    "code_template": 0.9726366035415013,
+    "jump_0p5": 1.0064696318014188
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 1.0084047292831588,
+    "transfer_filter_same_z0": 1.245055587724006,
+    "share_of_best_possible": 0.9624742832373695,
+    "own_matched_filter_same_z0": 1.0477212189932994
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 1.09362697336893,
+    "transfer_filter_same_z0": 1.5154348691226416,
+    "share_of_best_possible": 0.8633683421875644,
+    "own_matched_filter_same_z0": 1.266698024388926
+   }
+  },
+  {
+   "size_deg": 5.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.9910361115521882,
+    "code_template": 1.0131537618086859,
+    "jump_0p5": 1.0659603212822844
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.9804677875248292,
+    "transfer_filter_same_z0": 1.2569178386111175,
+    "share_of_best_possible": 0.9421948463020927,
+    "own_matched_filter_same_z0": 1.0406210470933366
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 1.0638539695877973,
+    "transfer_filter_same_z0": 1.536670708751128,
+    "share_of_best_possible": 0.795044584824002,
+    "own_matched_filter_same_z0": 1.3381060507736195
+   }
+  },
+  {
+   "size_deg": 7.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.9984063200193551,
+    "code_template": 0.9863048647618231,
+    "jump_0p5": 0.9999061232700988
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.9595179387429893,
+    "transfer_filter_same_z0": 1.2782480147326427,
+    "share_of_best_possible": 0.9247961699585859,
+    "own_matched_filter_same_z0": 1.0375453207012724
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 1.0454693097462895,
+    "transfer_filter_same_z0": 1.5766040487545847,
+    "share_of_best_possible": 0.7412535195355302,
+    "own_matched_filter_same_z0": 1.4104072118286615
+   }
+  },
+  {
+   "size_deg": 10.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.9842854735187385,
+    "code_template": 0.9862258305868681,
+    "jump_0p5": 0.9964022094673093
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.9349666377852124,
+    "transfer_filter_same_z0": 1.3093376333498008,
+    "share_of_best_possible": 0.9026179463451259,
+    "own_matched_filter_same_z0": 1.03583874170802
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 1.0285809677848161,
+    "transfer_filter_same_z0": 1.635860865575999,
+    "share_of_best_possible": 0.6779824836435893,
+    "own_matched_filter_same_z0": 1.517120268737701
+   }
+  },
+  {
+   "size_deg": 14.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.9726407979323237,
+    "code_template": 0.9669607427558922,
+    "jump_0p5": 0.9666587211864686
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.9107606713516571,
+    "transfer_filter_same_z0": 1.355795763100429,
+    "share_of_best_possible": 0.8797356579469259,
+    "own_matched_filter_same_z0": 1.0352662906459147
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 1.0118482689097636,
+    "transfer_filter_same_z0": 1.7518146047744831,
+    "share_of_best_possible": 0.6070027687694699,
+    "own_matched_filter_same_z0": 1.666958242976397
+   }
+  },
+  {
+   "size_deg": 20.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.9398773208104683,
+    "code_template": 0.9262666581894632,
+    "jump_0p5": 0.9198867632102641
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.8823953784120551,
+    "transfer_filter_same_z0": 1.34336740048566,
+    "share_of_best_possible": 0.8517297498472649,
+    "own_matched_filter_same_z0": 1.0360039420605998
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 0.9949761422847173,
+    "transfer_filter_same_z0": 1.8208814046725026,
+    "share_of_best_possible": 0.5286156111223997,
+    "own_matched_filter_same_z0": 1.882229963228106
+   }
+  },
+  {
+   "size_deg": 30.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.8702298510133398,
+    "code_template": 0.8410115187867431,
+    "jump_0p5": 0.8157835923142736
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.8437116138815077,
+    "transfer_filter_same_z0": 1.1320438408204478,
+    "share_of_best_possible": 0.8123741122750666,
+    "own_matched_filter_same_z0": 1.038575209540688
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 0.9732456717779475,
+    "transfer_filter_same_z0": 1.79624255241937,
+    "share_of_best_possible": 0.43461454299270147,
+    "own_matched_filter_same_z0": 2.239330660857088
+   }
+  },
+  {
+   "size_deg": 40.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.7795388124431156,
+    "code_template": 0.7319426663123952,
+    "jump_0p5": 0.7011892916092934
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.8103627219030722,
+    "transfer_filter_same_z0": 0.9837109595287115,
+    "share_of_best_possible": 0.7800039695792265,
+    "own_matched_filter_same_z0": 1.0389212792599285
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 0.9488766980782932,
+    "transfer_filter_same_z0": 1.7362410669757216,
+    "share_of_best_possible": 0.367171973021627,
+    "own_matched_filter_same_z0": 2.5842841169753523
+   }
+  },
+  {
+   "size_deg": 50.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.6748538564893585,
+    "code_template": 0.6073045708624989,
+    "jump_0p5": 0.5500789288156477
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.7744777528137108,
+    "transfer_filter_same_z0": 0.8874805229955662,
+    "share_of_best_possible": 0.7481882184828019,
+    "own_matched_filter_same_z0": 1.0351375946339005
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 0.912700762247082,
+    "transfer_filter_same_z0": 1.6354164467775356,
+    "share_of_best_possible": 0.31118736928528606,
+    "own_matched_filter_same_z0": 2.932962106859642
+   }
+  },
+  {
+   "size_deg": 60.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.562780780483387,
+    "code_template": 0.47729514890357216,
+    "jump_0p5": 0.4436082427982705
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.729958828206569,
+    "transfer_filter_same_z0": 0.8079456122032767,
+    "share_of_best_possible": 0.7109561708776739,
+    "own_matched_filter_same_z0": 1.0267283105587737
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 0.857843803779722,
+    "transfer_filter_same_z0": 1.4741911527486409,
+    "share_of_best_possible": 0.25861826439259594,
+    "own_matched_filter_same_z0": 3.3170271473072397
+   }
+  },
+  {
+   "size_deg": 75.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.39611687568395615,
+    "code_template": 0.2956978507888589,
+    "jump_0p5": 0.45767833254241175
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.6337377748804086,
+    "transfer_filter_same_z0": 0.6856378926655329,
+    "share_of_best_possible": 0.6289496355390746,
+    "own_matched_filter_same_z0": 1.0076129137704806
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 0.7249983274952521,
+    "transfer_filter_same_z0": 1.141809281489603,
+    "share_of_best_possible": 0.17966085871333837,
+    "own_matched_filter_same_z0": 4.035371603405493
+   }
+  },
+  {
+   "size_deg": 90.0,
+   "observed_peak_per_unit_z0": {
+    "z_crit_0": 0.24998974613525476,
+    "code_template": 0.24145287496789958,
+    "jump_0p5": 0.4091923923345398
+   },
+   "code_template": {
+    "cosine_filter_same_z0": 0.48083108409938075,
+    "transfer_filter_same_z0": 0.5141683325299394,
+    "share_of_best_possible": 0.48459121388744053,
+    "own_matched_filter_same_z0": 0.9922406150167362
+   },
+   "jump_0p5": {
+    "cosine_filter_same_z0": 0.5000000000000168,
+    "transfer_filter_same_z0": 0.4999999999998884,
+    "share_of_best_possible": 0.09855036103680762,
+    "own_matched_filter_same_z0": 5.0735481305164525
+   }
+  }
+ ]
+}

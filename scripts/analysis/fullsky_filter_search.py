@@ -18,10 +18,18 @@ Procedure (McEwen, Feeney, Johnson, Peiris, arXiv:1202.2861, Secs. III C and IV)
 Assumptions and choices that are this project's, not theirs
 ----------------------------------------------------------
 * Two templates, each with its own filters, thresholds and candidates:
-  "cosine"   their template with z_crit = 0: (cos t - cos t_c) / (1 - cos t_c) inside the disc;
+  "cosine"   their template as their text describes it, z_crit = 0: (cos t - cos t_c) / (1 - cos t_c) inside
+             the disc, zero outside;
   "transfer" the ramp through the CAMB transfer functions (``collision_template_transfer``).
   Both carry the beam and the pixel window; monopole and dipole are dropped; unit amplitude = unit observed
   peak Delta T / T.
+* ``--cosine-edge R`` (default 0, the line above) replaces the cosine template by the one of their figures
+  and of their public code (notebook entries (aj), (ak)): a straight line in cos t from z0 at the centre to
+  R z0 at t_c, times a smooth cut-off just outside t_c. Their code (COMB, ``comb_tmplmap_bubble``) has R = 0.2
+  and the cut-off exp(1 - 1 / (1 - s^2)) between t_c and 1.1 t_c: ``--cosine-edge 0.2 --cosine-step
+  1.0,1.1,schwartz``. The default ``--cosine-step`` with R = 0.19 is the earlier fit to their Fig. 1a. This is
+  a diagnostic for comparisons with their paper, not a physical model: no theory paper after 2011 supports a
+  temperature jump at the edge (entry (b)).
 * Filter: w(n) = sum_lm (t_l / D_l) a_lm Y_lm(n) / sqrt(norm), norm = sum_l (2l+1)/(4 pi) t_l^2 / D_l, D_l the
   total power of the simulated sky. The amplitude estimate is w / sqrt(norm).
 * Preparation of a sky, real or simulated: monopole and dipole fitted on the unmasked pixels and removed,
@@ -173,6 +181,53 @@ def cosine_coefficients(theta_c, lmax):
     return 2.0 * math.pi * ((0.5 * (1.0 - mu_c) * w * f) @ np.polynomial.legendre.legvander(mu, lmax))
 
 
+_BUMP_GRID = np.linspace(-1.0, 1.0, 20001)[1:-1]
+_BUMP_CUM = np.cumsum(np.exp(-1.0 / (1.0 - _BUMP_GRID**2)))
+_BUMP_CUM /= _BUMP_CUM[-1]
+
+
+def smooth_step(theta, t1, t2):
+    """1 below t1, 0 above t2, infinitely differentiable in between: one minus the normalised integral of the
+    bump exp(-1 / (1 - t^2))."""
+    u = np.clip((np.asarray(theta, dtype=np.float64) - t1) / (t2 - t1), 0.0, 1.0)
+    return 1.0 - np.interp(2.0 * u - 1.0, _BUMP_GRID, _BUMP_CUM, left=0.0, right=1.0)
+
+
+def schwartz_step(theta, t1, t2):
+    """The cut-off of ``comb_tmplmap_bubble`` in the authors' public COMB code: 1 below t1, 0 above t2,
+    exp(1 - 1 / (1 - s^2)) in between with s = (theta - t1) / (t2 - t1)."""
+    s = np.clip((np.asarray(theta, dtype=np.float64) - t1) / (t2 - t1), 0.0, 1.0)
+    inner = s < 1.0
+    out = np.zeros_like(s)
+    out[inner] = np.exp(1.0 - 1.0 / (1.0 - s[inner] ** 2))
+    return out
+
+
+def cosine_edge_coefficients(theta_c, lmax, edge, step=(1.005, 1.110)):
+    """The collision template of McEwen et al.'s (2012) figures and public code, which is not the z_crit = 0
+    template of their text: a straight line in mu = cos(theta) from 1 at the centre to ``edge`` at theta_c,
+    times a smooth cut-off from 1 at step[0] * theta_c to 0 at step[1] * theta_c. A third element of ``step``
+    names the cut-off: "integral" (default, ``smooth_step``, the fit to their Fig. 1a) or "schwartz"
+    (``schwartz_step``, their code). Their code: edge = 0.2, step = (1.0, 1.1, "schwartz"). Same normalisation
+    as ``cosine_coefficients``; edge = 0 with a step of zero width would give that function back."""
+    mu_c = math.cos(theta_c)
+    t1, t2 = step[0] * theta_c, min(step[1] * theta_c, math.pi)
+    cut = schwartz_step if (len(step) > 2 and step[2] == "schwartz") else smooth_step
+
+    def line(mu):
+        return 1.0 - (1.0 - edge) * (1.0 - mu) / (1.0 - mu_c)
+
+    x, w = np.polynomial.legendre.leggauss(lmax // 2 + 8)        # exact: degree l + 1 up to the start of the step
+    a = math.cos(t1)
+    mu = 0.5 * (1.0 - a) * x + 0.5 * (1.0 + a)
+    out = 2.0 * math.pi * ((0.5 * (1.0 - a) * w * line(mu)) @ np.polynomial.legendre.legvander(mu, lmax))
+    x, w = np.polynomial.legendre.leggauss(max(400, lmax))        # the step itself, smooth
+    a, b = math.cos(t2), math.cos(t1)
+    mu = 0.5 * (b - a) * x + 0.5 * (b + a)
+    return out + 2.0 * math.pi * ((0.5 * (b - a) * w * line(mu) * cut(np.arccos(mu), t1, t2))
+                                  @ np.polynomial.legendre.legvander(mu, lmax))
+
+
 def finish_template(b, window, total_power, fine):
     """From raw coefficients b_l to: t_l in Kelvin per unit observed peak amplitude, filter weights, norm.
 
@@ -204,9 +259,11 @@ def build_bank(ds):
     peak_angle = np.zeros(NF)
     z0_factor = np.ones(NF)          # amplitude -> central amplitude z0 of the full cosine template
     peak_value = np.ones(NF)         # observed peak of the raw template (cosine: z0 = 1; transfer: zeta = (z - r) / D*)
+    edge, step = float(ds.get("cosine_edge", 0.0)), ds.get("cosine_step", (1.005, 1.110))
     for si, size in enumerate(SIZES):
         tc = math.radians(size)
-        raw = {"cosine": cosine_coefficients(tc, lmax), "transfer": np.zeros(lmax + 1)}
+        raw = {"cosine": cosine_edge_coefficients(tc, lmax, edge, step) if edge else cosine_coefficients(tc, lmax),
+               "transfer": np.zeros(lmax + 1)}
         raw["transfer"][tr.ells] = ct.b_ell(tr.ells, tr.k, tr.delta_t, tr.d_star * math.cos(tc), a_ramp=1.0 / tr.d_star)
         for ti, tname in enumerate(TEMPLATES):
             f = ti * NS + si
@@ -536,6 +593,7 @@ def stage_data(out):
     report = {"dataset": ds["name"], "mask_fraction": float(ds["good"].mean()), "sizes_deg": SIZES, "templates": list(TEMPLATES),
               "thresholds": G["thr"].tolist(), "thresholds_source": G["thr_source"], "lmax": ds["lmax"],
               "step4_amplitude": G.get("step4", "source"),
+              "cosine_edge": float(ds.get("cosine_edge", 0.0)), "cosine_step": list(ds.get("cosine_step", (1.005, 1.110))),
               "n_null": int(null["max_s"].shape[0]), "maps": {},
               "null_potential_per_size": null["n_pot"].mean(axis=0).tolist(),
               "null_candidates": {t: {"mean": float(null["n_candidates"][:, ti].mean()),
@@ -703,6 +761,7 @@ def stage_inject(out, workers, n_skies, n_positions, lonlat=None, tag=""):
     report = {"sizes_deg": INJECT_SIZES, "amplitudes": INJECT_AMPS.tolist(), "n_positions": int(n_positions), "n_skies": int(n_skies),
               "s_global_95": G["s_glob"], "pairs": [], "real_maps": sorted(map_hits), "dataset": ds["name"],
               "positions_lonlat": None if not lonlat else [list(map(float, ll)) for ll in lonlat],
+              "cosine_edge": float(ds.get("cosine_edge", 0.0)), "cosine_step": list(ds.get("cosine_step", (1.005, 1.110))),
               # amplitude = observed peak dT/T. For the cosine template z0 = amplitude / peak_value. For the transfer
               # template amplitude / peak_value is the gradient of zeta times the distance to last scattering.
               "peak_value": per_size["peak_value"], "peak_angle_deg": per_size["peak_angle"], "filter_norm": per_size["norm"],
@@ -764,6 +823,13 @@ def main():
     ap.add_argument("--step4-amplitude", default="source", choices=("source", "peak"),
                     help="units in which step 4 compares detections across sizes: source = z0 for the cosine template "
                          "(the published algorithm), peak = observed peak for both templates (runs before entry (ah))")
+    ap.add_argument("--cosine-edge", type=float, default=0.0,
+                    help="value of the cosine template at the edge, as a fraction of z0 (0 = the template of their text; "
+                         "0.19 = the template of their figures, entry (aj))")
+    ap.add_argument("--cosine-step", default="1.005,1.110",
+                    help="with --cosine-edge: the smooth cut-off starts and ends at these multiples of the size; an "
+                         "optional third item names its shape, integral (default) or schwartz. Their public code is "
+                         "--cosine-edge 0.2 --cosine-step 1.0,1.1,schwartz")
     args = ap.parse_args()
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -773,6 +839,13 @@ def main():
 
     G["step4"] = args.step4_amplitude
     G["ds"] = load_dataset(args.dataset, Path(args.data_dir), args.seed, args.wmap_beam)
+    G["ds"]["cosine_edge"] = float(args.cosine_edge)
+    step_items = args.cosine_step.split(",")
+    G["ds"]["cosine_step"] = (float(step_items[0]), float(step_items[1]), step_items[2] if len(step_items) > 2 else "integral")
+    assert G["ds"]["cosine_step"][2] in ("integral", "schwartz"), "--cosine-step: the shape is integral or schwartz"
+    log("cosine template: " + ("z_crit = 0, cut at the edge" if not args.cosine_edge else
+                               "%.3f of z0 at the edge, smooth cut-off from %.3f to %.3f of the size (%s)" % (
+                                   args.cosine_edge, *G["ds"]["cosine_step"])))
     log("beam transfer function at l = 100, 200, 256: " + ", ".join("%.4f" % G["ds"]["beam"][l] for l in (100, 200, 256)))
     log(f"{args.dataset}: mask keeps {G['ds']['good'].mean():.4f} of the sky; lmax {G['ds']['lmax']}; "
         f"noise power / CMB power at l = 200: {G['ds']['noise_power'] / (G['ds']['cl'][200] * G['ds']['window'][200] ** 2):.3f}")
