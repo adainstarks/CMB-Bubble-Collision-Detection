@@ -28,6 +28,10 @@ Assumptions and choices that are this project's, not theirs
   masked pixels set to zero. The search runs over the unmasked pixels only.
 * A potential detection is one connected region (8 HEALPix neighbours) of pixels at or above the threshold.
   Step 4 compares the largest |amplitude| inside the two overlapping regions (my reading of their text).
+  Their filtered field estimates the source amplitude z0, so for the cosine template the comparison is made
+  in z0 (amplitude / peak_value; the two differ above about 20 deg, by a factor 4 at 90 deg). The transfer
+  template has no such convention and is compared in observed-peak units. ``--step4-amplitude peak`` compares
+  both in observed-peak units, as every run before notebook entry (ah) did.
 * Data sets:
   "planck"  PR3 SMICA, NILC, SEVEM, Commander at Nside 256 (ud_grade), common mask >= 0.9, 5 arcmin beam,
             l <= 256 as in their search, simulations as in ``benchmark_real_sky.py`` (white noise 30 uK-arcmin);
@@ -41,6 +45,17 @@ Assumptions and choices that are this project's, not theirs
 
 Stages: selftest, stats (sigma maps), calib (only with ``--thresholds calibrated``), null (the algorithm on
 simulated skies), data (the real maps). ``--stage all`` runs them in order.
+
+Sensitivity (``--stage inject``, run after the others; notebook entry (ae)): templates of known size and
+amplitude at random unmasked positions, on new simulated skies and on the real maps. Preparation and filtering
+are linear, so the filtered response to a unit-amplitude template is computed once per (template, size,
+position) and added, scaled, to the filtered sky. An injection counts
+  (a) as a candidate if S reaches the threshold of a filter size within 5 deg of the true size, at a pixel
+      within the larger of 3 deg and a quarter of the size of the true centre, with the sign of a hot disc
+      (this is before step 4);
+  (b) as standing out if S there reaches the value that the largest S of a whole signal-free sky, over the
+      33 sizes of that template, exceeds in 5% of the null skies.
+``fullsky_inject_check.py`` repeats a sample of injections the long way (template in the map, all five steps).
 
 Usage (from the project root):
     python scripts/analysis/fullsky_filter_search.py --dataset planck --out-dir OUT --workers 20
@@ -188,16 +203,18 @@ def build_bank(ds):
     norm = np.zeros(NF)
     peak_angle = np.zeros(NF)
     z0_factor = np.ones(NF)          # amplitude -> central amplitude z0 of the full cosine template
+    peak_value = np.ones(NF)         # observed peak of the raw template (cosine: z0 = 1; transfer: zeta = (z - r) / D*)
     for si, size in enumerate(SIZES):
         tc = math.radians(size)
         raw = {"cosine": cosine_coefficients(tc, lmax), "transfer": np.zeros(lmax + 1)}
         raw["transfer"][tr.ells] = ct.b_ell(tr.ells, tr.k, tr.delta_t, tr.d_star * math.cos(tc), a_ramp=1.0 / tr.d_star)
         for ti, tname in enumerate(TEMPLATES):
             f = ti * NS + si
-            t_l[f], weights[f], norm[f], peak_angle[f], peak_value = finish_template(raw[tname], ds["window"], ds["total_power"], fine)
+            t_l[f], weights[f], norm[f], peak_angle[f], peak_value[f] = finish_template(raw[tname], ds["window"], ds["total_power"], fine)
             if tname == "cosine":
-                z0_factor[f] = 1.0 / peak_value
-    return {"t_l": t_l, "weights": weights, "norm": norm, "peak_angle": peak_angle, "z0_factor": z0_factor, "d_star": tr.d_star}
+                z0_factor[f] = 1.0 / peak_value[f]
+    return {"t_l": t_l, "weights": weights, "norm": norm, "peak_angle": peak_angle, "z0_factor": z0_factor,
+            "peak_value": peak_value, "d_star": tr.d_star}
 
 
 # ---------------------------------------------------------------------------------------------- sky handling
@@ -287,6 +304,8 @@ def run_algorithm(w_all):
     """McEwen et al. steps 2 to 5 on the NF filtered maps of one sky. Returns candidates, dropped potential
     detections, the largest S per filter and the number of potential detections per filter."""
     norm, thr = G["bank"]["norm"], G["thr"]
+    # step 4 compares source amplitudes: z0 for the cosine template (z0_factor is 1 for the transfer template)
+    conv = G["bank"]["z0_factor"] if G.get("step4", "source") == "source" else np.ones(NF)
     max_s = np.zeros(NF)
     n_pot = np.zeros(NF, dtype=np.int32)
     kept, dropped = [], []
@@ -304,13 +323,14 @@ def run_algorithm(w_all):
                 ip = int(pix[np.argmax(S[pix])])
                 im = int(np.argmax(np.abs(amp)))
                 pot.append({"template": TEMPLATES[ti], "f": f, "size": size, "pix": pix, "peak": ip, "S": float(S[ip]),
-                            "amp": float(w[ip] / math.sqrt(norm[f])), "amp_max": float(amp[im]), "n_pix": int(pix.size)})
+                            "amp": float(w[ip] / math.sqrt(norm[f])), "amp_max": float(amp[im]),
+                            "cmp": float(amp[im]) * float(conv[f]), "n_pix": int(pix.size)})
         for d in pot:
             loser = False
             for e in pot:
                 if e is d or e["size"] == d["size"] or abs(e["size"] - d["size"]) > THETA_ADJ:
                     continue
-                if e["amp_max"] * d["amp_max"] <= 0.0 or abs(e["amp_max"]) <= abs(d["amp_max"]):
+                if e["cmp"] * d["cmp"] <= 0.0 or abs(e["cmp"]) <= abs(d["cmp"]):
                     continue
                 if np.intersect1d(e["pix"], d["pix"], assume_unique=True).size:
                     loser = True
@@ -515,6 +535,7 @@ def stage_data(out):
     null = np.load(out / "null.npz")
     report = {"dataset": ds["name"], "mask_fraction": float(ds["good"].mean()), "sizes_deg": SIZES, "templates": list(TEMPLATES),
               "thresholds": G["thr"].tolist(), "thresholds_source": G["thr_source"], "lmax": ds["lmax"],
+              "step4_amplitude": G.get("step4", "source"),
               "n_null": int(null["max_s"].shape[0]), "maps": {},
               "null_potential_per_size": null["n_pot"].mean(axis=0).tolist(),
               "null_candidates": {t: {"mean": float(null["n_candidates"][:, ti].mean()),
@@ -586,6 +607,141 @@ def stage_data(out):
     log(f"wrote {out / 'fullsky_filter_search_report.json'}")
 
 
+# ---------------------------------------------------------------------------------------------- sensitivity
+INJECT_SIZES = [2.0, 3.0, 5.0, 7.0, 10.0, 14.0, 20.0, 30.0, 40.0, 50.0, 60.0, 75.0, 90.0]
+INJECT_AMPS = np.array([0.0, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 15.0, 20.0, 30.0]) * 1.0e-5
+INJECT_PAIRS = [(1, 1), (1, 0), (0, 0)]     # (injected, searched) template index: transfer/transfer, transfer/cosine, cosine/cosine
+MAX_LOCAL = 6000
+
+
+def _signal_response(task):
+    """Filtered response to one unit-amplitude template at the pixels where a match is allowed (notebook entry (ae))."""
+    ti_inj, size, pix_c = task
+    ds, bank = G["ds"], G["bank"]
+    lmax = ds["lmax"]
+    v = np.array(hp.pix2vec(NSIDE, int(pix_c)))
+    ang = np.arccos(np.clip(v @ ds["vec"], -1.0, 1.0))
+    ells = np.arange(lmax + 1)
+    signal = np.polynomial.legendre.legval(np.cos(ang), (2 * ells + 1) / (4 * math.pi) * bank["t_l"][ti_inj * NS + SIZES.index(size)])
+    alm = hp.map2alm(prepare(signal), lmax=lmax, iter=1)
+    local = hp.query_disc(NSIDE, v, math.radians(max(3.0, 0.25 * size)))
+    local = local[ds["good"][local]]
+    if local.size > MAX_LOCAL:
+        local = local[:: int(math.ceil(local.size / MAX_LOCAL))]
+    out = {}
+    for ti in sorted({b for a, b in INJECT_PAIRS if a == ti_inj}):
+        fs = np.array([ti * NS + si for si, sz in enumerate(SIZES) if abs(sz - size) <= THETA_ADJ])
+        resp = np.stack([hp.alm2map(hp.almxfl(alm, bank["weights"][f]), NSIDE, lmax=lmax)[local] for f in fs]).astype(np.float32)
+        out[ti] = (fs, resp, G["sigma"][fs[:, None], local[None, :]].astype(np.float32))
+    return ti_inj, size, int(pix_c), local.astype(np.int32), out
+
+
+def _inject_eval(task):
+    """Both criteria for every injection and amplitude on one background (a simulated sky or a real map)."""
+    kind, ident = task
+    if kind == "sim":
+        w_all = np.empty((NF, NPIX), dtype=np.float32)
+        for f, w in filtered(prepare(simulate(ident, "inject"))):
+            w_all[f] = w
+    else:
+        w_all = np.load(G["out"] / ("filtered_%s.npy" % ident))
+    thr, s_glob = G["thr"], G["s_glob"]
+    hits = np.zeros((len(G["inj"]), len(INJECT_PAIRS), 2, INJECT_AMPS.size), dtype=np.uint8)
+    for i, (ti_inj, size, pix_c, local, out) in enumerate(G["inj"]):
+        for j, (a, b) in enumerate(INJECT_PAIRS):
+            if a != ti_inj:
+                continue
+            fs, resp, sig = out[b]
+            s_tot = (w_all[fs[:, None], local[None, :]][None, :, :] + INJECT_AMPS[:, None, None] * resp[None, :, :]) / sig[None, :, :]
+            hits[i, j, 0] = (s_tot >= thr[fs][None, :, None]).any(axis=(1, 2))
+            hits[i, j, 1] = (s_tot >= s_glob[b]).any(axis=(1, 2))
+    return kind, ident, hits
+
+
+def _level(amps, frac, target):
+    """Amplitude at which the fraction first reaches the target (linear interpolation), or None."""
+    above = np.flatnonzero(frac >= target)
+    if not above.size:
+        return None
+    k = int(above[0])
+    if k == 0:
+        return float(amps[0])
+    return float(amps[k - 1] + (amps[k] - amps[k - 1]) * (target - frac[k - 1]) / (frac[k] - frac[k - 1]))
+
+
+def _fmt(value):
+    return " none" if value is None else "%5.2f" % (value * 1e5)
+
+
+def stage_inject(out, workers, n_skies, n_positions, lonlat=None, tag=""):
+    ds = G["ds"]
+    suffix = "_" + tag if tag else ""
+    null = np.load(out / "null.npz")
+    G["s_glob"] = [float(np.percentile(null["max_s"][:, ti * NS:(ti + 1) * NS].max(axis=1), 95.0)) for ti in range(len(TEMPLATES))]
+    G["out"] = out
+    log("inject: S that a whole signal-free sky exceeds in 5 percent of cases: cosine %.3f, transfer %.3f" % tuple(G["s_glob"]))
+    rng = np.random.default_rng(np.random.SeedSequence([ds["seed"], STAGE_CODE["inject"], 999]))
+    if lonlat:                                        # fixed positions (Galactic lon, lat in degrees) instead of random ones
+        positions = np.array([int(hp.ang2pix(NSIDE, lon, lat, lonlat=True)) for lon, lat in lonlat])
+        assert ds["good"][positions].all(), "an injection position is masked"
+        n_positions = len(positions)
+    else:
+        positions = rng.choice(np.flatnonzero(ds["good"]), size=n_positions, replace=False)
+    tasks = [(ti, size, int(pix)) for ti in sorted({a for a, _ in INJECT_PAIRS}) for size in INJECT_SIZES for pix in positions]
+    with Pool(workers) as pool:
+        G["inj"] = pool.map(_signal_response, tasks, chunksize=8)
+    log("inject: %d unit responses ready" % len(G["inj"]))
+    backgrounds = [("sim", i) for i in range(n_skies)] + [("map", m) for m in ds["maps"] if (out / ("filtered_%s.npy" % m)).exists()]
+    with Pool(workers) as pool:                       # forked after the responses exist, so the workers see them
+        results = pool.map(_inject_eval, backgrounds, chunksize=1)
+    sim_hits = np.mean([h for kind, _, h in results if kind == "sim"], axis=0)       # (injection, pair, criterion, amplitude)
+    map_hits = {ident: h.astype(np.float64) for kind, ident, h in results if kind == "map"}
+    index = {(ti, size): [i for i, t in enumerate(G["inj"]) if t[0] == ti and t[1] == size] for ti in (0, 1) for size in INJECT_SIZES}
+    bank = G["bank"]
+    per_size = {key: {t: [float(bank[key][ti * NS + SIZES.index(s)]) for s in INJECT_SIZES] for ti, t in enumerate(TEMPLATES)}
+                for key in ("peak_value", "peak_angle", "norm")}
+    report = {"sizes_deg": INJECT_SIZES, "amplitudes": INJECT_AMPS.tolist(), "n_positions": int(n_positions), "n_skies": int(n_skies),
+              "s_global_95": G["s_glob"], "pairs": [], "real_maps": sorted(map_hits), "dataset": ds["name"],
+              "positions_lonlat": None if not lonlat else [list(map(float, ll)) for ll in lonlat],
+              # amplitude = observed peak dT/T. For the cosine template z0 = amplitude / peak_value. For the transfer
+              # template amplitude / peak_value is the gradient of zeta times the distance to last scattering.
+              "peak_value": per_size["peak_value"], "peak_angle_deg": per_size["peak_angle"], "filter_norm": per_size["norm"],
+              "thresholds": {t: [float(G["thr"][ti * NS + SIZES.index(s)]) for s in INJECT_SIZES] for ti, t in enumerate(TEMPLATES)},
+              # the whole filter bank (all 33 sizes): signal-to-noise of amplitude A is A * sqrt(norm)
+              "bank": {"sizes_deg": SIZES, "norm": {t: bank["norm"][ti * NS:(ti + 1) * NS].tolist() for ti, t in enumerate(TEMPLATES)},
+                       "peak_value": {t: bank["peak_value"][ti * NS:(ti + 1) * NS].tolist() for ti, t in enumerate(TEMPLATES)}}}
+    np.savez_compressed(out / ("inject_hits%s.npz" % suffix), sim_fraction=sim_hits.astype(np.float32),
+                        injected_template=np.array([t[0] for t in G["inj"]]), size_deg=np.array([t[1] for t in G["inj"]]),
+                        pixel=np.array([t[2] for t in G["inj"]]), n_local=np.array([t[3].size for t in G["inj"]]),
+                        amplitudes=INJECT_AMPS, pairs=np.array(INJECT_PAIRS),
+                        **{"map_" + m: h.astype(np.uint8) for m, h in map_hits.items()})
+    for j, (a, b) in enumerate(INJECT_PAIRS):
+        entry = {"injected": TEMPLATES[a], "searched": TEMPLATES[b], "by_size": []}
+        log("inject: %s template, %s filters. Amplitude (1e-5) for 50 / 95 percent: candidate | stands out | rate at zero amplitude | SMICA, stands out"
+            % (TEMPLATES[a], TEMPLATES[b]))
+        for size in INJECT_SIZES:
+            ii = index[(a, size)]
+            row = {"size_deg": size}
+            for c, cname in enumerate(("candidate", "stands_out")):
+                frac = sim_hits[ii, j, c].mean(axis=0)
+                row[cname] = {"fraction": frac.tolist(), "a50": _level(INJECT_AMPS, frac, 0.5), "a95": _level(INJECT_AMPS, frac, 0.95)}
+                if lonlat:                            # few fixed positions: keep the fraction per position (same order)
+                    row[cname]["fraction_by_position"] = sim_hits[ii, j, c].tolist()
+                for m, h in map_hits.items():
+                    fm = h[ii, j, c].mean(axis=0)
+                    row[cname][m] = {"fraction": fm.tolist(), "a50": _level(INJECT_AMPS, fm, 0.5), "a95": _level(INJECT_AMPS, fm, 0.95)}
+            entry["by_size"].append(row)
+            sm = row["stands_out"].get("smica", {"a50": None, "a95": None})
+            log("   %5.1f deg   %s / %s | %s / %s | %.3f, %.3f | %s / %s" % (
+                size, _fmt(row["candidate"]["a50"]), _fmt(row["candidate"]["a95"]), _fmt(row["stands_out"]["a50"]),
+                _fmt(row["stands_out"]["a95"]), row["candidate"]["fraction"][0], row["stands_out"]["fraction"][0],
+                _fmt(sm["a50"]), _fmt(sm["a95"])))
+        report["pairs"].append(entry)
+    with open(out / ("inject_report%s.json" % suffix), "w") as fh:
+        json.dump(report, fh, indent=1)
+    log("wrote %s" % (out / ("inject_report%s.json" % suffix)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", required=True, choices=("planck", "planck767", "wmap7w"))
@@ -598,8 +754,16 @@ def main():
     ap.add_argument("--n-stats", type=int, default=3000)
     ap.add_argument("--n-calib", type=int, default=300)
     ap.add_argument("--n-null", type=int, default=1000)
+    ap.add_argument("--n-inject-skies", type=int, default=100)
+    ap.add_argument("--n-inject-positions", type=int, default=150)
+    ap.add_argument("--inject-lonlat", action="append", default=[], help="lon,lat in degrees (Galactic); repeatable. "
+                    "Inject at these positions instead of random ones")
+    ap.add_argument("--inject-tag", default="", help="suffix for the output files of the inject stage")
     ap.add_argument("--seed", type=int, default=20261122)
     ap.add_argument("--wmap-beam", default="published", choices=("published", "gaussian"))
+    ap.add_argument("--step4-amplitude", default="source", choices=("source", "peak"),
+                    help="units in which step 4 compares detections across sizes: source = z0 for the cosine template "
+                         "(the published algorithm), peak = observed peak for both templates (runs before entry (ah))")
     args = ap.parse_args()
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -607,6 +771,7 @@ def main():
     if args.thresholds == "published":
         stages = [s for s in stages if s != "calib"]
 
+    G["step4"] = args.step4_amplitude
     G["ds"] = load_dataset(args.dataset, Path(args.data_dir), args.seed, args.wmap_beam)
     log("beam transfer function at l = 100, 200, 256: " + ", ".join("%.4f" % G["ds"]["beam"][l] for l in (100, 200, 256)))
     log(f"{args.dataset}: mask keeps {G['ds']['good'].mean():.4f} of the sky; lmax {G['ds']['lmax']}; "
@@ -622,12 +787,12 @@ def main():
         stage_selftest(out)
     if "stats" in stages:
         stage_stats(out, args.n_stats, args.workers)
-    if any(s in stages for s in ("calib", "null", "data")):
+    if any(s in stages for s in ("calib", "null", "data", "inject")):
         G["sigma"] = np.load(out / "sigma.npy").astype(np.float64)
         G["sigma"][:, ~G["ds"]["good"]] = np.inf
     if "calib" in stages:
         stage_calib(out, args.n_calib, args.workers)
-    if any(s in stages for s in ("null", "data")):
+    if any(s in stages for s in ("null", "data", "inject")):
         if args.thresholds == "published":
             G["thr"] = np.array([published_threshold(size) for _ in TEMPLATES for size in SIZES])
         else:
@@ -639,6 +804,9 @@ def main():
         stage_null(out, args.n_null, args.workers)
     if "data" in stages:
         stage_data(out)
+    if "inject" in stages:
+        stage_inject(out, args.workers, args.n_inject_skies, args.n_inject_positions,
+                     lonlat=[tuple(float(x) for x in item.split(",")) for item in args.inject_lonlat], tag=args.inject_tag)
     log("done")
 
 

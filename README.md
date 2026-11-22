@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (ad)):
+Open as of 22 November 2026 (notebook entries (t) to (ai)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
@@ -70,7 +70,7 @@ Open as of 22 November 2026 (notebook entries (t) to (ad)):
   label, 14,165.5 Mpc, is the last-scattering distance of the WMAP 5-year maximum-likelihood parameters
   (to 3 Mpc); the paper says it uses WMAP7+BAO+H0, for which the same wall is 185 Mpc deep. Which
   parameters went into the figure is a question for its authors. The template is unchanged.
-- Full-sky filter search after McEwen et al. (arXiv:1202.2861), entries (w), (x)
+- Full-sky filter search after McEwen et al. (arXiv:1202.2861), entries (w), (x), (ah), (ai)
   (`scripts/analysis/fullsky_filter_search.py`): every unmasked position, 33 sizes from 1 to 90 degrees,
   the thresholds of Feeney et al. (arXiv:1210.2725). On the four Planck maps (77% of the sky) the number of
   candidates and the largest significance are ordinary among Gaussian skies with the same mask: 31 to 34
@@ -79,8 +79,25 @@ Open as of 22 November 2026 (notebook entries (t) to (ad)):
   of McEwen et al. are found again. The check on their own data (WMAP 7-year W band) missed both criteria
   fixed beforehand: amplitudes and the strongest features agree with their table, but the significances
   come out lower by about 0.3 and their two largest candidates do not appear. So this is not a validated
-  repeat of their search. Open: the cause of that difference, injection tests over the searched area, and
-  the Planck end-to-end simulations.
+  repeat of their candidate list. One step of the algorithm was corrected afterwards (detections on
+  neighbouring sizes are now compared in z0, as in their text); the Planck candidate lists did not change
+  and the WMAP check came out the same. Open: the cause of the difference on WMAP, and the Planck
+  end-to-end simulations.
+- What that search could have seen, entries (ae) to (ag) (figure `plots/10_fullsky_search_sensitivity.png`,
+  numbers in `work/results_2026-11-22/fullsky_inject_summary_planck_v1.md`): templates of known size and
+  amplitude were added at 150 positions on 100 simulated skies, and on the real maps. A collision whose
+  peak in the map is above about 8e-5 in dT/T (220 uK) below 30 degrees, falling to 4e-5 at 90 degrees,
+  would have been the strongest feature of the whole map in 95% of cases; the real maps hold no such
+  feature. Half of the collisions reach the candidate threshold at 3e-5 to 4e-5 up to 14 degrees and at
+  1e-5 to 2e-5 from 50 degrees up. In the usual parameter z0 the 95% level is 8e-5 to 10e-5 from 5 to 60
+  degrees for the cosine template. This holds for collisions centred in the unmasked 77% of the sky, for
+  Gaussian simulated skies and for multipoles up to 256. The measurement uses a linear shortcut that was
+  checked against the full search on 160 cases (identical). On WMAP, at the two positions McEwen et al.
+  used, the same measurement agrees with their published exclusion and sensitivity regions within one step
+  of their grid in 7 of 8 comparisons between 5 and 60 degrees; at 50 degrees their exclusion limit is
+  lower than the one measured here, which their six simulated skies cannot settle. Their filter
+  signal-to-noise curve is reproduced to 3 to 4% from 10 to 55 degrees and to 5 to 7% at 5 to 7 degrees;
+  that offset is not explained.
 - The April scripts and data sets are unchanged, so the April results still reproduce. Defects 1 to 4 are
   still in them; the corrected helpers (`scripts/core/patch_geometry.py`) are used by new work only.
 - Not redone: the candidate-centred re-extraction at the corrected positions, and the project's full

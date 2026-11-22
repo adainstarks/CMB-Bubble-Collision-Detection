@@ -1,0 +1,928 @@
+{
+ "planck": {
+  "old": "fullsky_search_summary_planck_v1.json",
+  "new": "fullsky_search_summary_planck_v2.json",
+  "simulated_skies": {
+   "cosine": {
+    "old": {
+     "mean": 52.594,
+     "percentiles_5_50_95": [
+      23.0,
+      45.0,
+      106.0
+     ]
+    },
+    "new": {
+     "mean": 52.535,
+     "percentiles_5_50_95": [
+      23.0,
+      45.0,
+      106.04999999999995
+     ]
+    }
+   },
+   "transfer": {
+    "old": {
+     "mean": 98.975,
+     "percentiles_5_50_95": [
+      19.0,
+      72.0,
+      269.0
+     ]
+    },
+    "new": {
+     "mean": 98.975,
+     "percentiles_5_50_95": [
+      19.0,
+      72.0,
+      269.0
+     ]
+    }
+   }
+  },
+  "maps": {
+   "smica": {
+    "cosine": {
+     "n_old": 33,
+     "n_new": 33,
+     "p_n_new": 0.7692307692307693,
+     "largest_S_new": 4.803658781455895,
+     "p_largest_S_new": 0.7302697302697303,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 40,
+     "n_new": 40,
+     "p_n_new": 0.7752247752247752,
+     "largest_S_new": 4.564020038241,
+     "p_largest_S_new": 0.44155844155844154,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 10,
+      "new": 10
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ]
+     }
+    }
+   },
+   "nilc": {
+    "cosine": {
+     "n_old": 34,
+     "n_new": 34,
+     "p_n_new": 0.7552447552447552,
+     "largest_S_new": 4.7831325475248185,
+     "p_largest_S_new": 0.7612387612387612,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 39,
+     "n_new": 39,
+     "p_n_new": 0.7882117882117882,
+     "largest_S_new": 4.560991361568004,
+     "p_largest_S_new": 0.4435564435564436,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 10,
+      "new": 10
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ]
+     }
+    }
+   },
+   "sevem": {
+    "cosine": {
+     "n_old": 32,
+     "n_new": 32,
+     "p_n_new": 0.7942057942057942,
+     "largest_S_new": 4.791401208711467,
+     "p_largest_S_new": 0.7522477522477522,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 34,
+     "n_new": 34,
+     "p_n_new": 0.8421578421578422,
+     "largest_S_new": 4.611382804477132,
+     "p_largest_S_new": 0.3806193806193806,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 10,
+      "new": 10
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ]
+     }
+    }
+   },
+   "commander": {
+    "cosine": {
+     "n_old": 31,
+     "n_new": 31,
+     "p_n_new": 0.8141858141858141,
+     "largest_S_new": 4.781466006855881,
+     "p_largest_S_new": 0.7622377622377622,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 38,
+     "n_new": 38,
+     "p_n_new": 0.7972027972027972,
+     "largest_S_new": 4.585908630883089,
+     "p_largest_S_new": 0.4165834165834166,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 10,
+      "new": 10
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       10,
+       11
+      ]
+     }
+    }
+   }
+  }
+ },
+ "planck767": {
+  "old": "fullsky_search_summary_planck767_v1.json",
+  "new": "fullsky_search_summary_planck767_v2.json",
+  "simulated_skies": {
+   "cosine": {
+    "old": {
+     "mean": 152.402,
+     "percentiles_5_50_95": [
+      59.0,
+      126.0,
+      345.0
+     ]
+    },
+    "new": {
+     "mean": 152.056,
+     "percentiles_5_50_95": [
+      58.95,
+      126.0,
+      343.04999999999995
+     ]
+    }
+   },
+   "transfer": {
+    "old": {
+     "mean": 265.036,
+     "percentiles_5_50_95": [
+      41.0,
+      181.0,
+      780.7999999999993
+     ]
+    },
+    "new": {
+     "mean": 265.036,
+     "percentiles_5_50_95": [
+      41.0,
+      181.0,
+      780.7999999999993
+     ]
+    }
+   }
+  },
+  "maps": {
+   "smica": {
+    "cosine": {
+     "n_old": 94,
+     "n_new": 94,
+     "p_n_new": 0.7332667332667333,
+     "largest_S_new": 5.22850645354656,
+     "p_largest_S_new": 0.23376623376623376,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 72,
+     "n_new": 72,
+     "p_n_new": 0.8611388611388612,
+     "largest_S_new": 4.635635497127955,
+     "p_largest_S_new": 0.4225774225774226,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0,
+      50.0,
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 12,
+      "new": 12
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ]
+     }
+    }
+   },
+   "nilc": {
+    "cosine": {
+     "n_old": 104,
+     "n_new": 104,
+     "p_n_new": 0.6543456543456544,
+     "largest_S_new": 5.234605426897323,
+     "p_largest_S_new": 0.22877122877122877,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 69,
+     "n_new": 69,
+     "p_n_new": 0.8761238761238761,
+     "largest_S_new": 4.630996264631611,
+     "p_largest_S_new": 0.42657342657342656,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0,
+      50.0,
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 12,
+      "new": 12
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       1,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       1,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ]
+     }
+    }
+   },
+   "sevem": {
+    "cosine": {
+     "n_old": 96,
+     "n_new": 96,
+     "p_n_new": 0.7152847152847153,
+     "largest_S_new": 5.206778468289652,
+     "p_largest_S_new": 0.2597402597402597,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 70,
+     "n_new": 70,
+     "p_n_new": 0.8711288711288712,
+     "largest_S_new": 4.683172169303222,
+     "p_largest_S_new": 0.3646353646353646,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0,
+      50.0,
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 12,
+      "new": 12
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ]
+     }
+    }
+   },
+   "commander": {
+    "cosine": {
+     "n_old": 95,
+     "n_new": 95,
+     "p_n_new": 0.7252747252747253,
+     "largest_S_new": 5.221593574884545,
+     "p_largest_S_new": 0.24475524475524477,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 71,
+     "n_new": 71,
+     "p_n_new": 0.8661338661338661,
+     "largest_S_new": 4.658127409063319,
+     "p_largest_S_new": 0.3906093906093906,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": [
+      50.0,
+      50.0
+     ]
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 12,
+      "new": 12
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       1,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       1,
+       2,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ]
+     }
+    }
+   }
+  }
+ },
+ "wmap7w": {
+  "old": "fullsky_search_summary_wmap7w_v3.json",
+  "new": "fullsky_search_summary_wmap7w_v4.json",
+  "simulated_skies": {
+   "cosine": {
+    "old": {
+     "mean": 50.823,
+     "percentiles_5_50_95": [
+      20.0,
+      43.0,
+      107.04999999999995
+     ]
+    },
+    "new": {
+     "mean": 50.806,
+     "percentiles_5_50_95": [
+      20.0,
+      43.0,
+      106.04999999999995
+     ]
+    }
+   },
+   "transfer": {
+    "old": {
+     "mean": 98.371,
+     "percentiles_5_50_95": [
+      17.0,
+      70.0,
+      283.14999999999986
+     ]
+    },
+    "new": {
+     "mean": 98.371,
+     "percentiles_5_50_95": [
+      17.0,
+      70.0,
+      283.14999999999986
+     ]
+    }
+   }
+  },
+  "maps": {
+   "wmap7_w_forered": {
+    "cosine": {
+     "n_old": 27,
+     "n_new": 26,
+     "p_n_new": 0.8531468531468531,
+     "largest_S_new": 4.879874062837624,
+     "p_largest_S_new": 0.5574425574425574,
+     "only_in_old": [
+      {
+       "size_deg": 8.0,
+       "lon": 209.5,
+       "lat": -59.3,
+       "S": 4.01
+      }
+     ],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 28,
+     "n_new": 28,
+     "p_n_new": 0.8721278721278721,
+     "largest_S_new": 4.716625165372918,
+     "p_largest_S_new": 0.25274725274725274,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 10,
+      "new": 10
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       6,
+       7,
+       8,
+       10
+      ],
+      "new": [
+       0,
+       4,
+       6,
+       7,
+       8,
+       10
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       4,
+       6,
+       7,
+       8,
+       10,
+       11
+      ],
+      "new": [
+       0,
+       4,
+       6,
+       7,
+       8,
+       10,
+       11
+      ]
+     }
+    }
+   },
+   "wmap7_w_raw": {
+    "cosine": {
+     "n_old": 28,
+     "n_new": 27,
+     "p_n_new": 0.8321678321678322,
+     "largest_S_new": 4.821705062586623,
+     "p_largest_S_new": 0.6473526473526473,
+     "only_in_old": [
+      {
+       "size_deg": 8.0,
+       "lon": 209.5,
+       "lat": -59.3,
+       "S": 4.06
+      }
+     ],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "transfer": {
+     "n_old": 34,
+     "n_new": 34,
+     "p_n_new": 0.8251748251748252,
+     "largest_S_new": 4.8062795046599796,
+     "p_largest_S_new": 0.19080919080919082,
+     "only_in_old": [],
+     "only_in_new": [],
+     "sizes_45_deg_or_more_new": []
+    },
+    "published_candidates": {
+     "nearby_within_0p5": {
+      "old": 9,
+      "new": 9
+     },
+     "eligible_recovered": {
+      "old": [
+       0,
+       4,
+       6,
+       7,
+       8,
+       9,
+       10,
+       12
+      ],
+      "new": [
+       0,
+       4,
+       6,
+       7,
+       8,
+       9,
+       10,
+       12
+      ]
+     },
+     "recovered_cosine": {
+      "old": [
+       0,
+       2,
+       4,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12
+      ],
+      "new": [
+       0,
+       2,
+       4,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12
+      ]
+     }
+    }
+   }
+  }
+ },
+ "end_to_end_check": {
+  "cases": 160,
+  "old_peak_units": {
+   "a_true_match": 105,
+   "a_true_other_size_only": 10,
+   "a_true_no_candidate": 3,
+   "a_false_match": 1,
+   "a_false_no_match": 41
+  },
+  "new_z0_units": {
+   "a_true_match": 110,
+   "a_true_other_size_only": 6,
+   "a_true_no_candidate": 2,
+   "a_false_match": 1,
+   "a_false_no_match": 41
+  },
+  "largest_S_difference_new": 1.9073486328125e-06,
+  "criterion_a_same_new": 160
+ }
+}

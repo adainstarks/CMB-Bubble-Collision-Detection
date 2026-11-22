@@ -1536,3 +1536,279 @@ Mpc inside the last-scattering surface three independent calculations give a pro
 times the Sachs-Wolfe value and an edge at 0.49 of the centre, and the paper's figure for a bubble labelled
 that way shows a ramp close to the Sachs-Wolfe one. Which parameters went into the figure is a question for
 its authors.
+
+## (ae) 2026-11-22 03:49 CST. Back to the search: pre-registration of its sensitivity (injection test)
+
+The question about the Osborne et al. figure is parked: a one-page note for a physicist and a draft email to
+the authors are written, not sent. Work returns to the list. Entry (x) left the full-sky search without a
+statement of what it could have seen. This entry fixes how that is measured. Simulated skies only.
+
+Set-up: the Planck like-for-like search of (x) (data set "planck", l up to 256, the published thresholds,
+sigma maps of job 82924). A ramp template of known size and amplitude is added to a signal-free simulated
+sky at a random unmasked position, and the significance maps are evaluated around it. Filtering and
+preparation are linear, so the response to a unit-amplitude template is computed once per (template, size,
+position) and scaled.
+
+Fixed before the run (`fullsky_filter_search.py --stage inject`):
+- Sizes: 2, 3, 5, 7, 10, 14, 20, 30, 40, 50, 60, 75, 90 deg. Amplitudes (observed peak dT/T): 0, 1, 1.5, 2,
+  3, 4, 5, 6, 8, 10, 15, 20, 30 times 1e-5. Positive sign only (the pipeline is symmetric in sign).
+- Positions: 150 pixels drawn uniformly from the unmasked pixels, the same for every size. A disc may be
+  partly masked; that loss is part of the answer.
+- Backgrounds: 100 new simulated skies, and separately the four real maps.
+- Injected and searched: the transfer template searched with the transfer filters and with the cosine
+  filters; the cosine template searched with the cosine filters.
+- Where a match is looked for: filter sizes within 5 deg of the true size, pixels within the larger of
+  3 deg and a quarter of the size of the true centre (every pixel up to 6,000, a regular subsample
+  beyond), positive filtered value.
+- Criterion (a), "would be a candidate": S at or above the published threshold of that filter size. This is
+  before the step across sizes, which can only hand the detection to an overlapping neighbour.
+- Criterion (b), "would stand out": S at or above the value that the largest S of a whole signal-free sky,
+  over all 33 sizes of that template, exceeds in 5% of the 1,000 skies of (x).
+- Reported: the fraction of (position, sky) pairs meeting each criterion per size and amplitude, the
+  amplitudes at which that fraction reaches 50% and 95%, and the fraction at zero amplitude.
+
+No pass or fail here; it is a measurement. Expectation written beforehand: the 50% amplitude of (a) is near
+threshold divided by the ideal signal-to-noise per unit amplitude (about 4e-5 at 10 deg); (b) needs roughly
+a third more; the cosine filters lose against the transfer filters on transfer signals below about 30 deg;
+discs of 60 deg and more reach 95% late or not at all because the mask cuts them.
+
+What it is for: criterion (b) at 95% is the amplitude above which a ramp collision in the unmasked 77% of
+the sky would have been the strongest feature of the map. The real maps have no such feature (largest S
+4.80, p about 0.75), so that curve is the statement the search supports.
+
+## (af) 2026-11-22 04:05 CST. Pre-registration: three checks of the sensitivity measurement
+
+Written while job 82933 (the measurement of (ae): 100 skies, 150 positions) is running and before any of
+the numbers below exist. None of the published figures named here has been opened yet; only their file
+names in the arXiv source of McEwen et al. (2012) and the text of their Sec. IV B have been read.
+
+1. The shortcut, end to end (`fullsky_inject_check.py`). The measurement adds a scaled filtered response
+   to a filtered signal-free sky and looks at S near the true position, before the step across sizes. The
+   check does a sample the long way: template added to the simulated map, then preparation, all 66
+   filters, significance, regions and the step across sizes. Cases: sizes 3, 10, 30, 60, 90 deg; transfer
+   template with transfer filters and cosine template with cosine filters; two amplitudes per size, the
+   measured 50% amplitude of criterion (a) and the 95% amplitude of criterion (b); 8 random (position,
+   sky) pairs each, 160 cases, new skies.
+   - The shortcut is confirmed if the largest difference in S between the two ways is below 0.02 and
+     criterion (a) comes out the same both ways in every case.
+   - Whether (a) means "the search returns a matching candidate" is measured, not assumed: of the cases
+     where (a) holds, the fraction where the full algorithm returns a candidate that the match rule of (w)
+     accepts. If that fraction is below 90%, the (a) curves are described as "reaches the threshold" and
+     not as "becomes a candidate".
+
+2. The signal-to-noise curve of the filters against McEwen et al. Their source has a figure of the filter
+   signal-to-noise for a collision of 100 uK as a function of size. My number for the same thing: the
+   cosine template on the `wmap7w` data set (published W beam, noise from N_obs, l from 2 to 256),
+   z0 * peak_value * sqrt(norm) with z0 = 100 uK / 2.725 K. This has no random part.
+   - Within 5% at the sizes they plot from 5 deg up: the filters are normalised the same way, and the
+     lower S of (x) (0.27 on average) comes from somewhere else.
+   - Mine lower by 5 to 10% across sizes: that accounts for the lower S of (x).
+   - Anything else: reported as it is. If their caption shows that the curve is for a different set-up
+     (another multipole range or noise level), the comparison is repeated for that set-up and both are
+     given.
+
+3. The sensitivity regions against McEwen et al. Their Sec. IV B places collisions at two positions,
+   (l, b) = (99.2, +32.3) and (193.0, +33.4) deg, on three simulated WMAP W skies each, and calls a
+   (size, amplitude) pair "exclusion" if all six are detected, "sensitivity" if some are, "unprobed" if
+   none. Mine: the `wmap7w` data set with the sigma maps and thresholds of run v3, cosine template and
+   filters, the same two positions, 200 new simulated skies, the amplitude grid and the sizes of (ae);
+   detection = criterion (a).
+   - Correspondence fixed beforehand: all six detected has probability one half when the detection
+     probability is 0.89; none of six has probability one half at 0.11. So their exclusion boundary is
+     compared with my amplitude at a detection fraction of 0.89 (the worse of the two positions), their
+     lower boundary with my amplitude at 0.11 (the better of the two positions), both as z0 in uK.
+   - Same sensitivity: both boundaries within a factor 1.3 at every size they tested between 5 and 60 deg
+     (their amplitude grid is coarse; the factor is replaced by one grid step if the grid can be read).
+     Mine higher by more than that: my search is less sensitive than the published one by that factor,
+     and the Planck curve of (ae) carries the same doubt. Mine lower: reported, not claimed as a gain.
+
+What these do not test: foreground residuals, anything about the real sky, and collisions centred inside
+the mask.
+
+## (ag) 2026-11-22 04:34 CST. Sensitivity of the full-sky search: the measurement of (ae) and the three checks of (af)
+
+Jobs: 82933 (Planck, the measurement), 82934 (WMAP at the two published positions, 200 skies), 82935 (end
+to end, 160 cases). Scripts: `fullsky_filter_search.py --stage inject`, `fullsky_inject_check.py`,
+`fullsky_inject_summary.py`, `compare_mcewen_sensitivity.py`, `read_published_figure_curves.py`. Files in
+`work/results_2026-11-22/` (`fullsky_inject_*`, `compare_mcewen_sensitivity_report.json`,
+`mcewen2012_fig*`); figure `plots/10_fullsky_search_sensitivity.png`.
+
+The measurement. Planck set-up of (x): 77% of the sky, l up to 256; 100 simulated skies x 150 positions per
+size. Amplitude = the peak of the disc as it sits in the map, dT/T in units of 1e-5, mean and dipole
+removed. "Threshold" is criterion (a); "stands out" is criterion (b), S above 5.13 for the transfer filters
+and 5.46 for the cosine filters. The percentages are the share of (position, sky) pairs.
+
+| size (deg) | transfer: threshold 50% | threshold 95% | stands out 95% | cosine: threshold 50% | threshold 95% | stands out 95% | the last as z0 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 4.28 | 7.09 | 8.01 | 6.64 | 9.88 | 14.24 | 15.1 |
+| 3 | 4.16 | 6.88 | 7.95 | 5.51 | 8.74 | 13.10 | 13.2 |
+| 5 | 3.84 | 6.09 | 7.84 | 4.49 | 7.52 | 9.72 | 9.8 |
+| 7 | 3.59 | 5.82 | 7.71 | 4.12 | 7.02 | 9.28 | 9.3 |
+| 10 | 3.25 | 5.33 | 7.46 | 3.68 | 5.95 | 8.63 | 8.8 |
+| 14 | 2.98 | 4.92 | 7.16 | 3.50 | 5.78 | 8.06 | 8.3 |
+| 20 | 2.60 | 4.63 | 6.98 | 3.11 | 5.23 | 7.89 | 8.4 |
+| 30 | 2.19 | 3.99 | 6.75 | 2.61 | 4.70 | 7.75 | 8.9 |
+| 40 | 2.01 | 3.85 | 5.98 | 2.37 | 4.21 | 7.43 | 9.5 |
+| 50 | 1.88 | 3.69 | 5.72 | 2.13 | 3.87 | 6.43 | 9.5 |
+| 60 | 1.78 | 3.48 | 5.24 | 1.89 | 3.59 | 5.71 | 10.1 |
+| 75 | 1.38 | 2.80 | 4.34 | 1.44 | 2.85 | 4.77 | 12.0 |
+| 90 | 1.08 | 2.24 | 3.77 | 1.09 | 2.22 | 3.86 | 15.5 |
+
+- In words, for this project's template: a collision whose peak in the map is above about 8e-5 (220 uK)
+  below 30 deg, falling to 4e-5 at 90 deg, would have been the strongest feature of the whole map in 95% of
+  cases. The largest S of the real maps is 4.80 (cosine filters) and 4.56 to 4.61 (transfer filters), under
+  both bars. Half of the collisions reach the candidate threshold at 3e-5 to 4e-5 (80 to 120 uK) up to
+  14 deg and at 1e-5 to 2e-5 from 50 deg up.
+- The amplitude grid is coarse where the 95% levels fall (6, 8, 10 times 1e-5); the levels are interpolated
+  and good to about 0.3e-5.
+- On the four real maps the same injections give "stands out" 95% within 0.25e-5 of the simulated skies
+  below 60 deg, and 0.3e-5 to 0.4e-5 lower from 60 to 90 deg.
+- Chance: with no template added, criterion (a) is met in under 1% of the trials up to 14 deg, in 1 to 3.5%
+  from 20 to 75 deg and in 4.4% at 90 deg; criterion (b) in none.
+- The transfer template searched with the cosine filters (the published filters on this project's signal)
+  needs 3 to 24% more for "stands out" 95% (most at 2, 3 and 40 deg) and -4 to +16% for the threshold 50%.
+- In z0, the usual parameter (the central value of the cosine ramp before the mean and dipole are removed),
+  "stands out" 95% is 8e-5 to 10e-5 from 5 to 60 deg and 15e-5 at 2 deg and at 90 deg. For the transfer
+  template the same primordial gradient gives a brighter disc below 30 deg (2.9 times at 10 deg), so
+  expressed as the z0 of the cosine ramp with that gradient its "stands out" 95% is 2.6e-5 at 10 deg,
+  5.1e-5 at 20 deg and 6.6e-5 at 30 deg; from 50 deg up the two templates agree to 16%. This last
+  translation is derived, not measured (`fullsky_inject_summary.py`).
+
+The expectations written in (ae), against this:
+- "50% of (a) near threshold / ideal signal-to-noise, about 4e-5 at 10 deg": 3.25e-5 and 3.68e-5. Roughly.
+- "(b) needs roughly a third more": a third more at 2 to 3 deg, 50% more at 10 deg, twice as much from
+  30 deg up (50% levels). Wrong above a few degrees.
+- "cosine filters lose on transfer signals below about 30 deg": they lose a little at every size. Wrong
+  about where.
+- "discs of 60 deg and more reach 95% late or not at all": they reach it at the lowest peak amplitudes
+  (and the highest z0, because most of a large disc goes into the mean and dipole). Wrong.
+
+Check 1, the shortcut end to end (160 cases). The largest difference in S between the shortcut and the long
+way is 2e-6, and criterion (a) comes out the same in 160 of 160. Confirmed. Of the 118 cases where (a)
+holds, the full algorithm returns a candidate that the match rule accepts in 105 (89.0%), a candidate at the
+right place whose size is more than 5 deg off in 10, and none within the match radius in 3. That is under
+the 90% fixed beforehand, so criterion (a) is called "reaches the threshold" everywhere, not "becomes a
+candidate". At the "stands out" 95% amplitude: 80 cases, all reach the threshold, 78 leave a candidate at
+the right place, 70 of them within 5 deg of the true size. The misses are large discs that the step across
+sizes handed to another size, usually a smaller one (90 to 80 deg, 60 to 50, 30 or 2 deg, 30 to 7 or 4 deg).
+
+Looking at why, I found a deviation of my step 4 from the published one. Their text compares "the maximum
+absolute value of the filtered field", and their filtered field estimates z0. My code compared the
+amplitude in peak-in-the-map units. The two are the same to 3% up to 14 deg and differ by 1.15 at 30 deg,
+1.8 at 60 deg and 4 at 90 deg, so my step 4 favoured the smaller of two neighbouring sizes more than
+theirs does. Nothing in the sensitivity numbers depends on step 4. The candidate lists and counts of (x)
+do; see (ah).
+
+Check 2, the filter signal-to-noise against McEwen et al. Fig. 4a. Their curve is for a CMB-only sky without
+beam (caption and Sec. III C), so mine was computed for that: exact template coefficients, WMAP7+BAO+H0
+spectrum, l from 2 to 256. Mine / published: 0.904 at 2 deg, 0.919 at 3, 0.930 at 5, 0.936 at 6, 0.952 at
+8, 0.964 at 10, 0.965 to 0.968 from 14 to 55, 0.973 at 60, 0.987 at 75, 0.996 at 90. With the filters of
+the `wmap7w` data set (beam, noise, pixel window) my curve is the same to 0.3% from 3 deg up.
+- By the readings fixed beforehand this is the third case, "anything else": inside 5% from 8 deg up, 5 to 7%
+  low at 5 to 7 deg. There is no normalisation error of a size that would matter (tens of percent).
+- The offset is not explained. Tried and ruled out: a higher band limit (2% at 3 deg and 1% at 5 deg, of
+  the 8% and 7% missing), a beam in the background spectrum only (0.5%), the template sampled on a HEALPix
+  grid of Nside 128, 256 or 512 instead of exact coefficients (0.5% or less). Their second curve (the
+  unfiltered field) is not reproduced by the centre value of my template over the CMB rms either: theirs is
+  4 to 12% lower up to 30 deg, 23% lower at 60 deg and 45% lower at 90 deg. So their numerical template
+  differs from the analytic one in a way I cannot read from the text.
+- I had written that an offset of 5 to 10% "accounts for the lower S of (x)". For the ten published
+  candidates of 7 deg and smaller the offset is 5.5 to 10% and their S in my run is lower by 8% on average,
+  so the numbers fit. I now think that sentence was too quick and do not take it as the explanation: a
+  different template normalisation changes the signal-to-noise of an injected template, not the S of a
+  given patch of sky; and S that is lower at positions picked for being high in someone else's analysis is
+  what any imperfectly correlated repeat gives.
+
+Check 3, the sensitivity regions against McEwen et al. Fig. 6 (their grid: sizes 2, 5, 10, 25, 50, 90 deg;
+z0 = 25, 50, 75, 100, 150, 200, 400 uK). Mine: `wmap7w`, run v3, their two positions, 200 skies. z0 in uK:
+
+| size (deg) | their exclusion boundary lies in | mine at 0.89, worse position | their lower boundary lies in | mine at 0.11, better position |
+|---:|---:|---:|---:|---:|
+| 2 | 200 to 400 | 270 | 100 to 150 | 114 |
+| 5 | 150 to 200 | 183 | 50 to 75 | 59 |
+| 10 | 100 to 150 | 147 | 25 to 50 | 51 |
+| 25 | 100 to 150 | 139 (mean of 20 and 30 deg) | 25 to 50 | 37 |
+| 50 | 75 to 100 | 154 | 25 to 50 | 31 |
+| 90 | 150 to 200 | 215 | 75 to 100 | 19 |
+
+- The rule covered 5 to 60 deg. Seven of the 8 comparisons are within one step of their grid (6 inside
+  their bracket, 1 less than 1 uK outside it). The eighth, the exclusion boundary at 50 deg, is outside by
+  2% (154 against an allowed 150). By the rule as written the check is not passed at 50 deg.
+- What that one is: they detected all six of their 100 uK collisions at 50 deg; my detection probability
+  there is 0.57 and 0.52, which gives six out of six in 2.7% of cases. Either their search is more sensitive
+  than mine at 50 deg, by a factor between 1.5 and 2, or their six skies were lucky. Six skies cannot tell.
+  Added afterwards, not pre-registered: of the 42 cells of their grid, the class they published has a
+  probability of 13% or more under my detection probabilities in 41; this cell is the other one.
+- At 90 deg my lower boundary (19 uK) is far below theirs. Criterion (a) at 90 deg is met by chance in 4.5%
+  of trials and its match region is wide, so my 0.11 level there is mostly chance. Their three "unprobed"
+  cells at 90 deg have probabilities 0.45, 0.25 and 0.13 under mine.
+
+Also looked at, not pre-registered: their two largest candidates (nos. 14 and 15, 85 and 90 deg), which my
+search does not see.
+- The W-band maps over the unmasked sky: monopole +0.2 uK and dipole 6.7 uK (foreground-reduced), +15.5 uK
+  and 4.7 uK (plain band map). Removing them or not changes S at the four largest published candidates by
+  0.05 or less on the foreground-reduced map and by up to 0.2 on the plain map. That is not it.
+- Filtering without the mask lets the Galactic plane dominate (S up to 17) and does not give their nos. 14
+  and 15 either (wrong sign at no. 15).
+- At the nearest maxima my amplitudes for nos. 12 and 13 are theirs (0.087 and 0.084 against 0.09 and 0.10
+  mK; S 2.9 and 2.7 against 3.3 and 3.1). For nos. 14 and 15 mine have their sign and half their amplitude
+  (+0.07 and -0.08 against +0.15 and -0.16 mK; S 1.8 and 2.0 against 3.0 and 3.1). Still not explained.
+- Their source names the displayed map `wmap_band_imap_r9_7yr_W_v4_maskKQ75`, the plain band map's file
+  name, while the text says foreground-cleaned. On the plain map run v3 finds 8 of the 11 eligible
+  candidates as candidates (criterion: 7) and 9 of 16 within 0.5 in S (criterion: 12). Recorded only: the
+  map fixed in (w) was the foreground-reduced one, and its verdict stands.
+
+Where this leaves the search: its sensitivity is measured, the shortcut behind the measurement is exact, and
+on WMAP it agrees with the published sensitivity within their grid except for one cell at 50 deg. The
+repeat of their candidate list is still not validated.
+
+## (ah) 2026-11-22 04:34 CST. Correction to step 4 of the search, and what is rerun (written before the reruns)
+
+The deviation found in (ag): in step 4 (a potential detection is dropped when an overlapping region on a
+neighbouring size has the same sign and a larger amplitude) my code compared amplitudes in
+peak-in-the-map units. McEwen et al. compare the filtered field, which in their normalisation estimates z0.
+For the cosine template the code now compares z0 (amplitude / peak_value). The factor between the two is
+1.00 to 1.03 up to 14 deg, 1.15 at 30 deg, 1.8 at 60 deg, 4.0 at 90 deg. The transfer template has no
+published convention; it stays in peak units, unchanged. `--step4-amplitude peak` reproduces the earlier
+runs.
+
+What can change: which of two overlapping detections on neighbouring sizes survives, so the candidate lists
+above about 20 deg, the number of candidates, and that number's rank among simulated skies. What cannot:
+the filtered maps, S, the largest S and its p-value, the thresholds, the sensitivity numbers of (ag), and
+everything for the transfer template.
+
+Reruns (stages null and data; the sigma maps are reused): `planck` (run v2), `planck767` (v2), `wmap7w`
+(v4, the settings of v3); and the end-to-end check of (ag) on the same 160 cases.
+
+Fixed beforehand:
+- The WMAP check keeps the criteria of (w). Criterion (a) (S within 0.5 for 12 of 16) cannot change.
+  Criterion (b) (7 of the 11 eligible found as candidates) can. Whatever it gives is reported; the verdict
+  of (x) on runs v1 to v3 stands as written.
+- Planck: reported are the candidate counts and their p among 1,000 simulated skies, old next to new, and
+  whether any candidate of 45 deg or more appears. "No excess" in (x) rested on the count and on the
+  largest S; if the new count has p below 0.05 on any map, that sentence is withdrawn until understood.
+- End-to-end check: the share of cases with (a) that end as a matching candidate, old 89.0%. The wording
+  "reaches the threshold" stays whatever the new share is.
+
+## (ai) 2026-11-22 04:48 CST. Step 4 corrected: nothing moves on Planck, one candidate less on WMAP
+
+Jobs 82936 (planck v2), 82937 (planck767 v2), 82938 (wmap7w v4), 82939 (end to end). Report:
+`work/results_2026-11-22/fullsky_step4_correction_report.json` (`fullsky_compare_runs.py`).
+
+- Planck, l up to 256: the candidate lists of all four maps are the same as before, entry for entry, for
+  both templates (cosine 33, 34, 32, 31; transfer 40, 39, 34, 38). Simulated skies: 52.59 -> 52.53 cosine
+  candidates per sky, 5% to 95% still 23 to 106. p of the counts 0.76 to 0.81. No cosine candidate of 45 deg
+  or more.
+- Planck, l up to 767: the same lists as before (cosine 94, 104, 96, 95); simulated skies 152.4 -> 152.1.
+- WMAP W band (v4): one candidate less on each map, an 8 deg one at (l, b) = (209.5, -59.3) with S 4.0 that
+  now loses to a neighbouring size. The check of (w): criterion (a) 10 of 16 as before; criterion (b) 6 of
+  11 as before (it needs 7). On the plain band map 9 and 8, as before.
+- End to end, the same 160 cases: of the 118 that reach the threshold, 110 now end as a matching candidate
+  (93.2%, before 89.0%), 6 at another size, 2 with none in the match radius. At the "stands out" 95%
+  amplitude: 74 of 80 match, 79 of 80 leave a candidate at the right place. The shortcut is unchanged
+  (2e-6, 160 of 160).
+
+So the correction matters for strong large discs, which is where it was found, and for nothing in (x): on
+the real maps overlapping detections on neighbouring large sizes are rare. The numbers of (x) stand. The
+wording "reaches the threshold" stays, as fixed in (ah). `fullsky_filter_search.py` now compares z0 by
+default.
