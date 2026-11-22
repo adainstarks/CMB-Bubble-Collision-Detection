@@ -1417,3 +1417,21 @@ calculation, whatever else they are.
 
 Not done: reproducing the Osborne et al. curves by a procedure they could have used (their smoothing is the
 part still missing). A question for the authors is the direct way.
+
+## (aa) 2026-11-22 03:05 CST. Addition to (z): numerical shortcuts do not give the smoother published curves
+
+Entry (z) left one thing untried: whether a shortcut in the numerics turns this calculation into the
+smoother curves of Osborne et al. Fig. 3. Tried, not pre-registered, with the WMAP 7-year parameters their
+paper states (job 82931, `compare_osborne_fig3.py --emulate`):
+
+| procedure | ramp: best depth, RMS | ramp at r as stated (163 Mpc) | ramp at the label (279 Mpc) | step: best depth, RMS |
+|---|---|---:|---:|---|
+| every multipole, refined k (the template) | 140 Mpc, 3.1% | 4.0% | 13.7% | 130 Mpc, 16.5% |
+| every multipole, CAMB's own k grid | 145 Mpc, 3.6% | 4.1% | 13.5% | 130 Mpc, 16.8% |
+| CAMB's default 77 multipoles, b_l interpolated | 140 Mpc, 3.2% | 4.2% | 13.7% | 120 Mpc, 22.6% |
+| both shortcuts | 145 Mpc, 3.7% | 4.3% | 13.5% | 125 Mpc, 22.7% |
+
+None of them brings the step curve closer, and none moves the depth: the ramp keeps picking 140 to 145 Mpc
+and stays at 13.5% or worse at the labelled depth. So the extra smoothness of their curves is not one of
+these shortcuts, and the verdict of (z) does not depend on how the integrals are done. What produced their
+smoothing stays a question for the authors.

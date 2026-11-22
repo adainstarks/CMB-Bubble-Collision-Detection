@@ -1,0 +1,153 @@
+{
+ "note": "Job 82931, not pre-registered: numerical shortcuts tried against the published curves, WMAP 7-year parameters.",
+ "figure": {
+  "r_mpc": 13886.6,
+  "theta_deg": 11.39,
+  "D_mpc": 14165.581821449608,
+  "depth_mpc": 278.9818214496081
+ },
+ "emulation_wmap7": {
+  "depth_for_r_as_stated": 162.7256986298271,
+  "default_multipoles": [
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   17,
+   19,
+   21,
+   23,
+   25,
+   27,
+   29,
+   31,
+   33,
+   35,
+   37,
+   40,
+   45,
+   50,
+   55,
+   60,
+   65,
+   70,
+   75,
+   80,
+   85,
+   90,
+   110,
+   130,
+   150,
+   175,
+   200,
+   250,
+   300,
+   350,
+   400,
+   450,
+   500,
+   550,
+   600,
+   650,
+   700,
+   750,
+   800,
+   850,
+   900,
+   950,
+   1000,
+   1050,
+   1100,
+   1150,
+   1200,
+   1250,
+   1300,
+   1350,
+   1400,
+   1450,
+   1500,
+   1550,
+   1600,
+   1650,
+   1700,
+   1750,
+   1800,
+   1850,
+   1900,
+   1950,
+   2000
+  ],
+  "procedures": [
+   {
+    "procedure": "all multipoles, refined k (as in the template)",
+    "ramp": {
+     "best_depth": 140.0,
+     "rms_best": 0.03063648953657704,
+     "rms_at_literal_r": 0.04032126259529183,
+     "rms_at_label": 0.13723111180207775
+    },
+    "step": {
+     "best_depth": 130.0,
+     "rms_best": 0.16510018989149838,
+     "rms_at_literal_r": 0.23587490169027242,
+     "rms_at_label": 0.45715431448672894
+    }
+   },
+   {
+    "procedure": "all multipoles, CAMB k grid",
+    "ramp": {
+     "best_depth": 145.0,
+     "rms_best": 0.03576270006013215,
+     "rms_at_literal_r": 0.04097437594450072,
+     "rms_at_label": 0.13481571721154625
+    },
+    "step": {
+     "best_depth": 130.0,
+     "rms_best": 0.168178766085788,
+     "rms_at_literal_r": 0.2379219319036063,
+     "rms_at_label": 0.4592302517062318
+    }
+   },
+   {
+    "procedure": "default multipoles, refined k",
+    "ramp": {
+     "best_depth": 140.0,
+     "rms_best": 0.031997737224496975,
+     "rms_at_literal_r": 0.041690991361755705,
+     "rms_at_label": 0.13703205558220782
+    },
+    "step": {
+     "best_depth": 120.0,
+     "rms_best": 0.22554618201404097,
+     "rms_at_literal_r": 0.3426954277423739,
+     "rms_at_label": 0.6824247594785342
+    }
+   },
+   {
+    "procedure": "default multipoles, CAMB k grid",
+    "ramp": {
+     "best_depth": 145.0,
+     "rms_best": 0.03705932673735296,
+     "rms_at_literal_r": 0.04259140207964024,
+     "rms_at_label": 0.1346816835202818
+    },
+    "step": {
+     "best_depth": 125.0,
+     "rms_best": 0.2272076592103027,
+     "rms_at_literal_r": 0.34745506484393524,
+     "rms_at_label": 0.6878518941333377
+    }
+   }
+  ]
+ }
+}

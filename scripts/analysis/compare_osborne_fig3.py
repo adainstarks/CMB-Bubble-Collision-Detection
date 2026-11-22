@@ -158,6 +158,58 @@ def explore_smoothing(ells, depths, b_ramp, b_step, theta, theta_far, target, th
     return {"variants": out, "best": {k: best[k] for k in ("kind", "value", "joint_depth", "rms_ramp", "rms_step")}, "best_table": rows}
 
 
+def emulate_procedures(params, depths, theta, theta_far, target, lmax):
+    """NOT pre-registered (notebook entry (z)): could a shortcut in the numerics give the smoother published curves?
+    a. CAMB's default sampling of multipoles (about 60 values up to l = 2000) with b_l interpolated in l;
+    b. the k integral on CAMB's own k grid without refinement;
+    c. both."""
+    import camb
+
+    def transfer(l_sample_boost):
+        pars = camb.CAMBparams()
+        pars.set_cosmology(H0=params["H0"], ombh2=params["ombh2"], omch2=params["omch2"], tau=params["tau"])
+        pars.InitPower.set_params(As=params["As"], ns=params["ns"])
+        pars.set_for_lmax(int(lmax), lens_potential_accuracy=0)
+        pars.WantTensors = False
+        pars.DoLensing = False
+        pars.Accuracy.lSampleBoost = float(l_sample_boost)
+        data = camb.get_transfer_functions(pars)
+        t = data.get_cmb_transfer_data("scalar")
+        res = camb.get_results(pars)
+        d_star = float(res.comoving_radial_distance(res.get_derived_params()["zstar"]))
+        ells = np.asarray(t.L, dtype=np.int64)
+        keep = ells <= lmax
+        return ct.Transfer(ells[keep], np.asarray(t.q, dtype=np.float64), np.asarray(t.delta_p_l_k[0], dtype=np.float64)[keep],
+                           np.asarray(t.delta_p_l_k[1], dtype=np.float64)[keep], d_star, params, np.zeros(1))
+
+    full, sparse = transfer(50.0), transfer(1.0)
+    print()
+    print("NOT pre-registered: shortcuts in the numerics. CAMB's default multipole sampling has %d values: %s ..." % (
+        sparse.ells.size, sparse.ells[:40].tolist()))
+    all_ells = np.arange(2, lmax + 1)
+    out = []
+    literal = full.d_star - R_FIGURE
+    dd = np.unique(np.concatenate([depths, [round(literal, 1)]]))
+    for name, tr, refine in (("all multipoles, refined k (as in the template)", full, 8), ("all multipoles, CAMB k grid", full, 1),
+                             ("default multipoles, refined k", sparse, 8), ("default multipoles, CAMB k grid", sparse, 1)):
+        ells, _, b_ramp, b_step = template_coefficients(tr, dd, refine=refine)
+        if ells.size < all_ells.size:
+            b_ramp = CubicSpline(ells, b_ramp, axis=1)(all_ells)
+            b_step = CubicSpline(ells, b_step, axis=1)(all_ells)
+            ells = all_ells
+        row = {"procedure": name}
+        for curve, coeffs in (("ramp", b_ramp), ("step", b_step)):
+            fixed, _, _ = restore_low_multipoles(theta, profiles(theta, ells, coeffs), theta_far, profiles(theta_far, ells, coeffs))
+            rms = np.array([fit_curve(fixed[i], target[curve])[1] for i in range(dd.size)])
+            i, il, ilab = int(np.argmin(rms)), int(np.argmin(np.abs(dd - literal))), int(np.argmin(np.abs(dd - DEPTH_FIGURE)))
+            row[curve] = {"best_depth": float(dd[i]), "rms_best": float(rms[i]), "rms_at_literal_r": float(rms[il]), "rms_at_label": float(rms[ilab])}
+        out.append(row)
+        print("%-46s ramp: best %4.0f Mpc %.4f, at r as stated (%.0f Mpc) %.4f, at label %.4f | step: best %4.0f Mpc %.4f, at r as stated %.4f, at label %.4f" % (
+            name, row["ramp"]["best_depth"], row["ramp"]["rms_best"], literal, row["ramp"]["rms_at_literal_r"], row["ramp"]["rms_at_label"],
+            row["step"]["best_depth"], row["step"]["rms_best"], row["step"]["rms_at_literal_r"], row["step"]["rms_at_label"]))
+    return {"depth_for_r_as_stated": literal, "default_multipoles": sparse.ells.tolist(), "procedures": out}
+
+
 def distance_without_radiation(params, z):
     """Comoving distance to redshift z for matter + Lambda only (no radiation), Mpc. Reported for comparison
     with the figure's D = 14165.5 Mpc; NOT part of the pre-registered test."""
@@ -172,6 +224,7 @@ def distance_without_radiation(params, z):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--explore-smoothing", action="store_true", help="add the fit with a smoothing parameter (not pre-registered)")
+    ap.add_argument("--emulate", action="store_true", help="only try numerical shortcuts with the WMAP 7-year parameters (not pre-registered)")
     ap.add_argument("--curves", required=True)
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--lmax", type=int, default=2000)
@@ -214,6 +267,12 @@ def main():
     theta_far = np.radians(np.arange(30.0, 180.01, 1.0))
     key_angles = [0.05, 2.0, 4.0, 5.695, 8.0, 9.0, 10.0, 11.0, 11.39, 12.0, 13.39, 15.0, 15.9]
 
+    if args.emulate:
+        report["emulation_wmap7"] = emulate_procedures(COSMOLOGIES["wmap7"], depths, theta, theta_far, target, args.lmax)
+        with open(out_dir / "emulate_osborne_fig3_report.json", "w") as f:
+            json.dump(report, f, indent=1)
+        print("wrote", out_dir / "emulate_osborne_fig3_report.json")
+        return
     for cosmo in args.cosmologies.split(","):
         t0 = time.time()
         tr = ct.camb_transfer(lmax=args.lmax, params=COSMOLOGIES[cosmo])
