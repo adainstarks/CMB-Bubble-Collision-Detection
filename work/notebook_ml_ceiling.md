@@ -128,3 +128,10 @@ not an attribute of the package until a plotting function has been imported; Nov
 `hp.gnomview` first, mine did not. Fixed by importing `GnomonicProj` from `healpy.projector` directly. No
 result existed yet, so nothing is affected. The built-in guard (projected patch must equal `hp.gnomview`
 output) stays and will run in the next smoke job.
+
+Correction to the diagnosis of C1, 08:58 CST. Smoke job 93903 passed the projection and then stopped at the
+guard itself: `module 'healpy' has no attribute 'gnomview'`. The cause of both errors is one thing: the
+environment had no matplotlib, and healpy then loads without its plotting functions (and without the
+`hp.projector` attribute path). The healpy version is not the cause. Fix: matplotlib added to the
+environment, `MPLBACKEND=Agg` set in `cluster/babbage/env.sh`. The direct import of `GnomonicProj` stays;
+it is correct either way.
