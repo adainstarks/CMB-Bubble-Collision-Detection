@@ -174,3 +174,20 @@ serializable` while writing `report.json`.
 dropped before saving. Every real training run would have failed at this point, after training, so the
 scores would have been lost; none had started. The pending jobs (93905 smoke, 93907 training) read the
 script from the repository when they start and will run the fixed version.
+
+## (G) 2026-11-22 09:20 CST. Whole path verified; state of the queue
+
+Smoke job 93913 (c11, batch 16, commit 6c3a399): COMPLETED in 1 min 12 s, ends with `SMOKE_OK`. Test sets
+made with all guards passing, one epoch trained, both test sets scored, `report.json` written, `summarize`
+prints its tables. The only thing not yet exercised on the cluster is batch 64 on a 24 or 32 GiB card.
+
+Queue at 09:20 CST:
+- 93906_0 (T0): running, 3.3 s per sky, about 83 minutes for 1,500 skies. 93906_1 and _2 (T35, T100) running.
+- 93905 (smoke on a large GPU): waiting for a free card, estimated 23:44 CST.
+- 93907_[0-12%4] (thirteen training runs): held until 93905 and 93906 succeed.
+
+Nothing in entries (C) to (G) changed the design or the predictions of entry (B). No test-set score of any
+network has been looked at: none exists.
+
+Next, when the runs are in: `python scripts/ml/ml_ceiling_study.py summarize --runs-dir
+/projects/gmarcum/cmb/runs/ceiling_v1 --out-json ...`, then score the ten predictions of (B) one by one.
