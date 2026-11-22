@@ -17,6 +17,7 @@ source /projects/$USER/cmb/repo/cluster/babbage/env.sh
 export HF_HUB_OFFLINE=1
 hostname; date; nvidia-smi --query-gpu=name,memory.total --format=csv
 cd "$CMB_REPO"
+git log --oneline -1
 i=$SLURM_ARRAY_TASK_ID
 if   [ "$i" -le 4 ]; then arm=R; init=imagenet; mixes=0;            seed=$((i + 1))
 elif [ "$i" -le 7 ]; then arm=N; init=random;   mixes=0;            seed=$((i - 4))
