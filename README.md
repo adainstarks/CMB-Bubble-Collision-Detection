@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (aa)):
+Open as of 22 November 2026 (notebook entries (t) to (ab)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
@@ -65,9 +65,10 @@ Open as of 22 November 2026 (notebook entries (t) to (aa)):
   the last-scattering surface all three agree to 3%: the centre is 2.5 times the Sachs-Wolfe value and the
   edge is at 0.49 of the centre. The published transfer function of Feeney et al. (arXiv:1506.01716, Fig. 6)
   is reproduced as well. Fig. 3 of Osborne, Senatore and Smith (arXiv:1305.1970) is not reproduced as
-  labelled (11.39 degrees, 279 Mpc deep): its curve has the shape of a wall 110 to 160 Mpc deep, and the
-  distance stated in its caption gives 163 Mpc with the cosmology the paper states. The label and the curve
-  of that figure do not match; why is a question for its authors. The template is unchanged.
+  labelled (11.39 degrees, 279 Mpc deep): its curve has the shape of a wall 110 to 160 Mpc deep. The
+  distance stated in its caption gives 185 Mpc with the cosmology the paper states, closer to the curve than
+  the label but not on it. The label and the curve of that figure do not match; why is a question for its
+  authors. The template is unchanged.
 - Full-sky filter search after McEwen et al. (arXiv:1202.2861), entries (w), (x)
   (`scripts/analysis/fullsky_filter_search.py`): every unmasked position, 33 sizes from 1 to 90 degrees,
   the thresholds of Feeney et al. (arXiv:1210.2725). On the four Planck maps (77% of the sky) the number of

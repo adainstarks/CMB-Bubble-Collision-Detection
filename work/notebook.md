@@ -1435,3 +1435,31 @@ None of them brings the step curve closer, and none moves the depth: the ramp ke
 and stays at 13.5% or worse at the labelled depth. So the extra smoothness of their curves is not one of
 these shortcuts, and the verdict of (z) does not depend on how the integrals are done. What produced their
 smoothing stays a question for the authors.
+
+## (ab) 2026-11-22 03:16 CST. Correction to (z) and (aa): the stated cosmology has massless neutrinos
+
+In (z) I wrote that the distance r = 13,886.6 Mpc of the Osborne et al. caption, with the WMAP7+BAO+H0
+parameters their paper states, puts the wall 163 Mpc inside the last-scattering surface (a disc of 8.7 deg)
+and that the label needs a distance 116 Mpc larger. Those numbers came from CAMB runs that carried one
+0.06 eV neutrino, the default of this project's Planck set-up. The WMAP 7-year parameters assume massless
+neutrinos. With that:
+
+| | last-scattering distance | wall depth for the stated r | disc | label distance minus this |
+|---|---:|---:|---:|---:|
+| one 0.06 eV neutrino (used in (v), (z), (aa)) | 14,049.3 Mpc | 162.7 Mpc | 8.73 deg | 116.3 Mpc |
+| massless neutrinos (the stated cosmology) | 14,071.9 Mpc | 185.3 Mpc | 9.31 deg | 93.7 Mpc |
+
+14,072 Mpc is also the value in the WMAP 7-year tables for that parameter set (14,073, quoted from memory).
+
+What changes. In (z) the stated r landed at the edge of the range the shape of their ramp prefers (110 to
+160 Mpc). At 185 Mpc it is outside it: the template fits their ramp with an RMS of about 6% there (5.5% at
+180 Mpc, 7.3% at 200 Mpc in the table of job 82917), against 3.1% at the best depth of 140 Mpc and 13.7% at
+the labelled 279 Mpc. So the literal reading of the caption is twice as far from the curve as the best
+depth, and still more than twice as close as the label.
+
+What does not change. The template and its three-way confirmation; that the figure as labelled is not
+reproduced; that the shape of the published ramp picks 110 to 160 Mpc. What I can no longer say is that the
+caption's r and the stated cosmology account for the curve. The curve sits about 45 Mpc shallower than even
+that reading, and its smoothness is unexplained as before. The transfer functions of the WMAP runs in (v),
+(z) and (aa) carried the same neutrino; the fitted depth is defined from each run's own last-scattering
+distance, so it is not shifted by this.
