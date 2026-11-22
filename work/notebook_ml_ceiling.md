@@ -227,3 +227,25 @@ jobs since 11-19).
 
 Next: smoke job on c11 at batch 64 with `--amp`. Only if it passes: submit the c11 array, cancel 93905 and
 93907, submit the float32 control.
+
+## (I) 2026-11-22 16:30 CST. c11 check passes; the thirteen runs are started
+
+**Test sets (jobs 93906_[0-2], read from their logs).** All three written. Standard deviation of the
+signal-free filter maps per bank size, which should be 1: T0 1.003 to 1.035 (rising with size), T35 0.993
+to 1.006, T100 1.009 to 1.018.
+
+**Smoke job 93949** (c11, commit 88a3110, batch 64, `--amp --eval-batch 128`): COMPLETED in 1 min 17 s,
+`SMOKE_OK`. Largest GPU memory in use during training 5.7 GiB, against 10.3 GiB and an out-of-memory
+failure in float32 (job 93904).
+
+**Submitted 16:27 CST.**
+- 93951_[0-12%2]: the thirteen runs of (B) on c11, two at a time, mixed precision as described in (H).
+  93951_0 and 93951_1 (arm R, seeds 1 and 2) started at once.
+- 93952_[0]: the float32 control of (H), arm R seed 1, waiting for a large card (estimate 05:44 CST 11-23).
+- Cancelled: 93905 (smoke on a large card, superseded by 93949) and 93907 (the float32 array).
+
+Small thing seen in passing: c11's clock reads about 1 min 40 s ahead of the scheduler's (job start
+16:27:35 CST by Slurm, 22:29:14 UTC in the job's own log). It affects nothing here.
+
+No network score has been looked at. Next: when 93951 is done, `summarize` on `runs/ceiling_v1`, then the
+ten predictions of (B), one by one, then the control.
