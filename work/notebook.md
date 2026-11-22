@@ -1294,3 +1294,126 @@ two largest candidates do not appear.
 Open after this entry: why my significances are lower than the published ones; which treatment of the
 lowest multipoles produces their nos. 14 and 15; the count after the step across sizes. Not done, as fixed
 in (w): injection tests over the searched area, the Planck end-to-end simulations, any Bayesian step.
+
+## (y) 2026-11-22 02:38 CST. The Osborne figure again, with this project's template as the suspect; pre-registration
+
+Entry (v) left the comparison with Fig. 3 of Osborne, Senatore and Smith at "their figure is matched at a
+different depth". That reads the disagreement in this project's favour. This entry turns it round: assume
+their figure is right as labelled and look for the error here.
+
+What separates the two. For a wall 279 Mpc inside the last-scattering surface the template gives a centre
+2.4 times the Sachs-Wolfe value and an edge-to-centre ratio of 0.48. Their figure has 0.16, and their text
+calls the Sachs-Wolfe ramp "excellent for most bubble sizes". The whole difference is a plateau of about
+400 Mpc depth-equivalent that the template assigns mostly to the motion of the plasma inside the collision
+region (the Doppler term). If that plateau is not real, the template is wrong for every disc below about 30
+deg and so is every number from entry (l) on.
+
+Where an error here could sit, and what has been checked so far:
+1. In the use of CAMB's transfer function in the harmonic formula (phases, the sum over multipoles, the k
+   range CAMB provides per multipole). Checked only against CAMB-based results: entries (f) to (h), and Feeney
+   et al. Fig. 6 in (v), which is also CAMB.
+2. In CAMB itself. Not checked; all three published groups and this project use it.
+3. In the physical argument of entry (u) for the Doppler term. It is an argument, not a calculation.
+
+Test, pre-registered (`scripts/analysis/realspace_ramp_check.py`). The profile for depths of 279 and 135 Mpc
+is rebuilt in real space by two routes that use neither CAMB nor a transfer function Delta_l(k) nor a sum
+over multipoles:
+- "toy": a fluid model written from the textbook equations (CDM, tightly coupled photons and baryons, a
+  neutrino fluid, instantaneous recombination, two Gaussian damping factors). No Boltzmann code at all.
+- "class": the Boltzmann code CLASS in Newtonian gauge: photon density, baryon velocity divergence and
+  potentials on a grid of times, CLASS's visibility function, the integrated Sachs-Wolfe term.
+In both the velocity of the plasma comes from its divergence, that is from the continuity equation, so no
+sign convention of a code enters, and the code checks that equation numerically for CLASS.
+
+Outcomes fixed in advance, for the depth of 279 Mpc:
+- "The template is wrong": both routes give a centre within 20% of the Sachs-Wolfe value (at most 1.2) and
+  an edge-to-centre ratio at or below 0.25.
+- "The template is confirmed": CLASS agrees with the CAMB template to 5% of the central value at every
+  angle from 0 to 16 deg, the toy model to 20%, and both have a centre above 2 and an edge-to-centre ratio
+  between 0.4 and 0.6.
+- Anything else is reported as mixed, with the numbers.
+
+Also started, with no criterion: reading the published profiles of Kleban, Levi and Sigurdson
+(arXiv:1109.3473, Fig. 2) from their figure, which is a rendered image and not vector data; and trying to
+reproduce the Osborne et al. curves by procedures they could have used.
+
+## (z) 2026-11-22 03:00 CST. Verdict on the Osborne figure: the template stands; the figure's label does not match its curve
+
+Result of the test pre-registered in (y), job 82929 (`runs/template_check/realspace_ramp/`). Profile of a wall
+279 Mpc inside the last-scattering surface, in units of the Sachs-Wolfe central value:
+
+| route | centre | half radius | edge | edge + 2 deg | edge + 4 deg | edge / centre | largest difference from CAMB, of the centre |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| CAMB, harmonic template (entries (f), (g)) | 2.509 | 2.252 | 1.236 | 0.461 | 0.043 | 0.493 | |
+| fluid model written here, no Boltzmann code | 2.577 | 2.286 | 1.269 | 0.489 | 0.000 | 0.492 | 2.7% |
+| CLASS, real space | 2.501 | 2.240 | 1.206 | 0.413 | 0.000 | 0.482 | 2.0% |
+
+At 135 Mpc: centre 4.041 / 4.052 / 4.017, edge-to-centre 0.633 / 0.651 / 0.622, differences 2.9% and 2.7%.
+
+Outcome by the criteria of (y): the template is confirmed. CLASS agrees to 2.0% (5% allowed), the fluid
+model to 2.7% (20% allowed), both have a centre above 2 and an edge-to-centre ratio between 0.4 and 0.6.
+
+What the three routes share and do not share. CAMB route: transfer function Delta_l(k), the harmonic formula
+of Osborne et al., a sum over multipoles. CLASS route: a different Boltzmann code, fields in real space, the
+plasma velocity taken from its divergence (CLASS satisfies the continuity equation to 0.6% at last
+scattering), a line-of-sight sum over 286 emission times. Fluid route: seven ordinary differential equations
+per wavenumber from Ma and Bertschinger, instantaneous recombination. Parts in the CLASS route, at the
+centre: density 1.09, Doppler 1.31, integrated Sachs-Wolfe 0.10. The Doppler part is the plateau: 1.31 at the
+centre, 1.29 at half radius, 0.58 at the edge, as entry (g) found from CAMB (1.27, 1.25, 0.55). Its
+depth-equivalent at long wavelengths is 317 Mpc in the fluid model and 311 Mpc in CLASS.
+
+Two errors of mine on the way, both in the new fluid model, neither in the template. The first run (82928)
+started the fluid model from the leading radiation-era forms; those break the density constraint at order
+a / a_eq and the equations then hold the potential constant through equality (density constraint off by 19%).
+Starting on the exact superhorizon solution fixes it (constraint to 0.1%, potential 0.62403 against the
+expected 0.62412). CLASS needed the setting its error message named.
+
+The three tests passed on from outside, on what the published figure is:
+1. Does the Feeney et al. curve carry a depth? No. Their Fig. 6 is the transfer function against radius and
+   holds no collision. But their Fig. 2 maps the distance of the wall to the angular radius, and that curve
+   reaches zero at 13.913 Gpc and follows acos(x_c / 13.914 Gpc) to 0.06 deg; CAMB puts last scattering at
+   13,908 Mpc for their parameters. So their size convention is this project's. And the depth handling here
+   is now tested by a route in which the wall is placed geometrically (the CLASS route).
+2. Was the 3% match of (v) on shape or on height? On shape: the fit had a free amplitude. With both curves
+   scaled to a peak of 1 and nothing fitted, the ramp still picks 135 Mpc (RMS 3.4%; 110 to 160 Mpc within
+   1.5 times of that), and 279 Mpc gives 17.9%. Half maximum of the published ramp at 8.78 deg; of the
+   template at 9.05 deg for 135 Mpc and 11.45 deg for 279 Mpc. A geometry or definition problem, not a
+   normalisation.
+3. Any other number in their text for the same collision? The paper states r = 13,886.6 Mpc, the label
+   11.39 deg, and that it uses "the WMAP7+BAO+H0 cosmological parameters throughout". For those parameters
+   CAMB gives a last-scattering distance of 14,049 Mpc. With it, r is 163 Mpc inside the surface and
+   theta = sqrt(2 d / R) = 8.7 deg. The label needs 14,165.5 Mpc, which is 116 Mpc more.
+
+Verdict.
+- On this project: the template is what the ramp model gives. Two Boltzmann codes and a model with no
+  Boltzmann code agree to 3%, the published transfer function of Feeney et al. is reproduced (entry (v)),
+  and the plateau has a plain cause: the plasma on the two sides of the wall falls towards it.
+- On the figure: the curve is consistent with this calculation, the label is not. As labelled (11.39 deg,
+  279 Mpc deep) the figure is not reproduced by any of the four calculations. Its shape is that of a wall
+  110 to 160 Mpc deep, a disc of 7 to 9 deg, and the stated r with the stated cosmology gives 163 Mpc.
+- Not explained, and only the authors can say: where the distance 14,165.5 Mpc of the label comes from; why
+  their curves are smoother than these (the step fits at 16% at best); and their sentence that the
+  Sachs-Wolfe ramp is "excellent for most bubble sizes", which this calculation contradicts below about
+  30 deg. A last-scattering distance too large by a hundred Mpc would make the Sachs-Wolfe ramp of the
+  labelled size look like the true profile of the smaller disc; that is my guess at how the sentence and
+  the figure hang together, not something shown.
+
+A second published figure, read with less certainty. Kleban, Levi and Sigurdson (arXiv:1109.3473) Fig. 2 is
+a rendered image of the profiles for all disc sizes, not vector data. The outline of its smallest disc can
+be measured from pixels (tip of the surface at the peak, zero level from the edge of the flat part, 9.75
+pixels per degree from the axis ticks): half maximum at 5.6 deg, 2% of the peak at 9.6 deg. From the axis
+ticks that disc is labelled 8.0 deg, or 9.7 deg if the axis has the same 2% padding as the other one. As
+read, the outline is close to a Sachs-Wolfe ramp of 8.0 deg (RMS 7%) and far from this template at the
+labelled sizes (30 to 37%); this template gives such a compact spot only for a wall that just touches the
+surface (best depth -15 Mpc, RMS 6%). In this calculation a wall touching the surface makes a spot of 8.3
+deg, the sound horizon seen side-on, and no ramp collision makes a smaller one, so their axis starting at
+8 deg may be exactly that. I cannot decide this from an image.
+
+Consequences here. The template, the benchmark and the search are unchanged. Two things follow from the
+plateau that the earlier entries did not spell out: a ramp collision cannot look smaller than about 8 deg,
+and a disc of nominal radius below about 30 deg looks like a Sachs-Wolfe disc of a larger radius. Published
+candidates of 1.5 to 7 deg found with the edge-free template are therefore not ramp collisions in this
+calculation, whatever else they are.
+
+Not done: reproducing the Osborne et al. curves by a procedure they could have used (their smoothing is the
+part still missing). A question for the authors is the direct way.

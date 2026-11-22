@@ -57,17 +57,17 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (x)):
+Open as of 22 November 2026 (notebook entries (t) to (z)):
 
-- The template against two published figures (entries (u), (v)). The plotted curves of Osborne, Senatore
-  and Smith (arXiv:1305.1970) Fig. 3 and of Feeney et al. (arXiv:1506.01716) Fig. 6 were read as numbers
-  from the vector figures in the arXiv sources. The Feeney et al. curve, the real-space transfer function
-  at l = 20, is reproduced: peak at 14,057 against 14,058 Mpc, first moment about the last-scattering
-  distance +494 against +496 Mpc. The Osborne et al. figure is not reproduced at its labelled depth of
-  279 Mpc (edge-to-centre ratio 0.16 there, 0.48 here), but its ramp is matched to 3% by the same template
-  with the wall 130 to 140 Mpc deep. Why the figure corresponds to that depth is not known, and by the
-  criteria fixed beforehand the fit counts as inconclusive. Not done: a second Boltzmann code. The template
-  is unchanged.
+- The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
+  CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
+  equations with no Boltzmann code (`scripts/analysis/realspace_ramp_check.py`). For a wall 279 Mpc inside
+  the last-scattering surface all three agree to 3%: the centre is 2.5 times the Sachs-Wolfe value and the
+  edge is at 0.49 of the centre. The published transfer function of Feeney et al. (arXiv:1506.01716, Fig. 6)
+  is reproduced as well. Fig. 3 of Osborne, Senatore and Smith (arXiv:1305.1970) is not reproduced as
+  labelled (11.39 degrees, 279 Mpc deep): its curve has the shape of a wall 110 to 160 Mpc deep, and the
+  distance stated in its caption gives 163 Mpc with the cosmology the paper states. The label and the curve
+  of that figure do not match; why is a question for its authors. The template is unchanged.
 - Full-sky filter search after McEwen et al. (arXiv:1202.2861), entries (w), (x)
   (`scripts/analysis/fullsky_filter_search.py`): every unmasked position, 33 sizes from 1 to 90 degrees,
   the thresholds of Feeney et al. (arXiv:1210.2725). On the four Planck maps (77% of the sky) the number of
