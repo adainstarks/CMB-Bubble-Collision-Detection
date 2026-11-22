@@ -149,3 +149,17 @@ Job 93904 (node c11, RTX 2080 Ti, 1 min 26 s), six skies, three bank sizes:
 Not a code defect. c11 is the only node with 11 GiB cards (2080 Ti); the others have 24 GiB (A5000) or
 32 GiB (RTX 5000 Ada). Job files now exclude c11 as well as c14, and the training array runs at most four
 jobs at a time so that it does not take every free GPU of the partition.
+
+## (E) 2026-11-22 09:10 CST. Jobs submitted; one more job-file bug
+
+Submitted at about 09:05 CST (15:05 UTC on the cluster clock), all from commit a2eec7b, after entry (B)
+was pushed (commit 25a6edc, 08:40 CST):
+- 93906_[0-2]: the three test sets T0, T35, T100 on CPU nodes c1 to c3. Running.
+- 93905: smoke job on a 24 or 32 GiB GPU. Waiting; the scheduler's estimate is 23:44 CST tonight.
+- 93907_[0-12%4]: the thirteen training runs, held until 93905 and all of 93906 end successfully.
+
+**Bug C2 (job file only).** To record the code version I added `git log` to the job files (commit
+37865b7) and ran an extra smoke job on the idle 2080 Ti node with batch 16 (93910). It failed in ten
+seconds: compute nodes have no `git`. The job files now read the commit hash from `.git/refs` instead.
+Jobs 93905, 93906 and 93907 were submitted before that edit and Slurm keeps the script as submitted, so
+they are not affected.

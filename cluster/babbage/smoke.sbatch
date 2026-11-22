@@ -16,7 +16,7 @@ export HF_HUB_OFFLINE=1
 hostname; date; nvidia-smi --query-gpu=name,memory.total --format=csv
 "$CMB_PY" -c "import sys, torch, healpy, camb, segmentation_models_pytorch as smp; print(sys.version.split()[0], 'torch', torch.__version__, 'cuda', torch.cuda.is_available(), 'healpy', healpy.__version__, 'camb', camb.__version__, 'smp', smp.__version__)"
 cd "$CMB_REPO"
-git log --oneline -1
+echo "commit $(cat .git/refs/heads/ml-ceiling-study 2>/dev/null || echo unknown)"   # compute nodes have no git
 OUT=$CMB_ROOT/runs/smoke_$SLURM_JOB_ID
 "$CMB_PY" scripts/ml/ml_ceiling_study.py make-test --out-dir "$OUT/test" --smoke
 "$CMB_PY" scripts/ml/ml_ceiling_study.py make-test --out-dir "$OUT/test_mix" --mix 1.0 --target-snr 3,8 --smoke
