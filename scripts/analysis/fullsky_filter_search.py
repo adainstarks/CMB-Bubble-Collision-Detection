@@ -33,8 +33,10 @@ Assumptions and choices that are this project's, not theirs
             l <= 256 as in their search, simulations as in ``benchmark_real_sky.py`` (white noise 30 uK-arcmin);
   "planck767"  the same with l <= 767, the limit of the Nside 256 maps;
   "wmap7w"  WMAP 7-year foreground-reduced W band, the map of their search, at Nside 256, extended
-            temperature analysis mask (KQ75y7) >= 0.9, 13.2 arcmin beam, l <= 256 as in their paper, noise
-            sigma_0 / sqrt(N_obs) with sigma_0 = 6.549 mK, WMAP 7-year parameters.
+            temperature analysis mask (KQ75y7) >= 0.9, l <= 256 as in their paper, noise sigma_0 / sqrt(N_obs)
+            with sigma_0 = 6.549 mK, WMAP 7-year parameters. Beam: the mean of the four published W-band
+            beam transfer functions (``--wmap-beam gaussian`` uses a 13.2 arcmin Gaussian instead, as the
+            first two WMAP runs did; the real beam is wider at low l than that Gaussian).
 * Simulated skies are Gaussian; they hold no foreground residuals.
 
 Stages: selftest, stats (sigma maps), calib (only with ``--thresholds calibrated``), null (the algorithm on
@@ -82,7 +84,10 @@ def published_threshold(size):
 NSIDE = 256
 NPIX = hp.nside2npix(NSIDE)
 LMAX_SIM = 3 * NSIDE - 1
-WMAP7 = {"H0": 70.4, "ombh2": 0.02260, "omch2": 0.1123, "tau": 0.087, "As": 2.441e-9, "ns": 0.963}
+# WMAP 7-year + BAO + H0 mean parameters. WMAP quotes the amplitude 2.441e-9 at k = 0.002 /Mpc; CAMB's pivot is
+# 0.05 /Mpc, so it is moved there. (The first WMAP run used 2.441e-9 at CAMB's pivot, 12.6% too much power.)
+WMAP7 = {"H0": 70.4, "ombh2": 0.02260, "omch2": 0.1123, "tau": 0.087, "As": 2.441e-9 * (0.05 / 0.002) ** (0.963 - 1.0),
+         "ns": 0.963}
 WMAP_W_SIGMA0_K = 6.549e-3
 PLANCK_MAPS = {
     "smica": "COM_CMB_IQU-smica_2048_R3.00_full.fits",
@@ -95,6 +100,7 @@ WMAP_FILES = {"wmap7_w_forered": ("wmap7/wmap_band_forered_iqumap_r9_7yr_W_v4.fi
               "wmap7_w_raw": ("wmap7/wmap_band_imap_r9_7yr_W_v4.fits", 0)}
 WMAP_NOBS = ("wmap7/wmap_band_imap_r9_7yr_W_v4.fits", 1)
 WMAP_MASK = "wmap7/wmap_ext_temperature_analysis_mask_r9_7yr_v4.fits"
+WMAP_BEAMS = ["wmap7/wmap_ampl_bl_W%d_7yr_v4.txt" % i for i in (1, 2, 3, 4)]
 STAGE_CODE = {"stats": 1, "calib": 2, "null": 3, "inject": 4, "selftest": 5}
 
 G = {}          # state shared with forked workers (set once in the parent, read-only afterwards)
@@ -106,8 +112,9 @@ def log(msg):
 
 
 # ---------------------------------------------------------------------------------------------- data sets
-def load_dataset(name, data_dir, seed):
+def load_dataset(name, data_dir, seed, wmap_beam="published"):
     pix_area = hp.nside2pixarea(NSIDE)
+    beam = None
     if name in ("planck", "planck767"):
         lmax, fwhm_arcmin, transfer_params = (256 if name == "planck" else LMAX_SIM), 5.0, None
         cl, _ = camb_tt_cls(lmax=LMAX_SIM)
@@ -122,13 +129,19 @@ def load_dataset(name, data_dir, seed):
         var512 = WMAP_W_SIGMA0_K**2 / np.maximum(nobs, 1.0)
         noise_sigma = np.sqrt(hp.ud_grade(var512, NSIDE) / 4.0)       # mean of four Nside 512 pixels
         maps = {k: (data_dir / v[0], v[1], 1.0e-3) for k, v in WMAP_FILES.items()}       # mK -> K
+        if wmap_beam == "published":
+            tables = [np.loadtxt(str(data_dir / f)) for f in WMAP_BEAMS]
+            assert all(np.array_equal(t[: LMAX_SIM + 1, 0], np.arange(LMAX_SIM + 1)) for t in tables)
+            beam = np.mean([t[: LMAX_SIM + 1, 1] for t in tables], axis=0)
     else:
         raise ValueError(name)
     cl = np.asarray(cl[: LMAX_SIM + 1], dtype=np.float64)
-    window = ct.gaussian_beam(lmax, fwhm_arcmin) * hp.pixwin(NSIDE, lmax=lmax)
+    if beam is None:
+        beam = ct.gaussian_beam(LMAX_SIM, fwhm_arcmin)
+    window = beam[: lmax + 1] * hp.pixwin(NSIDE, lmax=lmax)
     noise_power = float(np.mean(noise_sigma[good] ** 2)) * pix_area
     total_power = cl[: lmax + 1] * window**2 + noise_power
-    return {"name": name, "lmax": lmax, "fwhm_rad": math.radians(fwhm_arcmin / 60.0), "cl": cl, "window": window,
+    return {"name": name, "lmax": lmax, "beam": beam, "cl": cl, "window": window,
             "total_power": total_power, "good": good, "noise_sigma": noise_sigma, "maps": maps,
             "transfer_params": transfer_params, "seed": int(seed), "vec": np.array(hp.pix2vec(NSIDE, np.arange(NPIX))),
             "noise_power": noise_power}
@@ -192,7 +205,7 @@ def simulate(isim, stage):
     ds = G["ds"]
     ss = np.random.SeedSequence([ds["seed"], STAGE_CODE[stage], int(isim)])
     np.random.seed(int(ss.generate_state(1)[0]))
-    sky = np.asarray(hp.synfast(ds["cl"], NSIDE, lmax=LMAX_SIM, new=True, pixwin=True, fwhm=ds["fwhm_rad"]), dtype=np.float64)
+    sky = np.asarray(hp.synfast(ds["cl"] * ds["beam"] ** 2, NSIDE, lmax=LMAX_SIM, new=True, pixwin=True), dtype=np.float64)
     rng = np.random.default_rng(ss.spawn(1)[0])
     return sky + rng.normal(size=NPIX) * ds["noise_sigma"]
 
@@ -516,8 +529,11 @@ def stage_data(out):
             w_all[f] = w
         np.save(out / f"filtered_{mname}.npy", w_all)
         kept, dropped, max_s, n_pot = run_algorithm(w_all)
+        # rms of S over the unmasked sky: 1 if the simulated skies have the power of this map
+        rms_s = [float(np.sqrt(np.mean((w_all[f][ds["good"]].astype(np.float64) / G["sigma"][f][ds["good"]]) ** 2))) for f in range(NF)]
+        log(f"{mname}: rms of S over the unmasked sky, cosine: " + " ".join("%g:%.3f" % (SIZES[si], rms_s[si]) for si in range(0, NS, 4)))
         res = {"odd_pixels_unmasked": int(np.count_nonzero(odd & ds["good"])), "candidates": {}, "dropped": {}, "n_candidates": {},
-               "p_n_candidates": {}, "max_s": max_s.tolist(), "n_potential": n_pot.tolist(),
+               "p_n_candidates": {}, "max_s": max_s.tolist(), "n_potential": n_pot.tolist(), "rms_s": rms_s,
                "p_max_s_per_filter": [rank_p(null["max_s"][:, f], max_s[f]) for f in range(NF)], "largest": {}, "mcewen": []}
         for ti, tname in enumerate(TEMPLATES):
             mine = sorted((describe(d) for d in kept if d["template"] == tname), key=lambda c: -c["S"])
@@ -583,6 +599,7 @@ def main():
     ap.add_argument("--n-calib", type=int, default=300)
     ap.add_argument("--n-null", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=20261122)
+    ap.add_argument("--wmap-beam", default="published", choices=("published", "gaussian"))
     args = ap.parse_args()
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -590,7 +607,8 @@ def main():
     if args.thresholds == "published":
         stages = [s for s in stages if s != "calib"]
 
-    G["ds"] = load_dataset(args.dataset, Path(args.data_dir), args.seed)
+    G["ds"] = load_dataset(args.dataset, Path(args.data_dir), args.seed, args.wmap_beam)
+    log("beam transfer function at l = 100, 200, 256: " + ", ".join("%.4f" % G["ds"]["beam"][l] for l in (100, 200, 256)))
     log(f"{args.dataset}: mask keeps {G['ds']['good'].mean():.4f} of the sky; lmax {G['ds']['lmax']}; "
         f"noise power / CMB power at l = 200: {G['ds']['noise_power'] / (G['ds']['cl'][200] * G['ds']['window'][200] ** 2):.3f}")
     G["bank"] = build_bank(G["ds"])

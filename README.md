@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (w)):
+Open as of 22 November 2026 (notebook entries (t) to (x)):
 
 - The template against two published figures (entries (u), (v)). The plotted curves of Osborne, Senatore
   and Smith (arXiv:1305.1970) Fig. 3 and of Feeney et al. (arXiv:1506.01716) Fig. 6 were read as numbers
@@ -68,10 +68,17 @@ Open as of 22 November 2026 (notebook entries (t) to (w)):
   with the wall 130 to 140 Mpc deep. Why the figure corresponds to that depth is not known, and by the
   criteria fixed beforehand the fit counts as inconclusive. Not done: a second Boltzmann code. The template
   is unchanged.
-- A full-sky filter search after McEwen et al. (arXiv:1202.2861) is pre-registered in entry (w)
+- Full-sky filter search after McEwen et al. (arXiv:1202.2861), entries (w), (x)
   (`scripts/analysis/fullsky_filter_search.py`): every unmasked position, 33 sizes from 1 to 90 degrees,
-  first on the WMAP 7-year W-band map as a check against their published table, then on the four Planck
-  maps. Its results are not in this note yet.
+  the thresholds of Feeney et al. (arXiv:1210.2725). On the four Planck maps (77% of the sky) the number of
+  candidates and the largest significance are ordinary among Gaussian skies with the same mask: 31 to 34
+  candidates per map where simulated skies give 23 to 106, largest significance 4.8 with p = 0.73 to 0.76,
+  32 of 33 candidates common to all four maps, none at 45 degrees or more. Eight of the 16 WMAP candidates
+  of McEwen et al. are found again. The check on their own data (WMAP 7-year W band) missed both criteria
+  fixed beforehand: amplitudes and the strongest features agree with their table, but the significances
+  come out lower by about 0.3 and their two largest candidates do not appear. So this is not a validated
+  repeat of their search. Open: the cause of that difference, injection tests over the searched area, and
+  the Planck end-to-end simulations.
 - The April scripts and data sets are unchanged, so the April results still reproduce. Defects 1 to 4 are
   still in them; the corrected helpers (`scripts/core/patch_geometry.py`) are used by new work only.
 - Not redone: the candidate-centred re-extraction at the corrected positions, and the project's full

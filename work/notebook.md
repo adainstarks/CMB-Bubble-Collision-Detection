@@ -1204,3 +1204,93 @@ are found in all four maps.
 
 Not part of this stage: injection tests over the full searched area (the sensitivity as a function of size
 and amplitude), the Planck end-to-end simulations, any Bayesian step.
+
+## (x) 2026-11-22 02:00 CST. Full-sky filter search: the WMAP check misses its criteria; Planck shows no excess
+
+Runs of entry (w): jobs 82923, 82926, 82927 (WMAP, three runs), 82924 (Planck, l up to 256), 82925 (Planck,
+l up to 767). Outputs `runs/fullsky_search/<data set>_v<n>/`, tables from
+`scripts/analysis/fullsky_search_summary.py`, short versions in `work/results_2026-11-22/`.
+
+Part 1, the check on WMAP. Both criteria fail. Three runs, cosine template, foreground-reduced W band:
+
+| run | what changed | rms of S over the unmasked sky at 1, 4, 8 deg | (a) within 0.5, of 16 | (b) recovered, of 11 | candidates | largest S (p) |
+|---|---|---|---:|---:|---:|---|
+| 82923 | as pre-registered | 0.86, 0.92, 0.89 | 4 | 4 | 10 | 4.50 (0.99) |
+| 82926 | power amplitude at the right scale | 0.91, 0.98, 0.94 | 10 | 5 | 18 | 4.78 (0.73) |
+| 82927 | published beam instead of a Gaussian | 1.00, 0.99, 0.95 | 10 | 6 | 27 | 4.88 (0.56) |
+
+Needed: 12 for (a), 7 for (b). Simulated skies give 51 candidates on average (5% to 95%: 20 to 107).
+
+The first two runs had two errors of mine in the WMAP simulations, not in the search itself.
+- WMAP quotes the primordial amplitude 2.441e-9 at k = 0.002 /Mpc; I passed it to CAMB, whose reference
+  scale is 0.05 /Mpc. That is 12.6% too much power, so every S was 6% low.
+- I used a 13.2 arcmin Gaussian beam. The published W-band beam transfer functions (mean of W1 to W4) are
+  0.929, 0.798, 0.727 at l = 100, 200, 256, where that Gaussian has 0.987, 0.948, 0.916.
+Both were found from a number that does not use the published table: the rms of S over the unmasked pixels
+of the real map, which is 1 if the simulated skies have the power of the map. It is now part of the output.
+For Planck it was 1.00 from the start.
+
+What agrees after the third run. The amplitude estimates at their positions: +0.228 here against +0.24 mK
+published (no. 0), -0.195 / -0.19 (no. 3), -0.172 / -0.17 (no. 4), -0.160 / -0.16 (no. 6), +0.143 / +0.15
+(no. 8), +0.091 / +0.11 (no. 10). The strongest features: no. 6, S 4.88 here against 4.56; no. 4, 4.14 / 4.26;
+no. 0, 4.03 / 4.25; no. 10, 3.99 / 3.94.
+
+What does not.
+- For sizes up to 40 deg my S is lower than the published one by 0.27 on average, with a scatter of 0.33.
+  Four are 0.6 to 0.7 low: no. 2 (3.48 / 4.08), no. 5 (3.41 / 4.02), no. 7, the Cold Spot at 5 deg
+  (3.96 / 4.67; here it peaks at 6 and 10 deg with S 4.43 and 4.68), no. 9 (3.77 / 4.39).
+- The two largest, nos. 14 and 15 at 85 and 90 deg, are not there: S 1.8 and 2.0 against 3.03 and 3.11,
+  amplitudes near zero against +0.15 and -0.16 mK. Their paper notes that this pair looks "somewhat like
+  a dipole contribution". This pipeline removes a monopole and dipole fitted outside the mask and drops
+  both from the template. I have not tested which choice of theirs produces the pair.
+- Not established: why the rest is lower. Candidates are the differences listed in (w) (Nside, the noise
+  in my filter, the mask threshold) and the fact that their S values are the peaks of their own maps.
+By the rule of (w) the implementation is therefore not validated against their table. The Planck numbers
+below are what this pipeline gives; they are not a validated repeat of their search.
+
+A second difference from their papers, in the counting. With the published thresholds a Gaussian sky gives
+2.1 regions per size before the step across sizes and 51 candidates after it. They report at most three
+per size and 12 or 13 candidates on their end-to-end simulation. So their step across sizes removes far
+more than mine, which lets one structure count several times here (the feature near (160 to 167, -49 to
+-60) four times, at 18 to 26 deg). The comparison with the simulated skies is not affected, since they are
+counted the same way.
+
+Part 2, Planck, l up to 256, the same thresholds. Per map, SMICA / NILC / SEVEM / Commander:
+
+| template | candidates | simulated skies: mean, 5% to 95% | p | largest S | p |
+|---|---|---|---|---|---|
+| cosine | 33 / 34 / 32 / 31 | 52.6, 23 to 106 | 0.77 / 0.76 / 0.79 / 0.82 | 4.80 / 4.78 / 4.79 / 4.78 at 4 deg | 0.73 to 0.76 |
+| transfer | 40 / 39 / 34 / 38 | 99.0, 19 to 269 | 0.78 / 0.79 / 0.84 / 0.80 | 4.56 / 4.56 / 4.61 / 4.59 at 5 deg | 0.38 to 0.44 |
+
+- No excess by the criterion of (w) (p below 0.01 in all four maps): every p is between 0.38 and 0.84.
+- The four maps agree: 32 of the 33 SMICA candidates (cosine) and 36 of the 40 (transfer) are in all four,
+  with S equal to 0.05.
+- By size: no candidate at 45 deg or more, where a simulated sky has 1.5 to 3.2 regions per size; at 50 to
+  70 and 80 to 90 deg the largest S is lower than in 94 to 100% of the simulated skies (at 75 deg, in 54%).
+  The rms of S falls from 1.00
+  at 1 to 4 deg to 0.90 at 30 deg and 0.61 at 90 deg. That is the low large-angle power of the real sky.
+  The smallest p of a single size is 0.07 (10 deg) and 0.08 (4 deg).
+- Strongest candidates (cosine, in all four maps): 4 deg at (l, b) = (269.4, -77.0), z0 -0.18 mK, S 4.80
+  (their no. 6); 2 deg at (22.5, -24.8), -0.22 mK, 4.63 (not in their table); 1.5 deg at (245.0, +25.4),
+  +0.26 mK, 4.58 (not in their table); 10 deg at (213.5, -59.5) and 6 deg at (207.2, -57.2), -0.14 and
+  -0.16 mK, 4.56 and 4.55 (the Cold Spot, their no. 7); 6 deg at (264.6, -19.5), +0.16 mK, 4.56.
+- Of their 16: nos. 0, 4, 5, 6, 7, 8, 10, 11 have a counterpart (and no. 2 by a 6 deg feature 2.8 deg
+  away). Not found: nos. 1 and 3 (S 3.98 and 3.89 against a threshold of 4.25), no. 9 (3.80 against 4.00),
+  nos. 12 to 15 (2.94, 2.47, 1.87, 1.68). S is within 0.5 of the published value for 10 of 16.
+- Several of the large candidates lie next to the Galactic mask with half of their disc masked (30 deg at
+  (228.7, +6.6), 64% unmasked; 35 deg at (166.5, +6.0), 55%).
+
+Planck, l up to 767 (second data set): 94 / 104 / 96 / 95 cosine candidates against 152 on average (59 to
+345), p 0.66 to 0.73; largest S 5.23 at 1.5 deg, (245.2, +25.3), +0.27 mK, p 0.23 to 0.26. Transfer: 72 / 69 /
+70 / 71 against 265 (41 to 781), p 0.86 to 0.88. 93 of 94 SMICA candidates are in all four maps. At this
+resolution S is within 0.5 of the published value for 12 of 16, and no. 9 is recovered as well.
+
+Summary. On every Planck map, with either template and either band limit, the number of candidates and the
+largest significance are ordinary among Gaussian skies with the same mask. Eight of the 16 WMAP candidates
+of McEwen et al. are found again at l up to 256. The check against their table on their own data is
+partial: amplitudes and the strongest features agree, the significances are lower by about 0.3, and their
+two largest candidates do not appear.
+
+Open after this entry: why my significances are lower than the published ones; which treatment of the
+lowest multipoles produces their nos. 14 and 15; the count after the step across sizes. Not done, as fixed
+in (w): injection tests over the searched area, the Planck end-to-end simulations, any Bayesian step.
