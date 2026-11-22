@@ -163,3 +163,14 @@ was pushed (commit 25a6edc, 08:40 CST):
 seconds: compute nodes have no `git`. The job files now read the commit hash from `.git/refs` instead.
 Jobs 93905, 93906 and 93907 were submitted before that edit and Slurm keeps the script as submitted, so
 they are not affected.
+
+## (F) 2026-11-22 09:14 CST. Smoke job 93912: training and scoring run; bug C3 in the report writer
+
+Job 93912 (c11, batch 16): one epoch on 96 backgrounds in 7 s, both test sets scored, tables printed with
+network and reference rows side by side. Then `TypeError: Object of type function is not JSON
+serializable` while writing `report.json`.
+
+**Bug C3.** The run's argument record included argparse's sub-command function. Fixed: that entry is
+dropped before saving. Every real training run would have failed at this point, after training, so the
+scores would have been lost; none had started. The pending jobs (93905 smoke, 93907 training) read the
+script from the repository when they start and will run the fixed version.

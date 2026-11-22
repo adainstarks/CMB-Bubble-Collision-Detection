@@ -468,7 +468,7 @@ def score_patches(model, patches, std, device, batch=256):
     img = np.zeros(len(patches), dtype=np.float64)
     with torch.no_grad():
         for i in range(0, len(patches), batch):
-            x = torch.from_numpy(np.ascontiguousarray(patches[i:i + batch])).to(device)[:, None] / std
+            x = torch.from_numpy(np.array(patches[i:i + batch], dtype=np.float32)).to(device)[:, None] / std   # copy: the test set is a read-only memmap
             mask_logits, image_logits = model(x)
             seg[i:i + batch] = mask_logits.flatten(1).max(dim=1).values.double().cpu().numpy()
             img[i:i + batch] = image_logits.reshape(-1).double().cpu().numpy()
@@ -555,8 +555,9 @@ def cmd_train(args):
         print(f"epoch {epoch:2d}  loss {rec['train_loss']:.4f}  validation detection (ideal SNR 2-5) at 5%: mask max {rec['val_detect_mid_mask_max']:.3f}, "
               f"image head {rec['val_detect_mid_image_head']:.3f}  ({rec['seconds']:.0f} s)", flush=True)
 
-    torch.save({"model_state_dict": model.state_dict(), "input_std": std, "args": vars(args)}, out / "checkpoint_last.pt")
-    report = {"args": vars(args), "history": history, "input_std": std, "tests": {}}
+    args_record = {k: v for k, v in vars(args).items() if k != "func"}   # the sub-command function is not data
+    torch.save({"model_state_dict": model.state_dict(), "input_std": std, "args": args_record}, out / "checkpoint_last.pt")
+    report = {"args": args_record, "history": history, "input_std": std, "tests": {}}
     for test_dir in args.test_dir:
         td = Path(test_dir)
         cfg = json.loads((td / "test_config.json").read_text())
