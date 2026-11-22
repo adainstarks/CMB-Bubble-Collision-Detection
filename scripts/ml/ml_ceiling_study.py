@@ -519,6 +519,9 @@ def cmd_train(args):
     steps_per_epoch = math.ceil(len(xtr) / args.batch_size)
     total, warm = args.epochs * steps_per_epoch, steps_per_epoch
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: (s + 1) / warm if s < warm else 0.5 * (1 + math.cos(math.pi * (s - warm) / max(total - warm, 1))))
+    use_amp = bool(args.amp) and device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if hasattr(torch.amp, "GradScaler") else torch.cuda.amp.GradScaler(enabled=use_amp)
+    print(f"mixed precision in training: {use_amp}", flush=True)
     history = []
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -533,20 +536,29 @@ def cmd_train(args):
                 x, m = torch.rot90(x, k, dims=(2, 3)), torch.rot90(m, k, dims=(2, 3))
             if rng.random() < 0.5:
                 x, m = torch.flip(x, dims=(3,)), torch.flip(m, dims=(3,))
-            mask_logits, image_logits = model(x)
+            if use_amp:
+                with torch.autocast(device_type="cuda", dtype=torch.float16):
+                    mask_logits, image_logits = model(x)
+                mask_logits, image_logits = mask_logits.float(), image_logits.float()   # the loss is always float32
+            else:
+                mask_logits, image_logits = model(x)
             prob = torch.sigmoid(mask_logits)
             inter = (prob * m).flatten(1).sum(1)
             dice = 1.0 - (2.0 * inter + 1.0) / (prob.flatten(1).sum(1) + m.flatten(1).sum(1) + 1.0)
             loss = F.binary_cross_entropy_with_logits(mask_logits, m) + dice.mean() \
                 + args.image_loss_weight * F.binary_cross_entropy_with_logits(image_logits.reshape(-1), y)
             opt.zero_grad(set_to_none=True)
-            loss.backward()
+            scaler.scale(loss).backward()          # with the scaler off these four lines are the plain float32 step
+            scaler.unscale_(opt)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            opt.step()
+            scaler.step(opt)
+            scaler.update()
             sched.step()
             tot += float(loss)
             nb += 1
-        segv, imgv = score_patches(model, xv, std, device)
+            if epoch == 1 and nb == 50:
+                print(f"  first 50 steps: {time.time() - t0:.0f} s ({steps_per_epoch} steps per epoch, {args.epochs} epochs)", flush=True)
+        segv, imgv = score_patches(model, xv, std, device, batch=args.eval_batch)
         rec = {"epoch": epoch, "train_loss": tot / nb, "seconds": time.time() - t0}
         for name, s in (("mask_max", segv), ("image_head", imgv)):
             thr = null_threshold(s[yv == 0], 0.05)
@@ -558,12 +570,16 @@ def cmd_train(args):
     args_record = {k: v for k, v in vars(args).items() if k != "func"}   # the sub-command function is not data
     torch.save({"model_state_dict": model.state_dict(), "input_std": std, "args": args_record}, out / "checkpoint_last.pt")
     report = {"args": args_record, "history": history, "input_std": std, "tests": {}}
+    if device.type == "cuda":
+        report["max_gpu_memory_gib_training"] = torch.cuda.max_memory_allocated() / 2 ** 30
+        print(f"largest GPU memory in use during training: {report['max_gpu_memory_gib_training']:.1f} GiB", flush=True)
+        torch.cuda.empty_cache()
     for test_dir in args.test_dir:
         td = Path(test_dir)
         cfg = json.loads((td / "test_config.json").read_text())
         meta = dict(np.load(td / "meta.npz"))
         patches = np.load(td / "patches.npy", mmap_mode="r")
-        seg, img = score_patches(model, patches, std, device)
+        seg, img = score_patches(model, patches, std, device, batch=args.eval_batch)
         scores = {"labels": meta["labels"], "level": meta["level"], "size_deg": meta["size_deg"],
                   "net__mask_max": seg, "net__image_head": img}
         scores.update({k: v for k, v in meta.items() if k.startswith("ref")})
@@ -661,6 +677,9 @@ def main():
     r.add_argument("--lr", type=float, default=3e-4)
     r.add_argument("--image-loss-weight", type=float, default=1.0)
     r.add_argument("--device", default="cuda")
+    r.add_argument("--amp", action="store_true",
+                   help="mixed precision (float16 forward pass) in training only, so batch 64 fits an 11 GB card; losses and all scoring stay float32")
+    r.add_argument("--eval-batch", type=int, default=256, help="batch size for scoring (does not change the scores)")
     r.add_argument("--smoke", action="store_true")
     r.set_defaults(func=cmd_train)
 

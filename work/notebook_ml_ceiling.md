@@ -191,3 +191,39 @@ network has been looked at: none exists.
 
 Next, when the runs are in: `python scripts/ml/ml_ceiling_study.py summarize --runs-dir
 /projects/gmarcum/cmb/runs/ceiling_v1 --out-json ...`, then score the ten predictions of (B) one by one.
+
+## (H) 2026-11-22 16:40 CST. The large cards are booked for days; the runs move to c11 with mixed precision
+
+**State at 15:30 CST.** Test sets 93906_[0-2]: COMPLETED (T0 1 h 32 min, T35 1 h 06 min, T100 1 h 05 min).
+Smoke job 93905 and the training array 93907: still pending. Every RTX 5000 Ada and A5000 node is occupied
+by other users' jobs with one to three day limits, with more of the same queued behind them; c13 has been
+drained since 11-18; our priority value is 1. Only c11 (two RTX 2080 Ti, 11 GiB each) is idle.
+
+**Correction to (E) and (G).** The estimate "23:44 CST tonight" was my conversion error. `squeue` on the
+login node prints local time (CST); only the compute nodes print UTC. The estimate was, and is, 05:44 CST
+on 11-23, on c17, one card.
+
+**Decision, made before any network has been trained or scored.** The thirteen runs of (B) go to c11, two
+at a time (`cluster/babbage/train_c11.sbatch`). Batch 64 in float32 needs 10.3 GiB there and failed (job
+93904), so training uses mixed precision: the forward pass runs under float16 autocast with a gradient
+scaler, the loss is computed in float32. Everything else in the recipe of (B) is unchanged: batch 64,
+AdamW at 3e-4, one warm-up epoch and a cosine schedule, 30 epochs, the same data and model seeds. All
+scoring (validation and the three test sets) stays float32; the scoring batch drops from 256 to 128,
+which cannot change a score (evaluation mode, no batch statistics).
+
+This is a change to the training recipe after the pre-registration. It is logged here before the first
+run starts, it applies to all thirteen runs so the three arms stay comparable, and the ten predictions of
+(B) stand as written.
+
+**Control.** One float32 run of arm R, seed 1, stays queued for a large card (`train.sbatch`, output in
+`runs/ceiling_v1_fp32/R_seed1`). Stated now: its detection probability on T0 at 3e-5 (image head, 5%
+false positives) should be within 0.04 of the mixed-precision R seed 1, that is twice the seed scatter
+predicted in (B) item 2. It is reported whichever way it falls.
+
+**Code.** `ml_ceiling_study.py train` gains `--amp` and `--eval-batch`, prints the time of the first 50
+steps, and records the largest GPU memory in use. `smoke.sbatch` passes `SMOKE_TRAIN_FLAGS` through.
+`train.sbatch` takes `RUNS_SUBDIR` and no longer excludes c14 (both of its cards have run other users'
+jobs since 11-19).
+
+Next: smoke job on c11 at batch 64 with `--amp`. Only if it passes: submit the c11 array, cancel 93905 and
+93907, submit the float32 control.

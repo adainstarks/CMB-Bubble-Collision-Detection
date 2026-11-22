@@ -20,6 +20,6 @@ echo "commit $(cat .git/refs/heads/ml-ceiling-study 2>/dev/null || echo unknown)
 OUT=$CMB_ROOT/runs/smoke_$SLURM_JOB_ID
 "$CMB_PY" scripts/ml/ml_ceiling_study.py make-test --out-dir "$OUT/test" --smoke
 "$CMB_PY" scripts/ml/ml_ceiling_study.py make-test --out-dir "$OUT/test_mix" --mix 1.0 --target-snr 3,8 --smoke
-"$CMB_PY" scripts/ml/ml_ceiling_study.py train --out-dir "$OUT/run_imagenet" --test-dir "$OUT/test" --test-dir "$OUT/test_mix" --seed 1 --train-mixes 0,1 --smoke --batch-size "${SMOKE_BATCH:-64}"
+"$CMB_PY" scripts/ml/ml_ceiling_study.py train --out-dir "$OUT/run_imagenet" --test-dir "$OUT/test" --test-dir "$OUT/test_mix" --seed 1 --train-mixes 0,1 --smoke --batch-size "${SMOKE_BATCH:-64}" ${SMOKE_TRAIN_FLAGS:-}
 "$CMB_PY" scripts/ml/ml_ceiling_study.py summarize --runs-dir "$OUT"
 date; echo SMOKE_OK
