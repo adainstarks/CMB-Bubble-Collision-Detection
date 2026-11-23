@@ -3,7 +3,7 @@
 #SBATCH --partition=research-gpu
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --mem=48G
 #SBATCH --time=10:00:00
 #SBATCH --output=/projects/%u/cmb/logs/realsky-scan-%j.out
 # The scan of notebook_ml_ceiling.md entry (M): both networks on the four Planck maps and on 400 simulated
