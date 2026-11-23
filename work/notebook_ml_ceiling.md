@@ -715,3 +715,52 @@ residuals or anisotropic noise. Sizes 2 to 25 degrees only.
 2. Why network C's image head is weaker on small discs while its mask head is not (more small discs in
    training, or a second seed).
 3. A second seed of each network.
+
+## (P) 2026-11-23 17:55 CST. Pre-registration: the matched filter under the rule of (M), on the same skies
+
+Written before any run of `ml_real_sky.py filter-scan` other than its smoke check. Job file
+`cluster/hamilton/realsky_filter.sbatch` (CPU partition).
+
+### Why
+
+(O) scored the networks with one rule (spot p against 400 simulated skies at the same position) but took
+the filter's numbers from the filter search on main, which has its own thresholds. Gus asked for the next
+step on 23 November; this puts the filter through the same rule so that network and filter are compared on
+the real sky like for like. The main question it answers: does the filter, under the same rule, catch
+McEwen 6 = Feeney 10, which network C missed (p 0.095)?
+
+### Design
+
+- Two filter banks, one per template of (M) (C cosine cap, T transfer ramp), each with the 24 sizes of the
+  networks' prior (2 to 25 degrees). Filter weights and normalisation exactly as `World.template`; filtered
+  maps by `map2alm(iter=1)`, `almxfl`, `alm2map`, as in the ceiling study.
+- Tile score of a filter bank: the largest |filter output| over the bank and over the kept pixels within
+  5 degrees of the tile centre, the `glrt` reference of the ceiling study applied at each tile.
+- Everything after the tile score is the code of `scan`, unchanged in substance: the same 2,378 tiles, the
+  same 400 simulated skies (same seeds), the four PR3 maps, per-tile standardisation, the spot score and its
+  p, caught at p < 0.01, the whole-sky statistics, the same 27 published and 300 random positions, and the
+  same 1,200 injections (same positions, sizes, SNR and signs) with each bank's own template, on the four maps
+  and the first 20 simulated skies.
+- Injections are exact: the filter response to the prepared template is computed on the sphere and added to
+  the sky's filter output. Positions that share a map in that computation are at least 60 degrees apart;
+  the first position is computed again alone, and the largest difference is reported.
+
+### Predictions
+
+1. Bank C catches M6 (= F10) on all four maps.
+2. Bank C catches at least three of the four top spots (M4, M6, M7, M8) on every map.
+3. Bank T catches the Cold Spot (M7) on all four maps and none of M4, M6 and M8.
+4. No excess for either bank (the rule of (M)).
+5. Same template, same injections, real maps pooled: bank T is within 0.10 of network T in at least 10 of
+   the 12 cells; bank C is above network C by more than 0.10 at SNR 4 for 3 and 5 degree discs (network C
+   0.28 and 0.36 there).
+6. For both banks the real-map detection fraction is within 0.10 of the simulated-sky fraction in at least
+   10 of the 12 cells.
+7. The batching difference is below 1e-3 of the peak response. If it is not, the injection numbers are not
+   used until the batches are rebuilt with a larger separation.
+
+### How it will be read
+
+If bank C catches M6 under this rule, network C is behind the filter on that spot. If bank C misses it too,
+the earlier filter number came from the search on main (a smaller search region and its own thresholds),
+and the network and the filter agree on it.

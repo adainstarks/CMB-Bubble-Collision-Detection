@@ -48,8 +48,12 @@ Modes
     python scripts/ml/ml_real_sky.py selftest --data-dir DATA
     python scripts/ml/ml_real_sky.py train --out-dir RUN --data-dir DATA --template T|C --seed 1 [--test-dir T0]
     python scripts/ml/ml_real_sky.py scan --out-dir SCAN --data-dir DATA --model T:ckpt --model C:ckpt
+    python scripts/ml/ml_real_sky.py filter-scan --out-dir FSCAN --data-dir DATA [--templates C,T]
 
-``--smoke`` shrinks train and scan to a few minutes.
+``filter-scan`` (notebook entry (P)) puts the matched-filter banks of both templates through the same tiles, skies,
+positions, injections and statistics as ``scan``; a tile's filter score is the largest |filter output| over the
+bank and over the kept pixels within 5 degrees of its centre, the ``glrt`` reference of ``ml_ceiling_study``.
+``--smoke`` shrinks train, scan and filter-scan to a few minutes.
 """
 from __future__ import annotations
 
@@ -140,8 +144,9 @@ def finish_template(world, b, size, kind):
     t_l = b * world.window * scale * cs.T_CMB_K
     t_l[:2] = 0.0
     norm = float(np.sum((2 * ells[2:] + 1) / (4 * math.pi) * t_l[2:] ** 2 / world.total_power[2:]))
+    weights = np.where(ells >= 2, t_l / np.maximum(world.total_power, 1e-300), 0.0) / math.sqrt(norm)
     below = np.nonzero((np.abs(prof) < 0.1) & (np.arange(cs.N_FINE) > peak))[0]
-    return {"size": float(size), "kind": kind, "t_l": t_l, "profile_k": prof * cs.T_CMB_K, "norm": norm,
+    return {"size": float(size), "kind": kind, "t_l": t_l, "profile_k": prof * cs.T_CMB_K, "norm": norm, "weights": weights,
             "mask_radius": float(world.fine[below[0]]) if below.size else math.radians(size),
             "peak_angle_deg": float(np.degrees(world.fine[peak]))}
 
@@ -698,6 +703,245 @@ def cmd_scan(args):
     log(f"wrote {out}; {summary['seconds']:.0f} s in all")
 
 
+# --------------------------------------------------------------------------------------------------------
+# filter scan: the matched-filter bank through the same tiles, statistics and injections as ``scan``
+# --------------------------------------------------------------------------------------------------------
+def spread_batches(vecs, min_sep_deg):
+    """Greedy groups of indices whose directions are pairwise at least ``min_sep_deg`` apart."""
+    cmin = math.cos(math.radians(min_sep_deg))
+    batches = []
+    for i, v in enumerate(vecs):
+        for b in batches:
+            if all(float(v @ vecs[j]) <= cmin for j in b):
+                b.append(i)
+                break
+        else:
+            batches.append([i])
+    return batches
+
+
+def cmd_filter_scan(args):
+    """Tile score of the filter = largest |filter output| over the bank and over the kept pixels within 5 degrees
+    of the tile centre (the ``glrt`` reference of the ceiling study); everything after that as ``scan``."""
+    import healpy as hp
+
+    t_start = time.time()
+    out = Path(args.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    data = Path(args.data_dir)
+    maps = [m for m in args.maps.split(",") if m]
+    kinds = [k for k in args.templates.split(",") if k]
+    sizes = [float(x) for x in args.sizes.split(",")]
+    n_null = args.n_null
+    inj_sizes = [float(x) for x in args.inject_sizes.split(",")]
+    inj_snrs = [float(x) for x in args.inject_snr.split(",")]
+    n_inj_pos = args.inject_positions
+    n_null_inj = min(args.n_null_inject, n_null)
+    if args.smoke:
+        n_null, n_inj_pos, n_null_inj, inj_sizes, inj_snrs = 6, 3, 2, [5.0], [6.0]
+        args.n_random = 20
+        sizes = [3.0, 10.0, 25.0]
+
+    prep = SkyPrep(data / MASK_FILE, tile_nside=args.tile_nside)
+    world = cs.World()
+    bank = {k: np.stack([make_template(world, k, s)["weights"] for s in sizes]) for k in kinds}
+    log(f"filter banks {kinds}: {len(sizes)} sizes {sizes[0]:g} to {sizes[-1]:g} deg; map2alm with iter 1, as ml_ceiling_study")
+
+    # kept pixels within the search radius of every tile centre
+    segs = [np.asarray(hp.query_disc(NSIDE, prep.tile_vec[t], math.radians(SPOT_RADIUS_DEG)), dtype=np.int64) for t in range(prep.n_tiles)]
+    segs = [s[prep.good[s]] for s in segs]
+    tpix = np.concatenate(segs)
+    toff = np.cumsum([0] + [len(s) for s in segs])
+    log(f"{prep.n_tiles} tiles; median {int(np.median(np.diff(toff)))} kept pixels within {SPOT_RADIUS_DEG:g} deg of a tile centre")
+
+    # positions and injections: the same calls, in the same order, with the same seed as ``scan``
+    spots = published_spots()
+    rng = np.random.default_rng(args.seed)
+    rand = masked_positions(rng, prep.good, args.n_random, 0.0)
+    pos = [(s["lon"], s["lat"]) for s in spots] + rand
+    pvec = np.asarray(hp.ang2vec(np.array([p[0] for p in pos]), np.array([p[1] for p in pos]), lonlat=True))
+    near = [prep.near(v) for v in pvec]
+    n_pos, n_spots = len(pos), len(spots)
+    injections = []
+    inj_positions = [e for e in range(n_spots, n_pos) if len(near[e])][:n_inj_pos]
+    for e in inj_positions:
+        for size in inj_sizes:
+            for snr in inj_snrs:
+                injections.append({"pos": e, "size_deg": size, "snr": snr, "sign": int(rng.choice([-1, 1]))})
+    inj_tiles = np.concatenate([near[q["pos"]] for q in injections]) if injections else np.zeros(0, int)
+    inj_off = np.cumsum([0] + [len(near[q["pos"]]) for q in injections])
+    ppix = {e: np.concatenate([segs[t] for t in near[e]]) for e in inj_positions}
+    poff = {e: np.cumsum([0] + [len(segs[t]) for t in near[e]]) for e in inj_positions}
+
+    def filtered(alm, w):
+        return hp.alm2map(hp.almxfl(alm, w), NSIDE, lmax=LMAX)
+
+    # filter responses to the prepared unit-amplitude template at each injection position (exact; positions that
+    # share a map are at least ``batch_sep_deg`` apart, and the first position is redone alone as a check)
+    unit = {k: {} for k in kinds}
+    norms = {k: {} for k in kinds}
+    check = {}
+    groups = spread_batches([pvec[e] for e in inj_positions], args.batch_sep_deg) if inj_positions else []
+    for k in kinds:
+        for s in inj_sizes:
+            t = make_template(world, k, s)
+            norms[k][s] = t["norm"]
+            for g in groups:
+                m = np.zeros(NPIX)
+                for gi in g:
+                    e = inj_positions[gi]
+                    m += np.interp(np.arccos(np.clip(pvec[e] @ prep.pix_vec, -1.0, 1.0)), world.fine, t["profile_k"])
+                alm = hp.map2alm(prep.prepare(m), lmax=LMAX, iter=1)
+                S = [filtered(alm, w) for w in bank[k]]
+                for gi in g:
+                    e = inj_positions[gi]
+                    unit[k][(e, s)] = np.stack([x[ppix[e]] for x in S]).astype(np.float32)
+            if inj_positions:
+                e = inj_positions[0]
+                m = np.interp(np.arccos(np.clip(pvec[e] @ prep.pix_vec, -1.0, 1.0)), world.fine, t["profile_k"])
+                alm = hp.map2alm(prep.prepare(m), lmax=LMAX, iter=1)
+                alone = np.stack([filtered(alm, w)[ppix[e]] for w in bank[k]])
+                check[f"{k}|{s:g}"] = float(np.max(np.abs(alone - unit[k][(e, s)])) / np.max(np.abs(alone)))
+        log(f"bank {k}: unit responses, {len(groups)} maps per size; largest batching error {max([v for kk, v in check.items() if kk.startswith(k + '|')] or [0.0]):.1e} of the peak")
+
+    def sky_scores(m_prepared, with_inj):
+        alm = hp.map2alm(m_prepared, lmax=LMAX, iter=1)
+        res, resi = {}, {}
+        for k in kinds:
+            best = None
+            at = {e: [] for e in inj_positions} if with_inj else {}
+            for w in bank[k]:
+                S = filtered(alm, w)
+                v = np.maximum.reduceat(np.abs(S[tpix]), toff[:-1])
+                best = v if best is None else np.maximum(best, v)
+                for e in at:
+                    at[e].append(S[ppix[e]])
+            res[k] = best.astype(np.float32)
+            if with_inj:
+                at = {e: np.stack(v) for e, v in at.items()}
+                vals = np.zeros(len(inj_tiles), np.float32)
+                for i, q in enumerate(injections):
+                    e = q["pos"]
+                    amp = q["snr"] / math.sqrt(norms[k][q["size_deg"]])
+                    V = np.abs(at[e] + q["sign"] * amp * unit[k][(e, q["size_deg"])]).max(axis=0)
+                    vals[inj_off[i]:inj_off[i + 1]] = np.maximum.reduceat(V, poff[e][:-1])
+                resi[k] = vals
+        return res, resi
+
+    null = {k: np.zeros((n_null, prep.n_tiles), np.float32) for k in kinds}
+    null_inj = {k: np.zeros((n_null_inj, len(inj_tiles)), np.float32) for k in kinds}
+    t0 = time.time()
+    for j in range(n_null):
+        sky = prep.prepare(world.sky(np.random.default_rng([args.seed, 7, j])))    # the skies of ``scan``
+        r, ri = sky_scores(sky, j < n_null_inj)
+        for k in kinds:
+            null[k][j] = r[k]
+            if j < n_null_inj:
+                null_inj[k][j] = ri[k]
+        if (j + 1) % 25 == 0 or j == n_null - 1:
+            log(f"  simulated skies {j + 1}/{n_null}  {time.time() - t0:.0f} s")
+    real, real_inj = {}, {}
+    for mname in maps:
+        t1 = time.time()
+        raw = hp.ud_grade(hp.read_map(str(data / MAP_FILES[mname]), field=0, dtype=np.float64), NSIDE)
+        real[mname], real_inj[mname] = sky_scores(prep.prepare(raw), True)
+        log(f"  map {mname}: {time.time() - t1:.0f} s")
+
+    summary = {"config": {"n_tiles": prep.n_tiles, "tile_nside": args.tile_nside, "n_null": n_null, "n_null_inject": n_null_inj,
+                          "maps": maps, "templates": kinds, "sizes_deg": sizes, "spot_radius_deg": SPOT_RADIUS_DEG, "caught_p": CAUGHT_P,
+                          "n_random_positions": len(rand), "inject_positions": len(inj_positions), "inject_sizes_deg": inj_sizes,
+                          "inject_snr": inj_snrs, "seed": args.seed, "batch_sep_deg": args.batch_sep_deg,
+                          "tile_score": "largest |filter output| over the bank and the kept pixels within 5 deg of the tile centre"},
+               "batching_check_relative": check, "spots": spots, "banks": {}}
+    arrays = {}
+    for k in kinds:
+        N = null[k].astype(np.float64)
+        mu, sd = N.mean(axis=0), N.std(axis=0, ddof=1)
+        sd = np.where(sd > 0, sd, 1.0)
+        Z = (N - mu) / sd
+        spot_null = np.full((n_null, n_pos), np.nan)
+        for e in range(n_pos):
+            if len(near[e]):
+                spot_null[:, e] = Z[:, near[e]].max(axis=1)
+        srt = np.sort(N, axis=0)
+        ge = np.empty_like(N)
+        for t in range(prep.n_tiles):
+            ge[:, t] = n_null - np.searchsorted(srt[:, t], N[:, t], side="left")
+        k_null = np.sum(ge / n_null < CAUGHT_P, axis=1)
+        m_null = Z.max(axis=1)
+        rec = {"null_max_z_quantiles_5_50_95": [float(x) for x in np.percentile(m_null, [5, 50, 95])],
+               "null_count_quantiles_5_50_95": [float(x) for x in np.percentile(k_null, [5, 50, 95])],
+               "null_count_mean": float(k_null.mean()), "maps": {}}
+
+        def inj_table(raw_rows):
+            cells, det_all = {}, []
+            for i, q in enumerate(injections):
+                e = q["pos"]
+                tl = near[e]
+                zi = (raw_rows[:, inj_off[i]:inj_off[i + 1]] - mu[tl]) / sd[tl]
+                spot = zi.max(axis=1)
+                det = [bool((1 + np.sum(spot_null[:, e] >= v)) / (1 + n_null) < CAUGHT_P) for v in spot]
+                det_all.append(det)
+                c = cells.setdefault(f"{q['size_deg']:g}|{q['snr']:g}", [0, 0])
+                c[0] += int(np.sum(det))
+                c[1] += len(det)
+            return {k2: {"k": v[0], "n": v[1], "p": v[0] / max(v[1], 1)} for k2, v in cells.items()}, det_all
+
+        if injections and n_null_inj:
+            rec["null_injections"], _ = inj_table(null_inj[k].astype(np.float64))
+        for mname in maps:
+            r = real[mname][k].astype(np.float64)
+            z = (r - mu) / sd
+            p_tile = np.array([(1 + np.sum(N[:, t] >= r[t])) / (1 + n_null) for t in range(prep.n_tiles)])
+            k_real = int(np.sum(p_tile < CAUGHT_P))
+            m_real = float(z.max())
+            spot_rows = []
+            for e in range(n_spots):
+                if not len(near[e]):
+                    spot_rows.append({"label": spots[e]["label"], "n_tiles": 0})
+                    continue
+                zz = z[near[e]]
+                v = float(zz.max())
+                pe = rank_p(spot_null[:, e], v)
+                best = int(near[e][int(np.argmax(zz))])
+                spot_rows.append({"label": spots[e]["label"], "n_tiles": int(len(near[e])), "z": v, "p": pe,
+                                  "caught": bool(pe < CAUGHT_P), "best_tile_lon": float(prep.tiles[best, 0]),
+                                  "best_tile_lat": float(prep.tiles[best, 1])})
+            rand_p = [rank_p(spot_null[:, e], float(z[near[e]].max())) for e in range(n_spots, n_pos) if len(near[e])]
+            top = []
+            for t in np.lexsort((-z, p_tile))[:25]:
+                tv = prep.tile_vec[t]
+                dmin = min((math.degrees(math.acos(float(np.clip(tv @ pvec[e], -1, 1)))), spots[e]["label"]) for e in range(n_spots))
+                top.append({"lon": float(prep.tiles[t, 0]), "lat": float(prep.tiles[t, 1]), "z": float(z[t]), "p_tile": float(p_tile[t]),
+                            "nearest_published": dmin[1], "nearest_published_deg": dmin[0]})
+            mrec = {"max_z": m_real, "p_max_z": rank_p(m_null, m_real), "count_p_tile_below": k_real,
+                    "p_count_high": rank_p(k_null, k_real), "p_count_low": float((1 + np.sum(k_null <= k_real)) / (1 + n_null)),
+                    "random_positions_caught_fraction": float(np.mean(np.array(rand_p) < CAUGHT_P)) if rand_p else None,
+                    "spots": spot_rows, "top_tiles": top}
+            if injections:
+                mrec["injections"], det = inj_table(real_inj[mname][k][None, :].astype(np.float64))
+                mrec["injection_detected"] = [d[0] for d in det]
+            rec["maps"][mname] = mrec
+            arrays[f"F{k}__{mname}__tiles"] = r.astype(np.float32)
+        summary["banks"][k] = rec
+        arrays[f"F{k}__null_tiles"] = N.astype(np.float32)
+        arrays[f"F{k}__spot_null"] = spot_null.astype(np.float32)
+    summary["injections"] = injections
+    arrays["tiles_lonlat"] = prep.tiles.astype(np.float32)
+    arrays["positions_lonlat"] = np.array(pos, dtype=np.float32)
+    np.savez_compressed(out / "filter_scan_arrays.npz", **arrays)
+    summary["seconds"] = time.time() - t_start
+    (out / "filter_scan_summary.json").write_text(json.dumps(summary, indent=1))
+    for k, rec in summary["banks"].items():
+        print(f"\n===== filter bank {k} =====")
+        print(f"simulated skies: largest z 5/50/95% {rec['null_max_z_quantiles_5_50_95']}, count 5/50/95% {rec['null_count_quantiles_5_50_95']}")
+        for mname, mrec in rec["maps"].items():
+            caught = [x["label"] for x in mrec["spots"] if x.get("caught")]
+            print(f"{mname:10s} largest z {mrec['max_z']:.2f} (p {mrec['p_max_z']:.3f}); count {mrec['count_p_tile_below']} "
+                  f"(p high {mrec['p_count_high']:.3f}, low {mrec['p_count_low']:.3f}); caught: {' '.join(caught) or 'none'}")
+    log(f"wrote {out}; {summary['seconds']:.0f} s in all")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -745,6 +989,24 @@ def main():
     s.add_argument("--eval-batch", type=int, default=256)
     s.add_argument("--smoke", action="store_true")
     s.set_defaults(func=cmd_scan)
+
+    f = sub.add_parser("filter-scan")
+    f.add_argument("--out-dir", required=True)
+    f.add_argument("--data-dir", required=True)
+    f.add_argument("--templates", default="C,T")
+    f.add_argument("--sizes", default=SIZES_DEFAULT)
+    f.add_argument("--maps", default="smica,nilc,sevem,commander")
+    f.add_argument("--n-null", type=int, default=400)
+    f.add_argument("--n-null-inject", type=int, default=20)
+    f.add_argument("--n-random", type=int, default=300)
+    f.add_argument("--inject-positions", type=int, default=100)
+    f.add_argument("--inject-sizes", default="3,5,10,20")
+    f.add_argument("--inject-snr", default="4,6,8")
+    f.add_argument("--tile-nside", type=int, default=16)
+    f.add_argument("--seed", type=int, default=20261123)
+    f.add_argument("--batch-sep-deg", type=float, default=60.0)
+    f.add_argument("--smoke", action="store_true")
+    f.set_defaults(func=cmd_filter_scan)
 
     args = ap.parse_args()
     args.func(args)
