@@ -516,3 +516,87 @@ which is why two of them miss by amounts smaller than it.
 3. A fourth test set with the template of the published code (edge at 0.2 of the centre, main notebook
    entries (aj), (ak)), which sits between T0 and T35.
 4. Masks and real maps, from random initialisation.
+
+## (M) 2026-11-23 15:20 CST. Pre-registration: the networks on the real sky, with the Planck mask and the published WMAP candidates
+
+Written before any training or scan run of `scripts/ml/ml_real_sky.py` (its self-test and smoke checks
+excepted). Job files: `cluster/hamilton/realsky_{smoke,train,scan}.sbatch`.
+
+### Why
+
+The ceiling study, entries (A) to (L), is on unmasked Gaussian skies. The Planck maps add a mask (77% of
+the sky kept) and named positions to test: the WMAP candidates of Feeney et al. (2011) and McEwen et al.
+(2012). Gus asked on 23 November whether the search catches their top candidates. The full-sky filter
+search on main does (main notebook entries (x), (am)). This entry asks the same of a network.
+
+The four features Feeney et al. (2011, Table VIII) single out (2, 3, 7 and 10; 2 is the Cold Spot) are
+McEwen et al. (2012) nos. 7, 8, 4 and 6: the same positions within a degree, the same sign and amplitude.
+What the filter search of main gives there on Planck SMICA (largest S within the match radius, from
+`work/results_2026-11-22/fullsky_search_summary_planck_v1.json` on main; the Feeney et al. 2013 threshold is
+4.00 from 3 to 8 degrees):
+
+| spot | size, deg | cosine template, z_crit = 0 | transfer template |
+|---|---:|---:|---:|
+| M4 = F7 | 3 | 4.23 | 2.08 |
+| M6 = F10 | 4 | 4.80 | 1.93 |
+| M7 = F2, Cold Spot | 5 | 4.11 | 3.26 |
+| M8 = F3 | 5 | 4.05 | 2.82 |
+
+With the physical template the classical filter does not pick out three of the four, so a network trained
+on that template is not expected to either. Hence two networks, one per template.
+
+### Design (the script header lists every assumption)
+
+- Two networks, random initialisation (as planned in (L)), seed 1, otherwise the recipe of arm N: T is
+  trained on the transfer-function ramp, C on the cosine cap with z_crit = 0 (the template the text of
+  McEwen et al. describes).
+- Sizes 2 to 25 degrees in steps of 1. The ceiling study used 5 to 25; M4 and M6 are 3 and 4 degrees.
+- Mask: PR3 common intensity mask at Nside 256, a pixel kept where the value is at least 0.9. Every sky
+  and map is prepared the same way: monopole and dipole fitted on the kept pixels and removed, masked
+  pixels set to zero. The mask is the second input channel.
+- Training patches: centres on kept pixels, 8 per sky, at least 45 degrees apart; 4,000 training and 300
+  validation skies; signals drawn as in the ceiling study and hidden where the patch is masked.
+- Scan: tiles at the Nside 16 pixel centres that fall on kept pixels; the four PR3 maps (SMICA, NILC,
+  SEVEM, Commander) and 400 Gaussian skies with the same mask and preparation.
+- Tile scores: image-head logit (primary) and largest mask logit (secondary), each standardised per tile
+  by its mean and standard deviation over the 400 simulated skies.
+- Spot score at a position: the largest standardised tile score within 5 degrees. Its p value is its rank
+  among the 400 simulated skies at the same position. A position is caught when p < 0.01. Positions:
+  McEwen et al.'s 16, Feeney et al.'s 11, and 300 random kept positions.
+- Whole-sky statistics per map: the largest standardised tile score, and the number of tiles whose own p
+  is below 0.01 (for a simulated sky, against the other 399). Their p values come from the simulated skies.
+- Real-sky check by injection: sizes 3, 5, 10 and 20 degrees at ideal SNR 4, 6 and 8, at 100 random kept
+  positions with random sign, each network with its own template, added on the sphere and prepared like the
+  map, on each Planck map and on 20 of the simulated skies; detected when the spot p is below 0.01.
+- Unmasked check: network T on the ceiling study's T0 test set, with the mask channel all kept.
+
+Data: the four PR3 maps and the common mask were downloaded from IRSA onto Hamilton
+(`/projects/gmarcum/cmb/data`, 7.45 GB in all), because the project's copy sits in a private folder. Gus
+approved the download on 23 November.
+
+### Predictions
+
+1. Network C catches M6 (= F10) on all four maps, and at least two of the four top spots (M4, M6, M7, M8)
+   on every map.
+2. Network T catches none of M4, M6 and M8 on any map (p above 0.05 each). No prediction for the Cold Spot.
+3. No excess: for neither network and neither whole-sky statistic is p below 0.01 on all four maps (the
+   rule of main entry (al)).
+4. The networks work on the real sky as on simulated skies: pooled over the four maps, the detected
+   fraction of injections is within 0.10 of the simulated-sky fraction in at least 10 of the 12 (size, SNR)
+   cells, for each network.
+5. The four maps agree: for each network the set of caught published positions is the same on all four
+   maps, up to one position.
+6. Unmasked check: network T detects 0.56 to 0.62 of T0 at 3e-5 (5% false positives, image head); arm N
+   gave 0.593.
+
+### What would change the reading
+
+If prediction 4 fails for a network, its results on the Planck maps are reported as affected by the real
+sky (foreground residuals, noise, mask edges) and are not set against the filter search.
+
+### Limits fixed now
+
+One seed per network. The simulated skies are Gaussian, without foreground residuals or anisotropic noise,
+as in the filter search of main. Sizes above 25 degrees are not searched (M11 to M15 are 26 to 90 degrees).
+Positions with no tile centre on a kept pixel within 5 degrees are not scored. In training a signal does
+not change the fitted monopole and dipole; in the scan it does.
