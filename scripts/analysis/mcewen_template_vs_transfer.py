@@ -33,7 +33,13 @@ scaled to 1 at the centre, uniform weight in angle from 0 to 1.5 theta_c); (3) t
 Usage (from the project root)
 -----------------------------
     python scripts/analysis/mcewen_template_vs_transfer.py compute --out report.json        (needs healpy, camb)
+    python scripts/analysis/mcewen_template_vs_transfer.py sizes --out sizes.json           (needs healpy, camb)
     python scripts/analysis/mcewen_template_vs_transfer.py plot report.json figure.png      (numpy, matplotlib)
+
+``sizes`` (entry (aq)): the overlaps with the filter size left free (fitting factors: the largest overlap of
+a transfer template of given causal size with their code template, or with z_crit = 0, over filter sizes from
+1 to 90 deg), and the apparent size of the transfer template by named radii (where its profile falls to 50%,
+10%, 2% of the centre, and its first zero), at the search's band limit and at l up to 767.
 """
 from __future__ import annotations
 
@@ -276,6 +282,179 @@ def cmd_compute(args):
     print("wrote", args.out)
 
 
+RADIUS_SIZES = [0.0, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 14.0, 20.0]
+SMALL_CANDIDATE_SIZES = [1.5, 2.0, 3.0, 4.0, 5.0, 7.0]
+
+
+def radii(theta_deg, prof):
+    """Angles (deg) where a profile, scaled to 1 at the centre, first falls to 0.5, 0.1, 0.02 and 0."""
+    p = prof / prof[0]
+    out = {}
+    for name, level in (("R50", 0.5), ("R10", 0.1), ("R02", 0.02), ("first_zero", 0.0)):
+        below = np.nonzero(p <= level)[0]
+        if below.size == 0 or below[0] == 0:
+            out[name] = None
+        else:
+            i = int(below[0])
+            out[name] = float(theta_deg[i - 1] + (p[i - 1] - level) * (theta_deg[i] - theta_deg[i - 1]) / (p[i - 1] - p[i]))
+    return out
+
+
+def cmd_sizes(args):
+    """Entry (aq): overlaps with the filter size left free, and the apparent size of the transfer template."""
+    S = Setup(args.dataset, args.data_dir)
+    out = {"setup": {"dataset": S.name, "lmax": S.lmax}, "filter_size_grid_deg": [1.0, 90.0, 0.5]}
+    grid = [float(t) for t in np.round(np.arange(1.0, 90.0 + 1e-9, 0.5), 1)]
+    bank = set(float(t) for t in S.fs.SIZES)
+    filt = {}
+    for t in grid:
+        tc = math.radians(t)
+        a_in, b_in = family_inside(tc, S.lmax)
+        a_c, b_c = family_cutoff(tc, S.lmax, DEFAULT_F)
+        code, z = a_in + a_c + DEFAULT_ZC * (b_in + b_c), a_in
+        filt[t] = (code, z, S.dot(code, code), S.dot(z, z))
+    rows = []
+    print("%s set-up, l 2..%d. causal size | their code template: same size, best (filter size), best on the 33-size bank | z_crit = 0: the same" % (S.name, S.lmax))
+    for size in SIZES:
+        T = S.transfer(size)
+        s = S.dot(T, T)
+        oc = {t: S.dot(filt[t][0], T) / math.sqrt(filt[t][2] * s) for t in grid}
+        oz = {t: S.dot(filt[t][1], T) / math.sqrt(filt[t][3] * s) for t in grid}
+        row = {"size_deg": size}
+        for name, o in (("code_template", oc), ("zcrit0", oz)):
+            best = max(o, key=o.get)
+            bbest = max((t for t in grid if t in bank), key=o.get)
+            row[name] = {"same_size": o[size], "fitting_factor": o[best], "best_filter_size_deg": best,
+                         "fitting_factor_on_bank": o[bbest], "best_bank_size_deg": bbest}
+        rows.append(row)
+        c, z = row["code_template"], row["zcrit0"]
+        print("  %4.0f | %.3f, %.3f (%g deg), %.3f (%g deg) | %.3f, %.3f (%g deg), %.3f (%g deg)" % (
+            size, c["same_size"], c["fitting_factor"], c["best_filter_size_deg"], c["fitting_factor_on_bank"], c["best_bank_size_deg"],
+            z["same_size"], z["fitting_factor"], z["best_filter_size_deg"], z["fitting_factor_on_bank"], z["best_bank_size_deg"]))
+    out["fitting_factors"] = rows
+
+    def radius_table(S_, label):
+        theta_deg = np.arange(0.0, 60.0 + 1e-9, 0.01)
+        theta = np.radians(theta_deg)
+        table = {"transfer": [], "code_template": [], "zcrit0": []}
+        print("%s, l 2..%d: R50, R10, R02, first zero (deg)" % (label, S_.lmax))
+        for cs in RADIUS_SIZES:
+            r = radii(theta_deg, S_.profile(S_.transfer(cs), theta))
+            table["transfer"].append({"causal_size_deg": cs, **r})
+            print("  transfer template, causal size %4.1f: %s" % (cs, "  ".join("%s %s" % (k, "-" if v is None else "%.2f" % v) for k, v in r.items())))
+        for cs in SMALL_CANDIDATE_SIZES:
+            tc = math.radians(cs)
+            a_in, b_in = family_inside(tc, S_.lmax)
+            a_c, b_c = family_cutoff(tc, S_.lmax, DEFAULT_F)
+            for name, coeff in (("code_template", a_in + a_c + DEFAULT_ZC * (b_in + b_c)), ("zcrit0", a_in)):
+                r = radii(theta_deg, S_.profile(coeff, theta))
+                table[name].append({"size_deg": cs, **r})
+            fmt = lambda v: "-" if v is None else "%.2f" % v
+            print("  size %4.1f: code template R50 %s, R02 %s | z_crit = 0 R50 %s, R02 %s" % (
+                cs, fmt(table["code_template"][-1]["R50"]), fmt(table["code_template"][-1]["R02"]),
+                fmt(table["zcrit0"][-1]["R50"]), fmt(table["zcrit0"][-1]["R02"])))
+        return table
+
+    out["apparent_size"] = {"lmax_%d" % S.lmax: radius_table(S, S.name)}
+    if args.radii_dataset:
+        S2 = Setup(args.radii_dataset, args.data_dir)
+        out["apparent_size"]["lmax_%d" % S2.lmax] = radius_table(S2, S2.name)
+
+    # ---- added after the first results of (aq), not pre-registered (entry (ar))
+    # E1: which filter sizes match the smallest physical spots (causal sizes 0 to 3 deg)
+    small = []
+    for size in (0.0, 1.0, 2.0, 3.0):
+        T = S.transfer(size)
+        s = S.dot(T, T)
+        row = {"size_deg": size}
+        for name, k in (("code_template", 0), ("zcrit0", 1)):
+            o = {t: S.dot(filt[t][k], T) / math.sqrt(filt[t][2 + k] * s) for t in grid}
+            best = max(o, key=o.get)
+            row[name] = {"fitting_factor": o[best], "best_filter_size_deg": best, "overlap_with_filters_deg": {str(t): o[t] for t in (1.0, 2.0, 3.0, 5.0, 7.0)}}
+        small.append(row)
+        print("E1 causal size %g: their code template best %.3f at %g deg, z_crit = 0 best %.3f at %g deg; overlap with their 2, 5, 7 deg filters: %.3f, %.3f, %.3f" % (
+            size, row["code_template"]["fitting_factor"], row["code_template"]["best_filter_size_deg"], row["zcrit0"]["fitting_factor"],
+            row["zcrit0"]["best_filter_size_deg"], *[row["code_template"]["overlap_with_filters_deg"][k] for k in ("2.0", "5.0", "7.0")]))
+    out["smallest_spots_fitting"] = small
+
+    # E2: a wall that stops short of the last-scattering surface (negative depth): how small and how faint the spot is
+    theta_deg = np.arange(0.0, 60.0 + 1e-9, 0.01)
+    theta = np.radians(theta_deg)
+    d_star = float(S.tr.d_star)
+
+    def raw_profile(r):
+        b = np.zeros(S.lmax + 1)
+        b[S.tr.ells] = S.fs.ct.b_ell(S.tr.ells, S.tr.k, S.tr.delta_t, r, a_ramp=1.0 / d_star)
+        return S.profile(b, theta)
+
+    def raw_coeff(r):
+        b = np.zeros(S.lmax + 1)
+        b[S.tr.ells] = S.fs.ct.b_ell(S.tr.ells, S.tr.k, S.tr.delta_t, r, a_ramp=1.0 / d_star)
+        return b if float(np.sum(S.synth * b)) >= 0.0 else -b
+
+    p0 = raw_profile(d_star)
+    outside = []
+    for gap in (0.0, 15.0, 50.0, 100.0, 145.0, 200.0, 300.0):
+        p = raw_profile(d_star + gap)
+        centre = float(p[0] / p0[0])
+        r = radii(theta_deg, p * (1.0 if p[0] >= 0 else -1.0)) if abs(centre) > 1e-6 else {"R50": None, "R10": None, "R02": None, "first_zero": None}
+        # E5: which of their filters such a spot matches
+        T = raw_coeff(d_star + gap)
+        s = S.dot(T, T)
+        oc = {t: S.dot(filt[t][0], T) / math.sqrt(filt[t][2] * s) for t in grid}
+        best = max(oc, key=oc.get)
+        outside.append({"wall_outside_by_mpc": gap, "centre_relative_to_touching_wall": centre, **r,
+                        "code_template_best_overlap": oc[best], "code_template_best_size_deg": best,
+                        "overlap_with_code_filters_deg": {str(t): oc[t] for t in (1.5, 2.0, 3.0, 4.0, 5.0, 7.0)}})
+        print("E2 wall %5.0f Mpc short of the surface: centre %.3f of the touching wall's; R50 %s, R10 %s, R02 %s | E5 their filters: best %.3f at %g deg; at 1.5, 2, 3, 4, 5, 7 deg: %s" % (
+            gap, centre, *["-" if r[k] is None else "%.2f" % r[k] for k in ("R50", "R10", "R02")], oc[best], best,
+            " ".join("%.2f" % oc[t] for t in (1.5, 2.0, 3.0, 4.0, 5.0, 7.0))))
+    out["wall_outside_surface"] = outside
+    # E5b: for each of their small filters, the wall position (0 to 160 Mpc short of the surface) whose spot it matches best
+    scan = []
+    for gap in np.arange(0.0, 160.0 + 1e-9, 5.0):
+        T = raw_coeff(d_star + float(gap))
+        s = S.dot(T, T)
+        scan.append((float(gap), float(raw_profile(d_star + float(gap))[0] / p0[0]),
+                     {t: S.dot(filt[t][0], T) / math.sqrt(filt[t][2] * s) for t in (1.5, 2.0, 3.0, 4.0, 5.0, 7.0)}))
+    small_filters = []
+    for t in (1.5, 2.0, 3.0, 4.0, 5.0, 7.0):
+        g, c, o = max(scan, key=lambda x: x[2][t])
+        small_filters.append({"their_filter_size_deg": t, "best_overlap": o[t], "wall_short_by_mpc": g, "centre_relative_to_touching_wall": c})
+        print("E5b their %g deg filter: best overlap with a ramp collision %.3f, for a wall %g Mpc short of the surface (centre %.2f of the touching wall's)" % (t, o[t], g, c))
+    out["their_small_filters_best_ramp_match"] = small_filters
+
+    # E3: their code template of 85 and 90 deg as the signal: best overlap of the other two families, any size and within the bank's range
+    big = []
+    wide = [float(t) for t in np.round(np.arange(40.0, 130.0 + 1e-9, 0.5), 1)]
+    zf, tf = {}, {}
+    for t in wide:
+        a_in, _ = family_inside(math.radians(t), S.lmax)
+        T = S.transfer(t)
+        zf[t] = (a_in, S.dot(a_in, a_in))
+        tf[t] = (T, S.dot(T, T))
+    for size in (60.0, 75.0, 85.0, 90.0):
+        tc = math.radians(size)
+        a_in, b_in = family_inside(tc, S.lmax)
+        a_c, b_c = family_cutoff(tc, S.lmax, DEFAULT_F)
+        code = a_in + a_c + DEFAULT_ZC * (b_in + b_c)
+        s = S.dot(code, code)
+        row = {"code_template_size_deg": size}
+        for name, fam in (("zcrit0", zf), ("transfer", tf)):
+            o = {t: S.dot(fam[t][0], code) / math.sqrt(fam[t][1] * s) for t in wide}
+            best = max(o, key=o.get)
+            inbank = max((t for t in wide if t <= 90.0), key=o.get)
+            row[name] = {"same_size": o[size], "best": o[best], "best_size_deg": best, "best_up_to_90": o[inbank], "best_size_up_to_90_deg": inbank}
+        big.append(row)
+        print("E3 their %g deg template as signal: z_crit = 0 filters same size %.3f, best %.3f at %g deg (up to 90 deg: %.3f at %g) | transfer filters same size %.3f, best %.3f at %g deg (up to 90 deg: %.3f at %g)" % (
+            size, row["zcrit0"]["same_size"], row["zcrit0"]["best"], row["zcrit0"]["best_size_deg"], row["zcrit0"]["best_up_to_90"], row["zcrit0"]["best_size_up_to_90_deg"],
+            row["transfer"]["same_size"], row["transfer"]["best"], row["transfer"]["best_size_deg"], row["transfer"]["best_up_to_90"], row["transfer"]["best_size_up_to_90_deg"]))
+    out["large_code_templates_in_other_filters"] = big
+    with open(args.out, "w") as fh:
+        json.dump(out, fh, indent=1)
+    print("wrote", args.out)
+
+
 def cmd_plot(args):
     rep = json.load(open(args.report))
     rows = {r["size_deg"]: r for r in rep["rows"]}
@@ -332,12 +511,17 @@ def main():
     c.add_argument("--second-dataset", default="wmap7w")
     c.add_argument("--data-dir", default="data")
     c.add_argument("--out", required=True)
+    z = sub.add_parser("sizes")
+    z.add_argument("--dataset", default="planck")
+    z.add_argument("--radii-dataset", default="planck767")
+    z.add_argument("--data-dir", default="data")
+    z.add_argument("--out", required=True)
     p = sub.add_parser("plot")
     p.add_argument("report")
     p.add_argument("figure")
     p.add_argument("--title", default="Three collision templates at 10, 20 and 40 degrees")
     args = ap.parse_args()
-    cmd_compute(args) if args.command == "compute" else cmd_plot(args)
+    {"compute": cmd_compute, "sizes": cmd_sizes, "plot": cmd_plot}[args.command](args)
 
 
 if __name__ == "__main__":

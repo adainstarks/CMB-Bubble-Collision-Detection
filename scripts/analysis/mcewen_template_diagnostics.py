@@ -4,6 +4,11 @@ large-sizes
     For finished runs: the cosine candidates of 45 degrees or more on the real maps against the simulated
     skies of the same run, the largest S among those sizes, and the candidates per size (entry (al), item 3).
 
+size-profile
+    For chosen published candidates: the largest S near the published position at every filter size of the
+    bank, cosine and transfer filters, masked pixels included (entry (ar)). Shows whether a candidate that
+    is missing at its published size under another template is there at another size.
+
 masked-positions
     The search of ``fullsky_filter_search.py`` runs over unmasked pixels only. Two of the 16 published
     candidates of McEwen et al. (2012) are centred on masked pixels, so their search did not leave those out.
@@ -110,6 +115,38 @@ def large_sizes(runs, min_size):
     return out
 
 
+def size_profile(runs, map_name, labels):
+    """For published candidates: the largest S near the published position at every filter size of the bank,
+    for the cosine and the transfer filters of each run, masked pixels included (entry (ar))."""
+    out = {}
+    ns = len(fs.SIZES)
+    for run in runs:
+        sigma = np.load(Path(run) / "sigma.npy", mmap_mode="r")
+        w = np.load(Path(run) / ("filtered_%s.npy" % map_name), mmap_mode="r")
+        res = {}
+        for label, z0_mk, colat, lon, size in fs.MCEWEN_2012:
+            if int(label) not in labels:
+                continue
+            v = hp.ang2vec(lon, 90.0 - colat, lonlat=True)
+            rows = {"cosine": [], "transfer": []}
+            for ti, tname in enumerate(("cosine", "transfer")):
+                for si, fsize in enumerate(fs.SIZES):
+                    near = hp.query_disc(fs.NSIDE, v, math.radians(max(3.0, 0.25 * fsize)))
+                    f = ti * ns + si
+                    wf = np.asarray(w[f][near], dtype=np.float64)
+                    sg = np.asarray(sigma[f][near], dtype=np.float64)
+                    same_sign = wf * z0_mk > 0
+                    rows[tname].append(float(np.max(np.abs(wf[same_sign]) / sg[same_sign])) if same_sign.any() else 0.0)
+            res[int(label)] = {"published_size_deg": float(size), "published_S": PUBLISHED_S[int(label)], **rows}
+            for tname in ("cosine", "transfer"):
+                best = int(np.argmax(rows[tname]))
+                print("%s no. %d (published %g deg, S %.2f), %s filters: largest S %.2f at %g deg; at 60, 70, 80, 85, 90 deg: %s" % (
+                    Path(run).name, int(label), size, PUBLISHED_S[int(label)], tname, rows[tname][best], fs.SIZES[best],
+                    " ".join("%.2f" % rows[tname][fs.SIZES.index(x)] for x in (60.0, 70.0, 80.0, 85.0, 90.0))))
+        out[Path(run).name] = {"map": map_name, "sizes_deg": list(fs.SIZES), "candidates": res}
+    return out
+
+
 def edge_response(dataset, data_dir):
     ds = fs.load_dataset(dataset, Path(data_dir), 1)
     lmax, window, power = ds["lmax"], ds["window"], ds["total_power"]
@@ -170,9 +207,16 @@ def main():
     c.add_argument("--runs", nargs="+", required=True)
     c.add_argument("--min-size", type=float, default=45.0)
     c.add_argument("--out", required=True)
+    d = sub.add_parser("size-profile")
+    d.add_argument("--runs", nargs="+", required=True)
+    d.add_argument("--map", default="wmap7_w_forered")
+    d.add_argument("--labels", default="12,13,14,15")
+    d.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.command == "masked-positions":
         report = masked_positions(args.runs, args.map)
+    elif args.command == "size-profile":
+        report = size_profile(args.runs, args.map, [int(x) for x in args.labels.split(",")])
     elif args.command == "large-sizes":
         report = large_sizes(args.runs, args.min_size)
     else:

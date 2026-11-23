@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 23 November 2026 (notebook entries (t) to (ap)):
+Open as of 23 November 2026 (notebook entries (t) to (ar)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
@@ -118,12 +118,23 @@ Open as of 23 November 2026 (notebook entries (t) to (ap)):
   reaches 0.56, 0.76 and 0.92 at 10, 20 and 40 degrees at the same nominal size. With an edge value and
   a cut-off that depend on the size (0.53 and 1.39 at 10 degrees, 0.25 and 1.10 at 20, 0.09 and 1.03 at
   40) their two-parameter form reproduces the transfer template to better than 0.99 from 7 degrees up.
+  These overlaps are at equal nominal size and measure how differently the templates label a size, not
+  what a search loses. With the filter size left free (entries (aq), (ar)) their template and z_crit = 0
+  both reach 0.96 or more on the transfer template at every size from 5 to 60 degrees (0.86 or more on the
+  33 sizes of the bank): a 5 degree ramp collision is their 9 degree disc, a 40 degree one their 38 degree
+  disc. For finding a collision the three templates are nearly interchangeable; what differs is the size
+  and the amplitude attached to it.
   No paper or code comment gives a reason for 0.2 and 1.1; the first bubble commit of their repository
   (10 November 2011) already has them, applied to 10, 15 and 20 degree discs alike. This project keeps
   z_crit = 0 for the cosine template, as the published papers describe it, and carries the size-dependent
-  edge in the transfer template; `--cosine-edge` exists for comparisons with their paper. For a signal that did carry such an edge, limits
-  on z0 from the z_crit = 0 filters would be up to a third weaker below 60 degrees and a factor of two
-  weaker at 90 degrees.
+  edge in the transfer template; `--cosine-edge` exists for comparisons with their paper. For a signal
+  with such an edge the z_crit = 0 filters keep 0.97 of the best possible significance at 60 degrees and
+  0.95 at 75 degrees once the filter size is left free; at 85 and 90 degrees the best-matching size lies
+  beyond the 90 degree end of the bank (entries (ak), (ar)).
+- Gap, entry (ar): the transfer-template bank starts at walls that reach the last-scattering surface. A
+  ramp collision whose wall stops up to about 110 Mpc short of it leaves a smaller, fainter spot that looks
+  like a 4 to 7 degree disc; such collisions are not in the transfer bank. For a wall that reaches the
+  surface the half-maximum radius of the spot is at least 6.4 degrees.
 - What that search could have seen, entries (ae) to (ag) (figure `plots/10_fullsky_search_sensitivity.png`,
   numbers in `work/results_2026-11-22/fullsky_inject_summary_planck_v1.md`): templates of known size and
   amplitude were added at 150 positions on 100 simulated skies, and on the real maps. A collision whose

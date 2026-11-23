@@ -2608,3 +2608,165 @@ Expected:
   size of 5 deg and about 10.3 deg for 10 deg; the numbers at l up to 767 within 0.3 deg of those at 256.
   Their template has R50 = 0.79 times its size, so their candidates of 1.5 to 5 deg have R50 of 1.2 to 4
   deg, below the smallest R50 of a ramp collision; their 7 deg candidate (5.5 deg) is at that limit.
+
+## (ar) 2026-11-23 15:24 CST. With the size left free the three templates are nearly interchangeable; four statements of mine corrected
+
+Result of (aq), and the outside review William passed on, taken point by point. Script
+`scripts/analysis/mcewen_template_vs_transfer.py sizes` and `mcewen_template_diagnostics.py size-profile`;
+reports `work/results_2026-11-23/mcewen_template_sizes.json` and `published_candidates_size_profile.json`.
+(aq) was pushed as commit c4304c5 before the first run.
+
+### A. Overlap with the filter size left free (Planck set-up, l 2 to 256)
+
+Signal: the transfer template of causal size s. For each filter family: overlap at the same nominal size,
+the largest overlap over filter sizes from 1 to 90 deg in 0.5 deg steps with the size that gives it, and the
+largest on the 33 sizes of the search bank.
+
+| s, deg | their code template: same size | size free | on the bank | z_crit = 0: same size | size free | on the bank |
+|---:|---:|---|---|---:|---|---|
+| 5 | 0.362 | 0.994 at 9 | 0.994 at 9 | 0.300 | 0.995 at 10 | 0.995 at 10 |
+| 7 | 0.520 | 0.993 at 10 | 0.993 at 10 | 0.422 | 0.990 at 11 | 0.946 at 12 |
+| 10 | 0.704 | 0.990 at 12 | 0.990 at 12 | 0.557 | 0.983 at 13.5 | 0.959 at 14 |
+| 12 | 0.791 | 0.986 at 13.5 | 0.967 at 14 | 0.612 | 0.978 at 15 | 0.932 at 16 |
+| 14 | 0.860 | 0.981 at 15 | 0.921 at 16 | 0.656 | 0.970 at 16.5 | 0.935 at 16 |
+| 16 | 0.916 | 0.980 at 17 | 0.916 at 16 | 0.695 | 0.968 at 18.5 | 0.952 at 18 |
+| 18 | 0.959 | 0.985 at 18.5 | 0.959 at 18 | 0.728 | 0.964 at 20.5 | 0.960 at 20 |
+| 20 | 0.983 | 0.983 at 20 | 0.983 at 20 | 0.758 | 0.965 at 22 | 0.965 at 22 |
+| 22 | 0.989 | 0.989 at 22 | 0.989 at 22 | 0.784 | 0.967 at 24 | 0.967 at 24 |
+| 25 | 0.976 | 0.993 at 24.5 | 0.962 at 24 | 0.817 | 0.969 at 27 | 0.939 at 28 |
+| 30 | 0.938 | 0.997 at 29 | 0.938 at 30 | 0.861 | 0.973 at 31.5 | 0.861 at 30 |
+| 40 | 0.869 | 0.995 at 38 | 0.869 at 40 | 0.918 | 0.985 at 41.5 | 0.918 at 40 |
+| 50 | 0.814 | 0.986 at 47 | 0.896 at 45 | 0.949 | 0.991 at 51.5 | 0.949 at 50 |
+| 60 | 0.762 | 0.970 at 56 | 0.941 at 55 | 0.968 | 0.995 at 61 | 0.968 at 60 |
+
+With the size free both families reach 0.96 or more at every size: 0.970 to 0.997 for their code template,
+0.964 to 0.995 for z_crit = 0. On the 33-size bank, which steps by 2 deg up to 30 and by 5 deg above, the
+worst cases are 0.869 (their template, a 40 deg collision) and 0.861 (z_crit = 0, 30 deg). The same-size
+numbers of (ap) measured how differently the two templates label a size, not how much a search loses.
+
+### B. Apparent size, one definition
+
+R50 is the angle at which a profile (as the search sees it, centre scaled to 1) has fallen to half; R10 and
+R02 the same for 10% and 2%. Transfer template:
+
+| causal size, deg | 0 (wall touching) | 1 | 2 | 3 | 5 | 7 | 10 | 14 | 20 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| R50 | 6.37 | 6.41 | 6.55 | 6.76 | 7.44 | 8.40 | 10.27 | 12.96 | 16.52 |
+| R10 | 8.23 | 8.28 | 8.44 | 8.70 | 9.48 | 10.57 | 12.60 | 15.73 | 20.78 |
+| R02 | 11.97 | 11.93 | 10.75 | 10.72 | 10.14 | 11.12 | 13.05 | 16.13 | 21.22 |
+| first zero | 17.9 | 17.9 | 17.7 | 17.2 | 15.9 | 13.9 | 13.3 | 16.3 | 21.3 |
+
+At l up to 767 every R50 and R10 is within 0.03 deg of these (R02 within 0.7 deg; it sits on a shallow
+tail). Their code template has R50 = 1.17, 1.57, 2.43, 3.18, 3.89, 5.53 deg at sizes 1.5, 2, 3, 4, 5, 7 deg;
+z_crit = 0 has 1.01, 1.42, 2.13, 2.82, 3.54, 4.91 deg.
+
+So for a wall that reaches the last-scattering surface the half-maximum radius is at least 6.4 deg. The
+8.3 deg of (z) is where the profile is down to 10% (R10 = 8.2 deg). The "12 to 13 deg" I gave William was
+a first zero, which runs from 13 to 18 deg and is the number most affected by removing the monopole and
+dipole. From here on: R50, with R10 as "where it fades".
+
+### Added after seeing A and B, not in (aq)
+
+- E1. A wall touching the surface is matched best by their 7.5 deg filter (0.986) and by the 8.5 deg
+  z_crit = 0 filter (0.995). Its overlap with their 2, 5 and 7 deg filters is 0.11, 0.52, 0.93.
+- E2. A wall that stops short of the surface still leaves a spot, smaller and fainter, because the sound
+  wave runs ahead of the wall. Short by 15, 50, 100 Mpc: central value 0.92, 0.72, 0.41 of the touching
+  wall's for the same slope, R50 = 6.04, 5.17, 3.60 deg. At one sound horizon (145 Mpc) 0.10 is left and the
+  shape breaks up; beyond it 0.03.
+- E5. Their small filters against such spots, best wall position from 0 to 160 Mpc short in 5 Mpc steps:
+  7 deg filter 0.990 (25 Mpc short, central value 0.86), 5 deg 0.976 (85 Mpc, 0.51), 4 deg 0.948 (110 Mpc,
+  0.34), 3 deg 0.849 (125 Mpc, 0.22), 2 deg 0.600 (135 Mpc, 0.15), 1.5 deg 0.429 (135 Mpc, 0.15).
+- E3. Their large templates as the signal, the other two families as filters, sizes 40 to 130 deg:
+  their 60 deg template is matched 0.971 by z_crit = 0 at 65.5 deg and 0.961 by the transfer template at
+  64 deg; their 75 deg, 0.951 at 82 and 0.936 at 82.5 deg; their 85 deg, 0.925 at 93 and 0.910 at 94 deg
+  (within the bank's 90 deg limit: 0.795 and 0.801, both at 90 deg); their 90 deg, 0.905 at 98.5 and 0.893
+  at 99.5 deg (within the limit: 0.485 and 0.509).
+- E4. Their nos. 14 and 15 on the WMAP map, largest S near the published position at 80, 85, 90 deg, masked
+  pixels included: z_crit = 0 filters 1.67, 1.76, 2.12 and 1.33, 1.37, 1.97; transfer filters 1.61, 1.76,
+  2.12 and 1.26, 1.70, 2.04; their code template 2.45, 3.63, 2.61 and 2.33, 2.51, 3.61. With the other two
+  templates S is still rising at the end of the bank.
+
+### The review's four points
+
+1. "No. 7 is counted as surviving the physical template while the table has it below threshold." Right. At
+   its published size (5 deg) the transfer filter gives 3.34 against a threshold of 4.0. It is matched by a
+   transfer candidate of nominal size 9 deg, 2.3 deg away, S 4.15 on WMAP and 4.16 on Planck SMICA. The match
+   rule of (w) allows 5 deg in size. So no. 7 is there at nearly twice its published size.
+2. "No. 11 is on the line, not solid." Half right. At its published size (26 deg) it is 3.34, 3.36 and 3.51
+   under their template, z_crit = 0 and the transfer template, against a threshold of 3.5: stable across
+   templates and on the line, as the review says, and "solid" was the wrong word. With the size free it is
+   clear under the transfer template: a 24 deg candidate 3.0 deg away has S 4.00 on WMAP and 4.13 on Planck.
+   No. 10 (20 deg) is 3.97 at its own size and matched at 16 to 18 deg with S 3.96 to 4.25; no. 12 (35 deg)
+   is 3.60 at its own size.
+3. "Two numbers for the smallest apparent size." Right that there were two and that one definition is
+   needed; section B. The review's guess that my 12 to 13 deg was the radius of the best-matching edge-free
+   disc is not where it came from (it was a first zero), and neither number was a lower limit: E2.
+4. "The sensitivity numbers are same-size overlaps." Right, and it reaches further than the review says;
+   section A and the corrections below.
+
+### Corrections
+
+To what I told William on 23 Nov (in conversation, from the WMAP runs v4 and v6 and the same-size overlaps):
+
+- "Under the physical template 4 of 16 remain." The four are nos. 7, 10, 11, 12, by the match rule, with
+  the sizes of points 1 and 2. But this project's transfer bank only holds walls that reach the surface.
+  By E5 their 4, 5 and 7 deg filters match ramp collisions whose wall stops 25 to 110 Mpc short of it at
+  0.95 to 0.99, so nos. 6 to 9 (4, 5, 5, 7 deg) have a ramp counterpart that the bank does not contain;
+  no. 7 is found at 9 deg only because 9 deg is the nearest thing in the bank. Their 3 deg filter reaches
+  0.85, their 2 deg and 1.5 deg filters 0.60 and 0.43. So the candidates without a ramp counterpart are the
+  four of 1.5 and 2 deg (nos. 0 to 3), with the two of 3 deg (nos. 4, 5) marginal. Not ten.
+- "The two largest exist only because of the edge." Not shown. Within the 90 deg limit of the bank the
+  other two templates give 1.8 to 2.1 there, but by E3 their best-matching sizes are 93 to 99 deg, outside
+  every bank, where they reach 0.89 to 0.93 of their template's overlap; and by E4 S is still rising at 90
+  deg. A Gaussian feature with S 3.6 in their filter would be expected at about 3.3 +- 0.4 in the other
+  templates at those sizes. No filter above 90 deg has been run on the map. The same holds for the remark
+  that their amplitudes are "almost entirely the edge term": that compared equal nominal sizes.
+- "Their limits are optimistic away from 20 to 30 deg (0.87 at 40 deg, 0.76 at 60 deg)." With the size
+  free their filters reach 0.97 or more on a physical collision at every size from 5 to 60 deg, and 0.87 or
+  more on the 33-size bank. The loss is a few percent, 13% at the worst bank spacing.
+
+To (z): "a ramp collision cannot look smaller than about 8 deg" and "published candidates of 1.5 to 7 deg
+... are therefore not ramp collisions". True only for a wall that reaches the surface, and 8 deg is R10,
+not R50. A wall up to about one sound horizon short of the surface makes a smaller, fainter spot (E2). The
+candidates of 4 to 7 deg can be such collisions; those of 1.5 and 2 deg cannot; 3 deg is marginal.
+
+To (ak), the edge table and the sentence after it ("z0 limits ... up to a third weaker below 60 deg and a
+factor of two at 90 deg"): those are shares at equal nominal size as well. With the size free, by E3, the
+z_crit = 0 filters keep 0.97 of the best possible S on their 60 deg template and 0.95 on their 75 deg one;
+at 85 and 90 deg they keep 0.93 and 0.91 at sizes beyond the bank, 0.80 and 0.49 within it.
+
+To (ap), last section, and to the README: the same-size overlaps are right as measured, but the sentences
+that read them as a loss of the search ("closer to the physical template", "further from it at 40 deg and
+above") are replaced by section A. The match of their defaults to a 20 to 24 deg disc, which was the
+subject of (ap), stands: it is exactly the statement that at those sizes no relabelling is needed.
+
+### Expectations of (aq)
+
+- z_crit = 0 filters, size free, 0.92 to 0.99 with the best filter 2 to 6 deg larger up to 30 deg: yes
+  (0.964 to 0.995; larger by 5, 4, 3.5, 3, 2.5, 2.5, 2.5, 2, 2, 2, 1.5 deg). "The same size from 50 deg up":
+  no, 1 to 1.5 deg larger.
+- Their template at least 0.93 from 7 to 30 deg: yes (0.980 to 0.997). 0.90 to 0.95 at 40 deg and 0.85 to
+  0.92 at 60 deg: too low, it is 0.995 and 0.970. Best filter larger below 20 deg, equal at 20 to 22,
+  smaller above 30: yes.
+- A wall touching the surface with R50 near 5.6 deg and R02 near 9.6 deg: no, 6.4 and 12.0 deg. The 5.6 deg
+  of Kleban et al.'s smallest outline belongs to a wall about 30 Mpc short of the surface (E2), which is
+  what (z) found as "best depth -15 Mpc" without drawing the conclusion. R50 about 7 deg at 5 deg and 10.3
+  at 10 deg: yes (7.44, 10.27). Band limit within 0.3 deg: yes for R50 and R10.
+- "Their 7 deg candidate is at the limit": moot, since the limit of (z) was not one.
+
+### What is left of "what the 0.2 breaks"
+
+For finding things, little: with sizes scanned, their template, z_crit = 0 and the transfer template pick
+up each other's signals at 0.96 or better across the bank. What the fixed 0.2 changes is the label: the
+size and the amplitude attached to a candidate (their 9 deg filter is a 5 deg ramp collision, their 38 deg
+a 40 deg one, their 85 deg a 93 deg z_crit = 0 disc), and the fact that their text cannot be used to
+reproduce their numbers. The ends of the bank are where a label can fall outside the range searched.
+
+### A gap in this project's own search
+
+The transfer bank starts at a causal size of 1 deg, a wall that reaches the surface. Ramp collisions whose
+wall stops up to about 110 Mpc short of it are not in the bank, and they are the ones that look like 4 to
+7 deg discs. Their code-template filters of 4 to 7 deg cover them (E5), and those were run on Planck in
+(am); for the z_crit = 0 filters of (x) the overlap was not computed, though the two cosine templates differ
+little at these sizes. The transfer-template search of (x) and its sensitivity numbers in (ag) do not cover
+them. Nothing is run for this without William's word.
