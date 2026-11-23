@@ -28,8 +28,9 @@ Assumptions and choices that are this project's, not theirs
   R z0 at t_c, times a smooth cut-off just outside t_c. Their code (COMB, ``comb_tmplmap_bubble``) has R = 0.2
   and the cut-off exp(1 - 1 / (1 - s^2)) between t_c and 1.1 t_c: ``--cosine-edge 0.2 --cosine-step
   1.0,1.1,schwartz``. The default ``--cosine-step`` with R = 0.19 is the earlier fit to their Fig. 1a. This is
-  a diagnostic for comparisons with their paper, not a physical model: no theory paper after 2011 supports a
-  temperature jump at the edge (entry (b)).
+  a diagnostic for comparisons with their paper. Its edge value is one fixed fraction at every size, while in
+  the ramp model the edge value depends on the size (about 0.5 of the centre at 10 deg, 0.2 at 20 deg, under
+  0.1 above 40 deg; entries (g), (an)), which the transfer template carries.
 * Filter: w(n) = sum_lm (t_l / D_l) a_lm Y_lm(n) / sqrt(norm), norm = sum_l (2l+1)/(4 pi) t_l^2 / D_l, D_l the
   total power of the simulated sky. The amplitude estimate is w / sqrt(norm).
 * Preparation of a sky, real or simulated: monopole and dipole fitted on the unmasked pixels and removed,

@@ -2290,3 +2290,149 @@ As for (x): Gaussian simulated skies without foreground residuals, masked pixels
 the Planck end-to-end simulations not used. The template of this run is the one of their code, which no
 theory paper after 2011 supports; the run is a repeat of the published search, not a search this project
 argues for. The z_crit = 0 and transfer results of (x) and (ag) stand unchanged.
+
+## (an) 2026-11-23 14:37 CST. Correction to (al) and (am): theory does not rule out 0.2 at the edge, it rules out one fixed value at every size
+
+Pointed out by William, 23 Nov. Two sentences of mine are wrong as written:
+
+- (al): "A temperature of 0.2 z0 at the edge is not supported by theory after 2011 (entry (b))."
+- (am), Limits: "The template of this run is the one of their code, which no theory paper after 2011 supports".
+
+The same thought was in the README ("No theory paper after 2011 supports a temperature jump at the edge, so
+this project keeps z_crit = 0 ...") and in the docstring of `fullsky_filter_search.py` ("not a physical
+model: no theory paper after 2011 supports a temperature jump at the edge").
+
+What this notebook itself measured, entries (f) and (g): the curvature ramp through the transfer functions
+has a temperature at the causal edge that is not zero and has the sign of the centre. Edge over centre is
+0.53 at 10 deg (1.54 / 2.89), 0.48 at 11.39 deg, 0.21 at 20 deg (0.288 / 1.380), and under 0.1 above 40 deg.
+It falls smoothly to zero about one sound horizon outside the causal edge: the boundary is near 13 deg for a
+10 deg disc and near 21.7 deg for a 20 deg disc. The theory papers after 2011 say the same in words: no
+discontinuity, a smooth transition (Kleban, Levi and Sigurdson 2011; Gobbetti and Kleban 2012; Wainwright
+et al. 2014; entry (b)).
+
+So the correct statement has two parts. Theory after 2011 does not support (1) a sharp jump in temperature
+at the edge, which is what the April generator injected and what (b) is about, and (2) one fixed edge value
+at every size. It does support an edge value of about 0.2 of the centre for a disc of about 20 deg, with a
+smooth fall just outside. The template of the published code is not a sharp jump either: it has 0.2 z0 at
+the edge and a smooth cut-off out to 1.1 times the size, for every size. For a disc near 20 deg that is
+close to what the ramp model gives ((f): boundary 21.7 deg, their cut-off 22 deg). At 10 deg the ramp model
+has 0.5, at 40 deg and above under 0.1. How close the two templates are at each size is measured next
+((ao), written before the measurement).
+
+What changes: the wording only. (al) and (am) stand with this correction; no number in them depends on the
+sentence. The README and the docstring are reworded today. The reason this project's cosine template keeps
+z_crit = 0 is that it is the template as the published papers describe it; the size-dependent physical
+edge is carried by the transfer template. That reason was right and stays.
+
+## (ao) 2026-11-23 14:37 CST. Pre-registration: are the defaults of their code the transfer-function ramp of a 20 deg disc?
+
+William's hypothesis, 23 Nov. The defaults of `comb_tmplmap_bubble` are zc = 0.2 z0, cut-off out to
+1.1 theta_c, theta_c = 20 deg. Entries (f) and (g) give, for the transfer-function ramp of a 20 deg disc,
+edge over centre 0.288 / 1.380 = 0.21 and a boundary near 21.7 deg; their cut-off ends at 22 deg. Either
+the defaults were tuned to a 20 deg disc or round numbers happen to agree. A measurement only: nothing in
+the Planck search changes. Nothing below has been computed when this is written.
+
+### Looked up before writing this (reading, no computation)
+
+History of the authors' public repositories (`gh api`):
+
+- `comb_tmplmap_bubble` first appears in COMB commit 01a2d4f of 2011-11-10 ("Added functionality to
+  simulate bubble templates"), with today's defaults already in it (zc = 0.2 z0, theta_c = 20 deg,
+  theta_0 = 1.1 theta_c). The function has not changed since.
+- The same commit adds five parameter files (z0, zc, theta_c, theta_0): (1, -1, 10, 10), (1, -1, 10, 12),
+  (1, 0.2, 10, 12), (1, 0.2, 20, 22), (1, 0.2, 15, 17). So on the first day 0.2 was already used at 10, 15
+  and 20 deg, each with a cut-off 2 deg wide; the fourth file is the function's default. The first two are
+  the example of Feeney et al. (2011): z0 = 5e-5, z_crit = -5e-5, 10 deg.
+- Commit 84d9cbf of 2011-12-06 ("Updated bubble input parameters") sets all five to zc = 0.2 and
+  theta_0 = 1.1 theta_c: (10, 11) three times, (20, 22), (15, 16.5); 029fd48 of 2011-12-12 moves the fifth
+  to (13, 14.3). So the cut-off went from 2 deg wide to 10% of the size within a month.
+- Commit 9a31757 of 2011-12-12 puts 1.0, 0.2, size, 1.1 * size into the object generator; its message
+  calls these "(restricted) bubble templates".
+- S2FIL's `tmplparam01.txt` (1, -1, 10, 10) was added on 2011-11-10 as an "example template parameter file"
+  and never changed. It is the first-day example, not a setting of the published run.
+- No comment and no commit message gives a reason for 0.2 or for 1.1.
+
+Papers (TeX sources from arXiv):
+
+- Feeney et al. 2011 (arXiv:1012.3667 and 1012.1995): z0 and z_crit are independent, each with a uniform
+  prior from -1e-4 to 1e-4, "Lacking a detailed theoretical prediction for the amplitude parameters". The
+  discontinuity "arises from the ISW and Doppler contributions"; neglected effects "could smear out the
+  causal boundary enclosing the collision on sub-degree scales". No 0.2 and no 1.1 anywhere.
+- McEwen et al. 2012 (arXiv:1202.2861): the strings 0.2, 1.1, 20% and 10% do not occur. "we restrict our
+  attention to z_crit ~ 0 uK"; the step is "a smooth but rapid transition to zero about theta_crit".
+
+So no source states a reason. The history says 0.2 was treated as one number for every size from the first
+day, which is against "tuned to 20 deg" as an intention, and says nothing about where the number came from.
+The measurement can show whether the defaults coincide with the physics at 20 deg and only there. It cannot
+show intent.
+
+### Definitions
+
+Set-up: the Planck data set of `fullsky_filter_search.py` (Planck 2018 parameters, lensed TT, 5 arcmin beam
+times the Nside 256 pixel window, 30 uK-arcmin white noise, l = 2 to 256). For two templates with Legendre
+coefficients a_l, b_l (window included),
+
+    <a, b> = sum over l = 2..256 of (2l+1)/(4 pi) a_l b_l / P_l,     O(a, b) = <a, b> / sqrt(<a, a> <b, b>),
+
+P_l the total power. O is the share of the best possible S that a filter matched to a reaches on a signal
+of shape b at the same centre, the quantity of the edge table of (ak). Amplitudes drop out.
+
+Templates, all at the same nominal size theta_c:
+- T: the transfer-function ramp with the wall at D* cos(theta_c) (`collision_template_transfer`).
+- C(zc, f): their family, [1 - (1 - zc)(1 - cos theta) / (1 - cos theta_c)] times the cut-off of their code
+  from theta_c to f theta_c. Their defaults: C(0.2, 1.1).
+- Z: the z_crit = 0 cosine, cut at theta_c.
+
+Sizes: 5, 7, 10, 12, 14, 16, 18, 20, 22, 25, 30, 40, 50, 60 deg.
+
+1. O(C(0.2, 1.1), T) and, as the baseline, O(Z, T), at each size.
+2. At each size the zc and f that maximise O(C(zc, f), T): f from 1.00 (a sharp cut) to 2.00 in steps of
+   0.005, zc any real number (the best zc for a given f has a closed form because C is linear in zc).
+   Reported: zc*, f*, the overlap reached, what the defaults lose against it, and the range of f whose best
+   overlap is within 0.002 of the maximum (how well the fit is located).
+3. Picture: profiles at 10, 20 and 40 deg of T, C(0.2, 1.1) and Z, all three with l = 2 to 256 only (no
+   monopole, no dipole) and the same beam and pixel window, centre scaled to 1.
+
+Also reported, not part of the verdict:
+- 1b. C(0.2, 1.1) at 20 deg against transfer templates of 10 to 30 deg in steps of 0.5 deg: the transfer
+  size it matches best. If the defaults describe a 20 deg disc, that size is between 19 and 21 deg.
+- 1c. Item 1 with the WMAP W-band set-up of the search (WMAP 7-year parameters, W beam and noise, l up to
+  256), the data they had in front of them.
+- 2b. The same two parameters fitted in real space: least squares between the profiles of item 3, uniform
+  weight in angle from 0 to 1.5 theta_c. This is closer to a fit by eye than the filter weighting is.
+
+### Verdict, fixed now
+
+"Peak" is the size, among the fourteen, with the largest O(C(0.2, 1.1), T).
+
+- Inconclusive, flat: over the sizes 10 to 40 deg the largest and the smallest O(C(0.2, 1.1), T) differ by
+  less than 0.02.
+- Support for "tuned to 20 deg": not flat; the peak is at 18, 20 or 22 deg; and at 20 deg the best fit of
+  item 2 has zc* between 0.15 and 0.25 and f* between 1.05 and 1.15.
+- Against: not flat and the peak is at 14 deg or below or at 30 deg or above; or the best fit at 20 deg has
+  zc* outside 0.10 to 0.30 or f* outside 1.03 to 1.20.
+- Anything between (peak at 16 or 25 deg, or a best fit between the two boxes): reported as partial,
+  with the numbers.
+- If the best fit at 20 deg is outside the inner box while the defaults lose less than 0.002 in overlap
+  against it, the fit is too flat to locate; that half then counts as undetermined, not as against.
+
+"Support" would mean the defaults coincide with the transfer ramp at about 20 deg and at no other size. It
+would not show that they were chosen for that reason; the history above stands next to it.
+
+### Known beforehand and expected
+
+Known: the numbers of (f) and (g) quoted above, which are William's two coincidences. From the edge table
+of (ak): at the same z0 the transfer filters respond 1.24 to 1.36 times more to the code template than to
+z_crit = 0 up to 20 deg, 1.13 times at 30 deg, and less than 1 from 40 deg up. That is not the normalised
+overlap, but it says the code template is nearer to T than Z is below 30 deg and not above 40 deg.
+
+Expected:
+- O(Z, T) between 0.85 and 0.98, lowest somewhere from 10 to 30 deg.
+- O(C(0.2, 1.1), T) above O(Z, T) from 5 to 30 deg and below it from 40 deg up, with its peak between 14
+  and 22 deg. My guess for the peak is 18 or 20 deg.
+- Best fit: zc* near 0.5 at 10 deg, near 0.2 at 20 deg, between -0.1 and 0.1 from 40 deg up; f* near 1.3
+  at 10 deg, near 1.1 at 20 deg, under 1.05 from 40 deg up. This is what (f) and (g) give in real space;
+  the filter weighting favours the edge region and may move it.
+- Verdict expected: support, with moderate confidence. The risk I see is the flat case: at l up to 256 a
+  2 deg feature at the edge of a 20 deg disc is three resolution elements, and the overlap may not care
+  much about it.

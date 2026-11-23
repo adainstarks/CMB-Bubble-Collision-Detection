@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (am)):
+Open as of 23 November 2026 (notebook entries (t) to (ao)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
@@ -107,9 +107,13 @@ Open as of 22 November 2026 (notebook entries (t) to (am)):
   amplitudes agree to 0.02 mK, and their two largest candidates are there. One of those and one other are
   centred on masked pixels, which this search leaves out and theirs did not. Whether "~ 0" was meant
   loosely or a default stayed in is a question for the authors; the parameter files of their run are not
-  public. No theory paper after 2011 supports a temperature jump at the edge, so this project keeps
-  z_crit = 0 for the cosine template and carries the physical edge in the transfer template;
-  `--cosine-edge` exists for comparisons with their paper. For a signal that did carry such an edge, limits
+  public. Theory after 2011 gives no sharp jump at the edge and no single edge value for every size: in the
+  ramp model the temperature at the causal edge is about 0.5 of the centre at 10 degrees, 0.2 at 20
+  degrees and under 0.1 above 40 degrees, and it falls smoothly to zero about one sound horizon outside
+  (entries (f), (g), (an)). A fixed 0.2 with a smooth cut-off is therefore close to the physical profile
+  near 20 degrees at most. This project keeps z_crit = 0 for the cosine template, as the published papers
+  describe it, and carries the size-dependent edge in the transfer template; `--cosine-edge` exists for
+  comparisons with their paper. For a signal that did carry such an edge, limits
   on z0 from the z_crit = 0 filters would be up to a third weaker below 60 degrees and a factor of two
   weaker at 90 degrees.
 - What that search could have seen, entries (ae) to (ag) (figure `plots/10_fullsky_search_sensitivity.png`,
