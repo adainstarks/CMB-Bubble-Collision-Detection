@@ -716,7 +716,7 @@ residuals or anisotropic noise. Sizes 2 to 25 degrees only.
    training, or a second seed).
 3. A second seed of each network.
 
-## (P) 2026-11-23 17:55 CST. Pre-registration: the matched filter under the rule of (M), on the same skies
+## (P) 2026-11-23 17:38 CST. Pre-registration: the matched filter under the rule of (M), on the same skies
 
 Written before any run of `ml_real_sky.py filter-scan` other than its smoke check. Job file
 `cluster/hamilton/realsky_filter.sbatch` (CPU partition).
