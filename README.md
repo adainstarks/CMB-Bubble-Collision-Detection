@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 23 November 2026 (notebook entries (t) to (ao)):
+Open as of 23 November 2026 (notebook entries (t) to (ap)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
@@ -110,10 +110,18 @@ Open as of 23 November 2026 (notebook entries (t) to (ao)):
   public. Theory after 2011 gives no sharp jump at the edge and no single edge value for every size: in the
   ramp model the temperature at the causal edge is about 0.5 of the centre at 10 degrees, 0.2 at 20
   degrees and under 0.1 above 40 degrees, and it falls smoothly to zero about one sound horizon outside
-  (entries (f), (g), (an)). A fixed 0.2 with a smooth cut-off is therefore close to the physical profile
-  near 20 degrees at most. This project keeps z_crit = 0 for the cosine template, as the published papers
-  describe it, and carries the size-dependent edge in the transfer template; `--cosine-edge` exists for
-  comparisons with their paper. For a signal that did carry such an edge, limits
+  (entries (f), (g), (an)). Measured (entries (ao), (ap), figure `plots/19_code_template_vs_transfer.png`,
+  `scripts/analysis/mcewen_template_vs_transfer.py`): as a matched filter sees them, the template of their
+  code overlaps the transfer template by 0.98 to 0.99 at 20 to 22 degrees, 0.70 at 10 degrees and 0.87 at
+  40 degrees, and its 20 degree default matches a 20.0 degree transfer disc best. So their defaults are the
+  physical template of a disc of about 20 to 24 degrees and of no other size. The z_crit = 0 template
+  reaches 0.56, 0.76 and 0.92 at 10, 20 and 40 degrees at the same nominal size. With an edge value and
+  a cut-off that depend on the size (0.53 and 1.39 at 10 degrees, 0.25 and 1.10 at 20, 0.09 and 1.03 at
+  40) their two-parameter form reproduces the transfer template to better than 0.99 from 7 degrees up.
+  No paper or code comment gives a reason for 0.2 and 1.1; the first bubble commit of their repository
+  (10 November 2011) already has them, applied to 10, 15 and 20 degree discs alike. This project keeps
+  z_crit = 0 for the cosine template, as the published papers describe it, and carries the size-dependent
+  edge in the transfer template; `--cosine-edge` exists for comparisons with their paper. For a signal that did carry such an edge, limits
   on z0 from the z_crit = 0 filters would be up to a third weaker below 60 degrees and a factor of two
   weaker at 90 degrees.
 - What that search could have seen, entries (ae) to (ag) (figure `plots/10_fullsky_search_sensitivity.png`,

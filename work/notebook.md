@@ -2436,3 +2436,122 @@ Expected:
 - Verdict expected: support, with moderate confidence. The risk I see is the flat case: at l up to 256 a
   2 deg feature at the edge of a 20 deg disc is three resolution elements, and the overlap may not care
   much about it.
+
+## (ap) 2026-11-23 14:49 CST. The defaults of their code are the physical template of a 20 to 24 deg disc and of no other size
+
+Result of (ao). Script `scripts/analysis/mcewen_template_vs_transfer.py` (written after (ao) was pushed as
+commit d5bcf83), report `work/results_2026-11-23/mcewen_template_vs_transfer.json`, picture
+`plots/19_code_template_vs_transfer.png`. Run on the Hamilton login node, a few seconds.
+
+Bug in the first run, logged: the raw transfer coefficients have the sign of the curvature ramp, which is a
+cold disc for a positive ramp; the search flips them in `finish_template`, my new script did not. Every
+overlap came out negative and the fit of item 2 was meaningless. Fixed by giving the transfer template a
+positive centre as the search does; the numbers below are from the rerun. I saw the item 1 values with the
+wrong sign before the rerun; nothing was chosen from them.
+
+### Items 1 and 2, Planck set-up (l 2 to 256)
+
+O is the overlap with the transfer template T at the same nominal size. "Default" is the template of
+their code, C(0.2, 1.1); Z is z_crit = 0. zc*, f* are the edge value and cut-off factor of their family
+that fit T best, O* the overlap they reach.
+
+| size, deg | O(default, T) | O(Z, T) | zc* | f* | O* | default loses | real-space fit zc, f |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 5 | 0.362 | 0.300 | 0.877 | 2.000 (end of the grid) | 0.965 | 0.603 | 0.825, 2.000 |
+| 7 | 0.520 | 0.422 | 0.699 | 1.705 | 0.996 | 0.476 | 0.690, 1.785 |
+| 10 | 0.704 | 0.557 | 0.528 | 1.385 | 0.997 | 0.294 | 0.565, 1.375 |
+| 12 | 0.791 | 0.612 | 0.446 | 1.275 | 0.996 | 0.205 | 0.500, 1.255 |
+| 14 | 0.860 | 0.656 | 0.382 | 1.205 | 0.995 | 0.136 | 0.440, 1.185 |
+| 16 | 0.916 | 0.695 | 0.332 | 1.155 | 0.994 | 0.078 | 0.390, 1.140 |
+| 18 | 0.959 | 0.728 | 0.289 | 1.125 | 0.994 | 0.035 | 0.345, 1.115 |
+| 20 | 0.983 | 0.758 | 0.254 | 1.100 | 0.994 | 0.011 | 0.305, 1.090 |
+| 22 | 0.989 | 0.784 | 0.224 | 1.085 | 0.994 | 0.005 | 0.270, 1.070 |
+| 25 | 0.976 | 0.817 | 0.188 | 1.065 | 0.995 | 0.019 | 0.225, 1.055 |
+| 30 | 0.938 | 0.861 | 0.143 | 1.045 | 0.996 | 0.058 | 0.170, 1.040 |
+| 40 | 0.869 | 0.918 | 0.090 | 1.025 | 0.999 | 0.130 | 0.100, 1.025 |
+| 50 | 0.814 | 0.949 | 0.059 | 1.015 | 0.999 | 0.186 | 0.060, 1.030 |
+| 60 | 0.762 | 0.968 | 0.041 | 1.015 | 0.999 | 0.237 | 0.030, 1.035 |
+
+At 20 deg the fit is well located: f between 1.095 and 1.110 and zc between 0.250 and 0.255 stay within
+0.002 of the best overlap. A sharp cut at the edge (f = 1) reaches only 0.853 there, so the smooth cut-off
+carries most of the agreement.
+
+### Verdict by the rule of (ao): partial, one number short of support
+
+- Not flat: over 10 to 40 deg the overlap of the defaults runs from 0.704 to 0.989, a range of 0.285.
+- Peak at 22 deg (0.989), with 0.983 at 20 and 0.976 at 25 deg: inside 18 to 22 as required for support.
+- Best fit at 20 deg: f* = 1.100, inside 1.05 to 1.15. zc* = 0.254, which is 0.004 outside my inner box
+  of 0.15 to 0.25 and inside the outer one. The defaults lose 0.011 against the best fit, so the fit is
+  not too flat to locate.
+- By the rule as written that is "partial". I do not move the box.
+
+In words: the defaults coincide with the transfer-function ramp for discs of about 20 to 24 deg and for no
+other size. The cut-off factor 1.1 is the best-fit value at exactly 20 deg; the edge value 0.2 is the
+best-fit value at about 24 deg (0.224 at 22, 0.188 at 25); in overlap the pair is best at 22 deg. At 10 deg
+the defaults reach 0.70 and at 40 deg 0.87.
+
+### The other items
+
+- 1b. The 20 deg default against transfer templates of other sizes: best at 20.0 deg (0.983), with 0.980
+  at 19.5, 0.945 at 19, 0.947 at 20.5, 0.891 at 21, 0.857 at 18 and 0.774 at 22 deg. Inside 19 to 21 as
+  stated in (ao), and sharply so.
+- 1c. WMAP W-band set-up: the same. Peak at 22 deg (0.988), 0.982 at 20 deg, z_crit = 0 at 0.749; best
+  fit at 20 deg zc* = 0.255, f* = 1.100.
+- 2b. Real-space fit, last column of the table: 0.305 and 1.090 at 20 deg. The rms distance of the
+  defaults from the transfer profile is smallest at 25 deg (0.015 of the centre; 0.045 at 20, 0.029 at 22,
+  0.021 at 30 deg), against 0.123 for z_crit = 0 at 20 deg.
+- William's two numbers, recomputed in this set-up (l 2 to 256, window applied): the transfer profile at
+  the causal edge is 0.207 of its centre at 20 deg ((g): 0.21), and it crosses zero at 1.066 times the
+  size, 21.3 deg ((f): about 21.7 deg from a finer profile). Their defaults: 0.2 and 22 deg.
+
+Added afterwards, not in (ao):
+
+- The width of the best-fit cut-off, (f* - 1) times the size, is 3.85, 2.87, 2.00, 1.35, 1.0 deg at 10,
+  14, 20, 30, 40 deg. That follows the projected sound horizon, about 0.68 deg / sin(size) (3.9, 2.8,
+  2.0, 1.4, 1.1 deg), 1.13 times the r_s / (D sin theta_c) of (g). The 2 deg wide cut-off of their
+  first-day parameter files (10 to 12, 15 to 17, 20 to 22 deg) is the physical width at 20 deg and at no
+  other size.
+- With zc and f allowed to depend on the size, their two-parameter form reproduces the transfer template
+  to better than 0.99 from 7 deg up. The columns zc* and f* are therefore the "physical z_crit" William
+  asked for: 0.53 at 10 deg, 0.25 at 20, 0.14 at 30, 0.09 at 40, 0.04 at 60 deg.
+- The 2011 theory paper they cite for a negligible discontinuity (Kleban, Levi and Sigurdson) shows the
+  temperature profile for all sizes from 5 to 90 deg in one surface plot. It has no single example at
+  20 deg and no 0.2.
+
+### Tuned or coincidence
+
+What is measured: both defaults sit where the physical template is for a disc of 20 to 24 deg, and the
+20 deg default matches a 20.0 deg transfer disc more closely than any other size within half a degree.
+Two round numbers landing there together is a narrow target: over the sizes of the table the best-fit edge
+value runs from 0.04 to 0.88 and the best-fit cut-off factor from 1.015 to 2.0.
+
+What the history says: the function's default size is 20 deg, the cut-off was 2 deg wide on the first day,
+and the same 0.2 and the same 2 deg were given to 10 and 15 deg discs that day, then turned into "0.2 and
+10% of the size" for every size within a month.
+
+My reading, which the measurement cannot prove: the numbers look taken from a 20 deg example and then used
+as one shape for every size. That would explain both the match at 20 deg and the fixed fractions. It is an
+inference; neither paper states a reason, and only the authors can say.
+
+### Expectations of (ao)
+
+- O(Z, T) between 0.85 and 0.98, lowest from 10 to 30 deg: wrong. It rises steadily with size, from 0.30
+  at 5 deg through 0.56 at 10 and 0.76 at 20 to 0.97 at 60 deg. At the same nominal size the physical
+  template is much wider than the z_crit = 0 disc when the disc is small.
+- Defaults above z_crit = 0 from 5 to 30 deg and below it from 40 deg: right. Peak between 14 and 22
+  deg: right, at the upper end; my guess of 18 or 20 was one step low.
+- Best fit near 0.5 and 1.3 at 10 deg (0.53, 1.39), near 0.2 and 1.1 at 20 deg (0.25, 1.10), small edge
+  and a factor under 1.05 from 40 deg (0.09, 1.025): right, except that 0.25 is not 0.2.
+- Verdict "support": by the letter it is partial. The flat case I feared did not occur.
+
+### What this changes
+
+Nothing in the Planck search or its numbers. Three statements are sharper now:
+- (an) said their template is close to the physical one "near 20 deg at most". Measured: 0.98 to 0.99 at 20
+  to 22 deg, 0.94 at 30, 0.87 at 40, 0.70 at 10 deg.
+- The z_crit = 0 template of the papers' text is the poorer stand-in for the physical template below about
+  35 deg at the same nominal size (0.76 at 20 deg), and the better one above (0.92 at 40, 0.97 at 60 deg).
+  A size read from a z_crit = 0 filter is not the causal size of the physical disc for small discs.
+- The published search (their code's template) was therefore closer to the physical template than the
+  search their text describes for discs up to 30 deg (both are poor below about 12 deg), and further from
+  it at 40 deg and above, the range of their two largest candidates (85 and 90 deg, beyond this table).
