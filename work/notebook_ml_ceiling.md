@@ -301,3 +301,37 @@ and 5.8 GiB each; detection probability at 5% false positives):
 | matched filter bank, maximum | 0.149 | 0.671 | 0.980 | 1.000 |
 
 The two seeds agree to 0.002 to 0.006. Nothing is concluded from two runs of one arm.
+
+## (K) 2026-11-22 19:50 CST. The Hamilton test sets are the Babbage ones to rounding; float32 training under way
+
+**Test sets made again on Hamilton** (job 82950: T0 39 min, T35 31 min, T100 32 min, at 1.5 s per sky
+against 3.3 s on Babbage's CPU nodes).
+
+The files are not bit-identical: every md5 differs (`patches.npy` T0 071a2291... on Babbage, a822b2c3... on
+Hamilton, and likewise for T35 and T100; the `.npz` files would differ anyway because the archive stores
+times). The contents agree to rounding. For T0, read with the same one-line script on both clusters:
+
+| | Babbage | Hamilton |
+|---|---|---|
+| shape, type | (12000, 256, 256) float32 | the same |
+| patch 0, row 100, pixels 100 to 103 | 1.9696623e-04, 1.9696623e-04, 9.4829600e-05, 4.7090085e-05 | the same digits |
+| patch 5000, row 50, pixels 50 to 52 | -9.2066810e-05, -9.7516226e-05, -5.1702977e-05 | the same digits |
+| positives | 6000 | 6000 |
+| mean of the ramp-bank GLRT score | 4.209520419113489 | 4.209520419113488 |
+| first four GLRT scores | 3.134655, 3.19520944, 2.82121637, 2.73012691 | the same digits |
+
+So both clusters hold the same skies, the same injected signals and the same yardsticks, different only in
+the last bits (different CPUs). The float32 runs and the mixed-precision runs are scored on what is in
+effect one test set, and the thirteen pairs of (J) are a fair comparison. T35 and T100 were not printed
+value by value; they come from the same code path with their own seeds.
+
+**Float32 training on Hamilton** (job 82951_[0-12%4]) started at 18:47 CST, as soon as the test sets were
+done: arm R seeds 1 to 4 on c3, c5, c6, c7, about 110 s per epoch. First three epochs of seed 1, loss and
+validation detection (image head): 1.7346 / 0.408, 1.4129 / 0.678, 1.3699 / 0.543. The mixed-precision run
+of the same seed on c11 gave 1.7355 / 0.421, 1.4128 / 0.676, 1.3703 / 0.552: the same training stream, as
+intended.
+
+**Mixed-precision set on c11** (job 93951) at 19:45 CST: arm R seeds 1 to 5 and arm N seed 1 finished;
+N seeds 2 and 3 running; arm F waiting.
+
+No score beyond the early look of (J) has been read.
