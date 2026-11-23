@@ -1004,7 +1004,7 @@ def main():
     f.add_argument("--inject-snr", default="4,6,8")
     f.add_argument("--tile-nside", type=int, default=16)
     f.add_argument("--seed", type=int, default=20261123)
-    f.add_argument("--batch-sep-deg", type=float, default=60.0)
+    f.add_argument("--batch-sep-deg", type=float, default=180.0, help="180 = every injection position in its own map (no batching)")
     f.add_argument("--smoke", action="store_true")
     f.set_defaults(func=cmd_filter_scan)
 

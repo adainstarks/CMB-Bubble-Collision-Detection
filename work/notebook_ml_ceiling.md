@@ -764,3 +764,13 @@ McEwen 6 = Feeney 10, which network C missed (p 0.095)?
 If bank C catches M6 under this rule, network C is behind the filter on that spot. If bank C misses it too,
 the earlier filter number came from the search on main (a smaller search region and its own thresholds),
 and the network and the filter agree on it.
+
+## (Q) 2026-11-23 17:44 CST. Smoke check of (P): the batching limit is missed, so every injection position gets its own map
+
+The smoke run (job 82980, three sizes, six simulated skies, SMICA) ran to the end. Its check of prediction 7
+failed: with positions sharing a map at least 60 degrees apart, the filter response at the first position
+differs from the response computed alone by 1.2e-3 (bank C) and 4.9e-3 (bank T) of the peak, above the
+1e-3 set in (P). The likely cause is the monopole and dipole fit over the kept pixels, which every signal in
+a map shifts a little. As (P) says, the batches are rebuilt: the full run puts every injection position in
+its own map (`--batch-sep-deg 180`, now the default), so the injected responses are exact and the check
+compares a position with itself. Nothing else changes. No number from the smoke run is used.
