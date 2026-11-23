@@ -335,3 +335,184 @@ intended.
 N seeds 2 and 3 running; arm F waiting.
 
 No score beyond the early look of (J) has been read.
+
+## (L) 2026-11-23 00:40 CST. All 26 runs are in: the ramp ceiling is reached; the family-trained network does not use the sharp edge
+
+**Runs.** Float32 on Hamilton (job 82951, the primary set of (J)): 13 of 13 completed, 1 h 02 to 1 h 06
+each, 10.8 GiB of GPU memory in training. Mixed precision on Babbage c11 (job 93951): 13 of 13 completed,
+1 h 05 each. The float32 control on Babbage (93952) was cancelled at 22:25 CST before it started; the
+Hamilton set is that control thirteen times over.
+
+**An earlier look, for the record.** At 22:22 CST I read the summary of 12 of the 13 float32 runs (arms R
+and N complete, F four of five) for a status report. No setting, script or criterion was changed after it.
+Every number below is from the complete sets.
+
+**How read.** On each cluster: `ml_ceiling_study.py summarize --runs-dir <runs> --out-json <file>`. Files:
+Hamilton `/projects/gmarcum/cmb/logs/summary_fp32.{txt,json}` and `history_fp32_compact.json`; Babbage
+`/projects/gmarcum/cmb/logs/summary_amp.{txt,json}`. They are not in the repository yet (copying them off
+the clusters is a download that has not been asked for). Each run folder also holds its per-patch scores
+(`scores__T0.npz` and so on).
+
+All numbers are detection probabilities at 5% false positives, pooled over sizes, image head, mean over
+seeds, with the standard deviation over seeds after +-. Float32 set unless the mixed-precision one is named.
+
+### T0, the ramp (what arm R is trained on)
+
+| | 1e-5 | 2e-5 | 3e-5 | 5e-5 | 7e-5 | 1e-4 |
+|---|---|---|---|---|---|---|
+| arm R (5 seeds) | 0.109 +- 0.005 | 0.314 +- 0.005 | 0.599 +- 0.005 | 0.973 +- 0.002 | 1.000 | 1.000 |
+| arm R, largest mask logit | 0.105 | 0.309 | 0.599 | 0.975 | 1.000 | 1.000 |
+| arm N (3 seeds) | 0.110 +- 0.005 | 0.314 +- 0.001 | 0.593 +- 0.002 | 0.971 +- 0.001 | 1.000 | 1.000 |
+| arm F (5 seeds) | 0.109 +- 0.005 | 0.303 +- 0.002 | 0.587 +- 0.008 | 0.968 +- 0.002 | 0.999 | 1.000 |
+| `glrt`, ramp bank | 0.093 | 0.295 | 0.613 | 0.983 | 1.000 | 1.000 |
+| `bayes_prior`, ramp bank | 0.108 | 0.334 | 0.623 | 0.979 | 1.000 | 1.000 |
+| `bayes_known`, ramp bank | 0.111 | 0.327 | 0.623 | 0.983 | 1.000 | 1.000 |
+| `glrt`, family bank | 0.075 | 0.178 | 0.440 | 0.907 | 0.997 | 1.000 |
+| `bayes_prior`, family bank | 0.100 | 0.320 | 0.602 | 0.974 | 1.000 | 1.000 |
+
+By size at 3e-5:
+
+| | 5 | 10 | 15 | 20 | 25 degrees |
+|---|---|---|---|---|---|
+| arm R | 0.429 | 0.620 | 0.620 | 0.702 | 0.625 |
+| arm R, largest mask logit | 0.512 | 0.670 | 0.608 | 0.646 | 0.558 |
+| arm N | 0.430 | 0.613 | 0.627 | 0.687 | 0.610 |
+| arm F | 0.414 | 0.613 | 0.609 | 0.683 | 0.616 |
+| `glrt`, ramp bank | 0.450 | 0.635 | 0.620 | 0.710 | 0.650 |
+| `bayes_prior`, ramp bank | 0.435 | 0.665 | 0.640 | 0.735 | 0.640 |
+| arm R over `glrt` | 0.953 | 0.976 | 1.000 | 0.989 | 0.962 |
+
+### T35, ramp+step with mix 0.35 (no network trained on this mix)
+
+| ideal SNR | 1 | 2 | 3 | 5 | 7 | 10 |
+|---|---|---|---|---|---|---|
+| arm R | 0.064 | 0.140 | 0.289 | 0.645 | 0.800 | 0.919 |
+| arm N | 0.065 | 0.134 | 0.279 | 0.628 | 0.786 | 0.909 |
+| arm F | 0.069 +- 0.004 | 0.141 +- 0.007 | 0.282 +- 0.011 | 0.667 +- 0.006 | 0.837 +- 0.005 | 0.965 +- 0.006 |
+| `glrt`, ramp bank | 0.066 | 0.143 | 0.280 | 0.669 | 0.839 | 0.952 |
+| `glrt`, family bank | 0.058 | 0.100 | 0.185 | 0.741 | 0.988 | 1.000 |
+| `glrt`, matched bank | 0.072 | 0.118 | 0.192 | 0.767 | 0.992 | 1.000 |
+| `bayes_prior`, ramp bank | 0.064 | 0.139 | 0.302 | 0.662 | 0.821 | 0.940 |
+| `bayes_prior`, family bank | 0.066 | 0.137 | 0.289 | 0.755 | 0.985 | 1.000 |
+| `bayes_prior`, matched bank | 0.060 | 0.133 | 0.287 | 0.770 | 0.986 | 1.000 |
+
+### T100, the pure step (arm F is trained on it, arm R is not)
+
+| ideal SNR | 1 | 2 | 3 | 5 | 7 | 10 |
+|---|---|---|---|---|---|---|
+| arm R | 0.071 +- 0.008 | 0.115 +- 0.006 | 0.187 +- 0.011 | 0.417 +- 0.007 | 0.595 +- 0.004 | 0.717 +- 0.003 |
+| arm N | 0.061 | 0.113 | 0.179 | 0.409 | 0.589 | 0.706 |
+| arm F | 0.076 +- 0.005 | 0.104 +- 0.008 | 0.173 +- 0.007 | 0.447 +- 0.007 | 0.673 +- 0.007 | 0.791 +- 0.003 |
+| arm F, largest mask logit | 0.079 | 0.109 | 0.193 | 0.438 | 0.655 | 0.773 |
+| `glrt`, ramp bank | 0.076 | 0.107 | 0.177 | 0.450 | 0.671 | 0.780 |
+| `glrt`, family bank | 0.051 | 0.078 | 0.152 | 0.651 | 0.976 | 1.000 |
+| `glrt`, matched bank | 0.051 | 0.057 | 0.149 | 0.671 | 0.980 | 1.000 |
+| `bayes_prior`, ramp bank | 0.067 | 0.116 | 0.188 | 0.432 | 0.633 | 0.749 |
+| `bayes_prior`, family bank | 0.072 | 0.106 | 0.198 | 0.626 | 0.962 | 1.000 |
+| `bayes_prior`, matched bank | 0.069 | 0.091 | 0.189 | 0.677 | 0.970 | 1.000 |
+
+By size at ideal SNR 3 (133 signals per cell, so each number is good to about 0.03 to 0.04):
+
+| | 5 | 10 | 15 | 20 | 25 degrees |
+|---|---|---|---|---|---|
+| T100, arm F | 0.421 | 0.229 | 0.113 | 0.057 | 0.044 |
+| T100, arm R | 0.478 | 0.232 | 0.123 | 0.056 | 0.047 |
+| T100, `glrt` matched bank | 0.226 | 0.211 | 0.098 | 0.128 | 0.083 |
+| T35, arm F | 0.465 | 0.424 | 0.244 | 0.179 | 0.099 |
+| T35, `glrt` matched bank | 0.308 | 0.241 | 0.150 | 0.158 | 0.105 |
+
+### The ten predictions of (B), on the float32 set
+
+1. **Ceiling reached: holds at 3e-5 and 5e-5, misses its upper bound at 2e-5.** Arm R over the ramp-bank
+   `glrt`: 0.977 at 3e-5 and 0.990 at 5e-5, both inside 0.93 to 1.00. At 2e-5 it is 1.064 (0.314 against
+   0.295): the network is above the filter bank, which the band did not allow for. The second clause holds
+   at all three levels: arm R is never above `bayes_prior` (0.334, 0.623, 0.979). The prediction did not
+   fail low anywhere.
+2. **Seeds agree: holds.** Standard deviation over the five R seeds at 3e-5 is 0.005.
+3. **Every size: holds.** Arm R over `glrt` at 3e-5 is 0.953, 0.976, 1.000, 0.989, 0.962 at 5 to 25
+   degrees. The 25 degree case I was least sure of is at 0.962.
+4. **Bayes above the bank: holds at five of six levels.** `bayes_prior` minus `glrt` on T0: +0.015, +0.039,
+   +0.010, -0.004, 0.000, 0.000. At 5e-5 it is 0.004 below, four signals in 1,000. As written the
+   prediction fails there.
+5. **Pretraining: fails.** Arm N is 0.006 below arm R at 3e-5 (0.593 against 0.599), not 0.03 or more.
+   ImageNet weights make no difference that this test can see, at any level or on any test set.
+6. **Shape costs the ramp bank: fails.** T100 at ideal SNR 5: ramp bank 0.450, matched bank 0.671, a ratio
+   of 0.67 where I predicted under 0.5.
+7. **A network trained on the family keeps it: fails, both clauses.** T100 at ideal SNR 5: arm F 0.447,
+   which is 0.67 of the matched bank (0.85 predicted) and 0.003 below the ramp bank (0.25 above predicted).
+8. **Between the trained shapes: holds at SNR 3, fails at SNR 5.** T35: arm F over the matched-bank `glrt`
+   is 1.47 at SNR 3 (0.282 against 0.192, where the bank is weak) and 0.870 at SNR 5 (0.667 against 0.767;
+   0.90 predicted).
+9. **Price of generality: holds.** T0 at 3e-5: arm F is 0.012 below arm R.
+10. **No prediction, as found.** Arm R on a step behaves like the ramp bank and a little below it: on T100
+    0.417, 0.595, 0.717 at SNR 5, 7, 10 against 0.450, 0.671, 0.780 for the ramp bank; on T35 0.645, 0.800,
+    0.919 against 0.669, 0.839, 0.952.
+
+### Mixed precision against float32 (the thirteen pairs of (J))
+
+T0 at 3e-5, same seed, float32 / mixed precision:
+
+- R: 0.601 / 0.599, 0.607 / 0.606, 0.600 / 0.605, 0.593 / 0.596, 0.595 / 0.598
+- N: 0.591 / 0.591, 0.594 / 0.597, 0.595 / 0.603
+- F: 0.594 / 0.596, 0.592 / 0.600, 0.592 / 0.588, 0.582 / 0.582, 0.575 / 0.575
+
+The largest difference is 0.008, against the criterion of 0.04. Arm means of the mixed-precision set: R
+0.107, 0.316, 0.601, 0.975 on T0 (1e-5 to 5e-5); N 0.107, 0.315, 0.597, 0.971; F 0.107, 0.302, 0.588,
+0.967; on T100 at SNR 5, 7, 10, R 0.415, 0.594, 0.717 and F 0.443, 0.676, 0.792; on T35, F 0.665, 0.838,
+0.966. Every prediction scores the same way on that set. Mixed precision on the small card is a fair
+stand-in for float32 here.
+
+### Training curves (float32)
+
+Validation detection at the middle level (image head, each arm on its own training distribution) is flat
+from epoch 5 to 10 onward in every run. Arm F seed 1 at epochs 1, 5, 10, 15, 20, 25, 28, 29, 30: 0.191,
+0.381, 0.386, 0.381, 0.397, 0.397, 0.395, 0.388, 0.388; training loss 1.893, 1.557, 1.541, 1.526, 1.514,
+1.512, 1.509, 1.502, 1.497. The other four F seeds end between 0.381 and 0.395. Arm R ends between 0.619
+and 0.697 with loss 1.287 to 1.297; arm N between 0.647 and 0.658 with loss 1.303 to 1.311. The loss is
+still creeping down at epoch 30 while validation is not moving.
+
+### What this says
+
+- **On the ramp the network is at the ceiling.** It is within 0.014 of the filter bank and 0.024 of the
+  marginal likelihood ratio at 3e-5, above the filter bank and at the likelihood ratio at 1e-5 and 2e-5,
+  the same at every size, with 0.005 between seeds. By the rule stated in (B), nothing here counts
+  against "a network reaches the ceiling".
+- **ImageNet initialisation buys nothing** on these skies (0.006), so the random-initialised network is as
+  good a starting point for the masked-sky work.
+- **Training on the family costs 0.012 on the ramp and gains almost nothing on the step.** On T100 arm F
+  equals the ramp bank (0.447, 0.673, 0.791 against 0.450, 0.671, 0.780) while the family bank, which uses
+  the same four mixes the network was trained on, is at 0.651, 0.976, 1.000 and sits next to the matched
+  bank. That is the case (B) named beforehand as counting against "a network handles shape freedom":
+  predictions 7 and 8 fail while the family bank stays near the matched bank. With flat validation curves,
+  longer training of this recipe is not the likely remedy.
+- **So the measured picture is two-sided.** For the smooth template that theory supports after 2011, a
+  network matches the best available test and nothing is left to gain. For a sharp edge, a plain filter
+  bank over the family finds what this network does not.
+
+Not established, and not to be read into the above: why arm F misses the edge. Three candidates, none
+tested: the information of the edge sits at the smallest scales and the encoder halves the resolution in
+its first layer; the mask target is the disc and not its rim; at a fixed ideal SNR a step is faint
+everywhere but its edge, so the network may be learning the part it can see. Each needs its own run.
+
+Small things seen and not explained: at ideal SNR 3 the networks find far more 5 degree steps than the
+matched bank (0.42 to 0.48 against 0.23) and fewer at 20 degrees (0.06 against 0.13), with the pooled
+numbers equal within noise; and the network is above the filter bank at 1e-5 and 2e-5 on T0 by 0.016 and
+0.019. The saved per-patch scores allow a paired test of both.
+
+### Limits
+
+As stated in (B): Gaussian skies, white noise, no mask, centres within 5 degrees, one architecture, one
+training recipe, the band-limited step, thresholds from the signal-free patches of each test set. Levels
+have 1,000 signals on T0 and 667 on T35 and T100, so an unpaired difference of 0.02 between a network and
+a reference is within sampling error; they are scored on the same signals, and the paired error has not
+been computed. Predictions 1 and 4 were written as bands on point estimates without that error in mind,
+which is why two of them miss by amounts smaller than it.
+
+### Next, none of it started
+
+1. The paired test from the saved scores (network against filter bank at 1e-5 and 2e-5; the size pattern
+   on the step).
+2. Why arm F misses the edge: the three candidates above, one run each.
+3. A fourth test set with the template of the published code (edge at 0.2 of the centre, main notebook
+   entries (aj), (ak)), which sits between T0 and T35.
+4. Masks and real maps, from random initialisation.
