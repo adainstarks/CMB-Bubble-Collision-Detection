@@ -765,7 +765,7 @@ If bank C catches M6 under this rule, network C is behind the filter on that spo
 the earlier filter number came from the search on main (a smaller search region and its own thresholds),
 and the network and the filter agree on it.
 
-## (Q) 2026-11-23 17:44 CST. Smoke check of (P): the batching limit is missed, so every injection position gets its own map
+## (Q) 2026-11-23 17:40 CST. Smoke check of (P): the batching limit is missed, so every injection position gets its own map
 
 The smoke run (job 82980, three sizes, six simulated skies, SMICA) ran to the end. Its check of prediction 7
 failed: with positions sharing a map at least 60 degrees apart, the filter response at the first position
