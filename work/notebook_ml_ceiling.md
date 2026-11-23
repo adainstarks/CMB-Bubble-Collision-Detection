@@ -617,3 +617,99 @@ not change the fitted monopole and dipole; in the scan it does.
 - Started 15:21 (job log time): training 82976_[0-1] (0 = T on c3, 1 = C on c5, RTX 5000 Ada, float32), the scan 82979
   waits for both. The scan job first asked for 64 GB, which Hamilton's GPU nodes refuse; it now asks for
   48 GB (it needs under 8 GB). Nothing else changed.
+
+## (O) 2026-11-23 17:40 CST. Real-sky results: no excess; the networks catch the Cold Spot and Feeney 3, not the two smallest top spots
+
+Runs of (M), as fixed there: training 82976_[0-1] (15:21 to 16:26), scan 82979 (16:26 to 17:19, 400
+simulated skies, the four PR3 maps). Outputs on Hamilton: `/projects/gmarcum/cmb/runs/realsky_v1/` (T_seed1,
+C_seed1, scan/scan_summary.json, scan/scan_arrays.npz). Read in the browser; nothing copied off the cluster.
+Training ended at validation detection (ideal SNR 2 to 5, 5%) 0.539 (T) and 0.537 (C), image head.
+
+### The four top published spots (image head; p from 400 simulated skies at the same position)
+
+| spot | network C, p (z) | network T, p (z) |
+|---|---|---|
+| M7 = F2, Cold Spot, 5 deg | 0.0100 (6.1 to 6.3), all four maps | 0.0100 (6.6 to 6.8), all four maps |
+| M8 = F3, 5 deg | 0.0025 (7.0 to 7.1), all four | 0.027 to 0.032 (3.8 to 3.9) |
+| M4 = F7, 3 deg | 0.0200 (4.0 to 4.1), all four | 0.52 to 0.54 (0.0) |
+| M6 = F10, 4 deg | 0.095 to 0.097 (2.1 to 2.2) | 0.73 (-0.4) |
+
+0.0025 is 1/401, the smallest possible value (no simulated sky as high); 0.0100 is 4/401 (three simulated
+skies as high), which is below 0.01 and counts as caught.
+
+Caught published positions, image head, the same on all four maps: network C M7, M8, F1, F2, F3; network T
+M7, F1, F2. F1 is the large hot feature of Feeney et al. at (174, -49); McEwen no. 10 next to it is just
+outside the line for both (C 0.012, T 0.015 on SMICA). The secondary score (largest mask logit) of network
+C also catches M4 = F7, M2 and F11 (2 to 2.5 degrees), on all four maps; network T's secondary score
+catches M7 and F2.
+
+### Whole sky (image head)
+
+| network | largest z, real maps (p) | simulated 5/50/95% | tiles with own p < 0.01, real (p, high side) | simulated 5/50/95% |
+|---|---|---|---|---|
+| C | 7.00 to 7.11 (0.32 to 0.34) | 4.30 / 6.24 / 8.98 | 28 on every map (0.19) | 2 / 15 / 44 |
+| T | 6.83 to 7.07 (0.25 to 0.29) | 4.20 / 5.94 / 8.54 | 29 to 31 (0.15 to 0.19) | 2 / 15 / 44 |
+
+Random kept positions caught on the real maps: 3 of 300 (C) and 1 of 300 (T), as expected at 0.01.
+
+Every one of the twelve highest-ranked tiles of either network on SMICA lies within 5 degrees of a
+published position (M8/F3, the Cold Spot region, F1, M4), except one tile of network T at (159.5, -57.4),
+which is part of the warm patch at (159 to 167, -57 to -60) that the transfer-template filter search on main
+also lists. All twelve are in the top fifteen of the other three maps.
+
+### Injections (detected when the spot p is below 0.01; real = four maps pooled, 400 per cell; simulated = 20 skies, 2,000 per cell)
+
+| size, deg / SNR | C real : simulated | T real : simulated |
+|---|---|---|
+| 3 / 4, 6, 8 | 0.28 : 0.31, 0.85 : 0.88, 1.00 : 1.00 | 0.55 : 0.61, 0.98 : 0.97, 1.00 : 1.00 |
+| 5 / 4, 6, 8 | 0.36 : 0.40, 0.91 : 0.93, 1.00 : 1.00 | 0.69 : 0.65, 0.98 : 0.98, 1.00 : 1.00 |
+| 10 / 4, 6, 8 | 0.53 : 0.62, 1.00 : 0.97, 1.00 : 1.00 | 0.58 : 0.63, 0.99 : 0.97, 1.00 : 1.00 |
+| 20 / 4, 6, 8 | 0.72 : 0.70, 0.98 : 0.99, 1.00 : 1.00 | 0.64 : 0.63, 0.97 : 0.98, 1.00 : 1.00 |
+
+Pooled over sizes at SNR 4: C 0.475 real against 0.508 simulated, T 0.615 against 0.630.
+
+### Unmasked check (network T on T0, mask channel all kept, 5% false positives)
+
+Image head 0.113, 0.302, 0.601, 0.974 at 1e-5, 2e-5, 3e-5, 5e-5 (largest mask logit 0.095, 0.294, 0.571,
+0.974). References on the same test set: ramp filter bank 0.093, 0.295, 0.613, 0.983; Bayes 0.108, 0.334,
+0.623, 0.979.
+
+### The predictions of (M)
+
+1. Fails. Network C does not catch M6 (p 0.095 to 0.097 on all four maps). The second half holds: it
+   catches two of the four top spots (M7, M8) on every map.
+2. In part. Network T catches none of M4, M6 and M8, but M8's p is 0.027 to 0.032, not above 0.05.
+3. Holds. No excess for either network or statistic on any map (p 0.15 to 0.34).
+4. Holds. All 12 cells within 0.10 for both networks (largest gap 0.09: C, 10 degrees, SNR 4); the same
+   for the secondary score.
+5. Holds. The caught sets are identical on the four maps, for both networks and both scores.
+6. Holds. 0.601 at 3e-5 (predicted 0.56 to 0.62).
+
+### What this says
+
+- The networks work on the masked real sky: added collisions are found there as often as on simulated
+  skies with the same mask, and on clean skies the masked network T is still at the ceiling of (L).
+- The real sky is ordinary for both networks, as it is for the filter search on main.
+- Of the four top published spots, the networks catch the Cold Spot (both) and Feeney 3 = McEwen 8 (C, ahead
+  of all 400 simulated skies). They do not catch McEwen 6 = Feeney 10, the strongest spot of the cosine
+  filter search (S 4.7 to 4.8), and McEwen 4 = Feeney 7 only by C's secondary score. Network C's image head
+  is weaker on small discs (at SNR 4: 0.28 at 3 degrees, 0.36 at 5, against 0.72 at 20), so missing one or
+  two small spots fits what it can do; why it ranks M6 low while the filter ranks it first is not tested.
+- The network with the physical template finds the Cold Spot and the F1 region and nothing at M4, M6 and
+  M8, the same picture as the transfer-template filter search on main.
+- Nothing the networks rank highly lies away from published spots or the filter search's own candidates.
+
+### Limits
+
+One seed per network. The filter is not put through the same spot statistic here: its numbers are from the
+filter search on main (different thresholds), so this entry does not say whether network and filter would
+catch the same share of the published spots under one rule. Simulated skies Gaussian, without foreground
+residuals or anisotropic noise. Sizes 2 to 25 degrees only.
+
+### Next, none of it started
+
+1. The matched filter through the same spot statistic, the same 400 skies and the same injections, so that
+   network and filter are compared under one rule on the real sky.
+2. Why network C's image head is weaker on small discs while its mask head is not (more small discs in
+   training, or a second seed).
+3. A second seed of each network.
