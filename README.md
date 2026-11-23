@@ -25,6 +25,32 @@ are in `work/notebook.md`.
    the strongest average screener" is an average over a mixture of edge ratios, not a test against the
    matched filter for the signal theory predicts.
 
+Four April results are retired (22 November 2026). Their text is still in the sections below as a record.
+None of them is used in new work and none should be quoted. Each reason was checked in the code at the
+path given.
+
+- **R1. The upper limits** (`Nbar_s^95` = 10.27 and the other three rows of "Upper-Limit Calculator"). The
+  formula is the one for zero detections, while the screening it describes returns candidates on the real
+  maps (24 cluster representatives in "Composite-Policy Audits"). The efficiency is the synthetic table
+  without the follow-up steps a candidate has to pass, multiplied by a sky fraction of 0.772
+  (`scripts/analysis/phase3_upper_limit_calculator.py`). The injections behind that efficiency carry
+  defects 1 and 2 and the sharp edge.
+- **R2. The half-mission sign-flip gate** ("3 / 24 candidates satisfy the default `p <= 0.05` stability
+  gate"). Each null patch is the half-mission mean plus a random sign field times the half-mission
+  difference (`build_null_patches` in `scripts/followup/phase5_half_mission_signflip_null.py`). The mean
+  holds the whole sky, so every null contains the candidate itself and only the noise is redrawn. The
+  p-value says how far the score moves with the noise. It does not say whether a feature is unusual for a
+  Gaussian sky.
+- **R3. The frequency jackknife as support for a candidate** ("23 / 24 stable"). Its three inputs are the
+  SEVEM foreground-subtracted CMB maps at 100, 143 and 217 GHz
+  (`scripts/followup/phase5_frequency_jackknife_followup.py`). All three hold the same CMB, so every
+  feature of the CMB passes, an ordinary Gaussian fluctuation included. The test can reject a foreground
+  or an instrument feature. It cannot count in favour of a candidate.
+- **R4. "FPR-calibration uncertainty about 0.003"** ("Deployment Calibration"). 0.003 is the binomial error
+  of 11,200 independent patches at a false-positive rate of 0.08. The patches are 55 degrees wide on
+  centres 1.8 degrees apart, so they overlap almost completely: about ten fit side by side on the unmasked
+  77% of the sky, and for ten the same formula gives about 0.09.
+
 The sharp temperature jump `z_crit` itself is not supported by theory after 2011.
 `scripts/core/collision_template_transfer.py` builds the template from the primordial curvature through
 CAMB transfer functions instead. With that template an ideal matched filter needs an observed central
