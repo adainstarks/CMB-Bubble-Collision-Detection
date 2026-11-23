@@ -2555,3 +2555,56 @@ Nothing in the Planck search or its numbers. Three statements are sharper now:
 - The published search (their code's template) was therefore closer to the physical template than the
   search their text describes for discs up to 30 deg (both are poor below about 12 deg), and further from
   it at 40 deg and above, the range of their two largest candidates (85 and 90 deg, beyond this table).
+
+## (aq) 2026-11-23 15:11 CST. Pre-registration: overlaps with the size left free, and one definition of how small a ramp collision can look
+
+An outside review that William passed on (23 Nov) makes four points about what I told him from (ap) and from
+the earlier WMAP runs. Two are settled from files already in the repository and are recorded with the
+result. Two need a computation; this entry is written before it.
+
+Point: the overlaps of (ap) compare templates at the same nominal size, while a search scans sizes, so
+"their filters reach 0.87 at 40 deg and 0.76 at 60 deg on a physical collision" overstates the loss.
+Correct. Item 1b of (ao) did the scan only for their 20 deg default.
+
+Point: (z) says a ramp collision "cannot look smaller than about 8 deg" (8.3 deg, a wall touching the
+surface, the sound horizon seen side-on); I told William "roughly 12 to 13 deg". Two numbers for one idea.
+My 12 to 13 deg was the first zero of the 5 to 10 deg profiles in the table of (ap) (13.9 deg for 7 deg,
+13.3 deg for 10 deg), which is neither the definition of (z) nor a smallest possible value.
+
+### Definitions
+
+Set-up and overlap O as in (ao) (Planck, l 2 to 256).
+
+A. Fitting factor. For the transfer template T of causal size s, at the fourteen sizes of (ao):
+FF(s) = the largest O(filter of size t, T(s)) over t from 1 to 90 deg in steps of 0.5 deg, for two filter
+families: their code template C(0.2, 1.1) and the z_crit = 0 cosine Z. Reported with the size t that gives
+it, and the same restricted to the 33 sizes of the search bank.
+
+B. Apparent size of the transfer template, from its profile as the search sees it (l 2 to 256, window,
+centre scaled to 1), for causal sizes 0 (a wall touching the surface), 0.5, 1, 2, 3, 5, 7, 10, 14, 20 deg:
+- R50: the angle where the profile has fallen to half its central value;
+- R10 and R02: where it has fallen to 10% and to 2%;
+- the first zero.
+The same four numbers for their code template and for Z at the sizes of their small candidates (1.5, 2, 3,
+4, 5, 7 deg). The check is repeated at l up to 767 to see that the band limit does not set the numbers.
+The number to use from now on is R50, the half-maximum radius, with R02 as "where it fades out": both exist
+for every template and do not depend on a zero crossing, which the removal of monopole and dipole moves.
+
+### Known beforehand and expected
+
+Known: the same-size overlaps of (ap); the first zeros quoted above; item 1b (their 20 deg default is best
+on a 20.0 deg transfer disc); Gus's fitting factors for a Sachs-Wolfe bank on the transfer ramp at l up to
+767 (0.99, 0.98, 0.96, 0.96, 0.93, 0.97 at 5, 10, 15, 20, 30, 60 deg, with the best filter 2 to 5 deg
+larger than the causal size up to 30 deg); and from (z) the outline of the smallest disc in Kleban et al.'s
+figure (half maximum at 5.6 deg, 2% at 9.6 deg), which this template matched for a wall touching the surface.
+
+Expected:
+- A, z_crit = 0 filters: FF between 0.92 and 0.99 from 5 to 60 deg, best filter 2 to 6 deg larger than
+  the causal size up to 30 deg, the same size from 50 deg up.
+- A, their code template: FF at least 0.93 from 7 to 30 deg, 0.90 to 0.95 at 40 deg, 0.85 to 0.92 at 60
+  deg; best filter larger than the causal size below 20 deg, equal at 20 to 22 deg, smaller above 30 deg.
+  So the loss of their search on physical collisions would be 5 to 15% at 40 to 60 deg, not 13 to 24%.
+- B: for a wall touching the surface R50 near 5.6 deg and R02 near 9.6 deg; R50 about 7 deg for a causal
+  size of 5 deg and about 10.3 deg for 10 deg; the numbers at l up to 767 within 0.3 deg of those at 256.
+  Their template has R50 = 0.79 times its size, so their candidates of 1.5 to 5 deg have R50 of 1.2 to 4
+  deg, below the smallest R50 of a ramp collision; their 7 deg candidate (5.5 deg) is at that limit.
