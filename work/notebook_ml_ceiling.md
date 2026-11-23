@@ -618,7 +618,7 @@ not change the fitted monopole and dipole; in the scan it does.
   waits for both. The scan job first asked for 64 GB, which Hamilton's GPU nodes refuse; it now asks for
   48 GB (it needs under 8 GB). Nothing else changed.
 
-## (O) 2026-11-23 17:40 CST. Real-sky results: no excess; the networks catch the Cold Spot and Feeney 3, not the two smallest top spots
+## (O) 2026-11-23 17:25 CST. Real-sky results: no excess; the networks catch the Cold Spot and Feeney 3, not the two smallest top spots
 
 Runs of (M), as fixed there: training 82976_[0-1] (15:21 to 16:26), scan 82979 (16:26 to 17:19, 400
 simulated skies, the four PR3 maps). Outputs on Hamilton: `/projects/gmarcum/cmb/runs/realsky_v1/` (T_seed1,
@@ -638,7 +638,7 @@ Training ended at validation detection (ideal SNR 2 to 5, 5%) 0.539 (T) and 0.53
 skies as high), which is below 0.01 and counts as caught.
 
 Caught published positions, image head, the same on all four maps: network C M7, M8, F1, F2, F3; network T
-M7, F1, F2. F1 is the large hot feature of Feeney et al. at (174, -49); McEwen no. 10 next to it is just
+M7, F1, F2. F1 is the large hot feature of Feeney et al. at (174, -51); McEwen no. 10 next to it is just
 outside the line for both (C 0.012, T 0.015 on SMICA). The secondary score (largest mask logit) of network
 C also catches M4 = F7, M2 and F11 (2 to 2.5 degrees), on all four maps; network T's secondary score
 catches M7 and F2.
@@ -652,10 +652,12 @@ catches M7 and F2.
 
 Random kept positions caught on the real maps: 3 of 300 (C) and 1 of 300 (T), as expected at 0.01.
 
-Every one of the twelve highest-ranked tiles of either network on SMICA lies within 5 degrees of a
-published position (M8/F3, the Cold Spot region, F1, M4), except one tile of network T at (159.5, -57.4),
-which is part of the warm patch at (159 to 167, -57 to -60) that the transfer-template filter search on main
-also lists. All twelve are in the top fifteen of the other three maps.
+The twelve highest-ranked tiles of network C on SMICA all lie within 5 degrees of a published position
+(M8/F3, the Cold Spot region, F1, M4), and all twelve are in the top fifteen of the other three maps. Of
+network T's twelve, eight lie within 5 degrees of a published position (the Cold Spot region, F1) and four
+lie 6.6 to 10.8 degrees from F1, at longitudes 159 to 176 and latitudes -54 to -57: the warm patch next to
+F1 that the transfer-template filter search on main also has among its candidates (16 to 20 degrees at
+(159 to 167, -59 to -60)). Eleven of T's twelve are in the top fifteen of the other three maps.
 
 ### Injections (detected when the spot p is below 0.01; real = four maps pooled, 400 per cell; simulated = 20 skies, 2,000 per cell)
 
