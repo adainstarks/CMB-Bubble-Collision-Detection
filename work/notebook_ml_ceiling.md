@@ -614,6 +614,6 @@ not change the fitted monopole and dipole; in the scan it does.
 - Smoke runs of both templates (one epoch, 12 skies) and a scan with 6 simulated skies and SMICA ran to the
   end: 2,378 tiles, 6 published-position tiles within 5 degrees (median), about 6.3 s per simulated sky for
   two networks, 27 s for SMICA. No numbers from the smoke runs are used.
-- Started 15:26: training 82976_[0-1] (0 = T on c3, 1 = C on c5, RTX 5000 Ada, float32), the scan 82979
+- Started 15:21 (job log time): training 82976_[0-1] (0 = T on c3, 1 = C on c5, RTX 5000 Ada, float32), the scan 82979
   waits for both. The scan job first asked for 64 GB, which Hamilton's GPU nodes refuse; it now asks for
   48 GB (it needs under 8 GB). Nothing else changed.
