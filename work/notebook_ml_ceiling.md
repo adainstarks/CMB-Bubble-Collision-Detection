@@ -336,7 +336,7 @@ N seeds 2 and 3 running; arm F waiting.
 
 No score beyond the early look of (J) has been read.
 
-## (L) 2026-11-23 00:40 CST. All 26 runs are in: the ramp ceiling is reached; the family-trained network does not use the sharp edge
+## (L) 2026-11-23 00:30 CST. All 26 runs are in: the ramp ceiling is reached; the family-trained network does not use the sharp edge
 
 **Runs.** Float32 on Hamilton (job 82951, the primary set of (J)): 13 of 13 completed, 1 h 02 to 1 h 06
 each, 10.8 GiB of GPU memory in training. Mixed precision on Babbage c11 (job 93951): 13 of 13 completed,
