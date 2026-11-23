@@ -600,3 +600,20 @@ One seed per network. The simulated skies are Gaussian, without foreground resid
 as in the filter search of main. Sizes above 25 degrees are not searched (M11 to M15 are 26 to 90 degrees).
 Positions with no tile centre on a kept pixel within 5 degrees are not scored. In training a signal does
 not change the fitted monopole and dipole; in the scan it does.
+
+## (N) 2026-11-23 15:30 CST. Checks pass; the two training runs and the scan of (M) are started
+
+- Data on Hamilton, sizes equal to the archive's: SMICA 2,013,312,960 bytes, NILC 1,610,660,160, mask
+  201,335,040; SEVEM and Commander were still downloading when the training started (the training needs
+  only the mask; the scan starts after the training).
+- Self-test (job 82975): the mask keeps 0.7720 of the sky; the monopole and dipole fit equals
+  `healpy.remove_dipole` to 1e-15 of the sky's rms; index lookup equals `ml_ceiling_study.project` pixel for
+  pixel; the cosine coefficients equal a direct quadrature; preparation is linear to 5e-16. Cosine
+  templates: the profile falls below 0.1 of the peak at 2.84, 9.42 and 22.65 degrees for 3, 10 and 25
+  degree caps.
+- Smoke runs of both templates (one epoch, 12 skies) and a scan with 6 simulated skies and SMICA ran to the
+  end: 2,378 tiles, 6 published-position tiles within 5 degrees (median), about 6.3 s per simulated sky for
+  two networks, 27 s for SMICA. No numbers from the smoke runs are used.
+- Started 15:26: training 82976_[0-1] (0 = T on c3, 1 = C on c5, RTX 5000 Ada, float32), the scan 82979
+  waits for both. The scan job first asked for 64 GB, which Hamilton's GPU nodes refuse; it now asks for
+  48 GB (it needs under 8 GB). Nothing else changed.
