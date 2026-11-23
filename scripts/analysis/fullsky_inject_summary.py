@@ -60,6 +60,12 @@ def main():
                "sizes_deg": rep["sizes_deg"], "amplitudes": rep["amplitudes"], "peak_value": rep["peak_value"],
                "peak_angle_deg": rep["peak_angle_deg"], "thresholds": rep["thresholds"], "pairs": []}
     lines = []
+    edge = float(rep.get("cosine_edge", 0.0))        # runs with --cosine-edge: the cosine template is not the z_crit = 0 one
+    if edge:
+        step = rep.get("cosine_step", [1.005, 1.110, "integral"])
+        summary["cosine_edge"], summary["cosine_step"] = edge, step
+        lines += ["", "Cosine template of this run: %g of z0 at the edge, smooth cut-off from %s to %s of the size (%s). Not z_crit = 0." % (
+            edge, step[0], step[1], step[2] if len(step) > 2 else "integral")]
     for pair in rep["pairs"]:
         inj, srch = pair["injected"], pair["searched"]
         conv = conversions(rep, inj, sizes)
@@ -101,6 +107,8 @@ def main():
     panels = [p for p in rep["pairs"] if p["injected"] == p["searched"]]
     titles = {"transfer": "Ramp through the transfer functions\n(this project's template and filters)",
               "cosine": "Cosine ramp with z_crit = 0\n(the template as the published papers describe it)"}
+    if edge:
+        titles["cosine"] = "Cosine ramp with %g z0 at the edge\n(the template of the published code)" % edge
     fig, axes = plt.subplots(1, len(panels), figsize=(11.0, 5.0), sharey=True, facecolor=SURFACE)
     ymax = 0.0
     for ax, pair in zip(np.atleast_1d(axes), panels):

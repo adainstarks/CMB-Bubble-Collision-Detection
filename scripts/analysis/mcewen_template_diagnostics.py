@@ -1,4 +1,8 @@
-"""Two diagnostics for notebook entry (ak) (the template of McEwen et al. carries an edge).
+"""Diagnostics for notebook entries (ak) to (am) (the template of McEwen et al. carries an edge).
+
+large-sizes
+    For finished runs: the cosine candidates of 45 degrees or more on the real maps against the simulated
+    skies of the same run, the largest S among those sizes, and the candidates per size (entry (al), item 3).
 
 masked-positions
     The search of ``fullsky_filter_search.py`` runs over unmasked pixels only. Two of the 16 published
@@ -17,6 +21,8 @@ Usage (from the project root):
     python scripts/analysis/mcewen_template_diagnostics.py masked-positions --runs runs/fullsky_search/wmap7w_v4 \\
         runs/fullsky_search/wmap7w_v6 --out report.json
     python scripts/analysis/mcewen_template_diagnostics.py edge-response --dataset planck --out report.json
+    python scripts/analysis/mcewen_template_diagnostics.py large-sizes --runs runs/fullsky_search/planck_v2 \\
+        runs/fullsky_search/planck_v3 --out report.json
 """
 from __future__ import annotations
 
@@ -60,6 +66,47 @@ def masked_positions(runs, map_name):
             Path(run).name, map_name, n_near, n_at))
         print("   no.: at position / nearby (published): " + "  ".join(
             "%d: %.2f / %.2f (%.2f)" % (r["label"], r["S_at_position"], r["S_nearby_max"], r["published_S"]) for r in rows))
+    return out
+
+
+def large_sizes(runs, min_size):
+    """Cosine template: candidates of ``min_size`` degrees or more on the real maps against the simulated skies
+    of the same run (their stored candidate lists), the largest S among those sizes, and candidates per size."""
+    out = {}
+    for run in runs:
+        rep = json.load(open(Path(run) / "fullsky_filter_search_report.json"))
+        null = np.load(Path(run) / "null.npz")
+        sizes = np.array(rep["sizes_deg"])
+        ns = sizes.size
+        big = np.flatnonzero(sizes >= min_size)                 # cosine filters: filter index = size index
+        n_sims = int(null["max_s"].shape[0])
+        cand = null["candidates"]                               # rows: simulated sky, filter, pixel, S, amplitude
+        f = cand[:, 1].astype(int)
+        cos = f < ns
+        counts = np.bincount(cand[cos & np.isin(f, big), 0].astype(int), minlength=n_sims)[:n_sims]
+        sim_max = null["max_s"][:, big].max(axis=1)
+        per_size_sim = np.bincount(f[cos], minlength=ns)[:ns] / n_sims
+        res = {"min_size_deg": float(min_size), "n_simulated_skies": n_sims,
+               "simulated": {"candidates_mean": float(counts.mean()), "candidates_percentiles_5_50_95": np.percentile(counts, [5, 50, 95]).tolist(),
+                             "share_with_none": float(np.mean(counts == 0)),
+                             "largest_S_percentiles_5_50_95": np.percentile(sim_max, [5, 50, 95]).tolist()},
+               "sizes_deg": sizes.tolist(), "simulated_candidates_per_size": per_size_sim.tolist(), "maps": {}}
+        print("%s: simulated skies, cosine candidates of %g deg or more: mean %.2f, 5/50/95%%: %s, none in %.1f%% of skies; largest S there 5/50/95%%: %s" % (
+            Path(run).name, min_size, counts.mean(), np.percentile(counts, [5, 50, 95]).tolist(), 100 * np.mean(counts == 0),
+            " ".join("%.2f" % v for v in np.percentile(sim_max, [5, 50, 95]))))
+        for mname, m in rep["maps"].items():
+            mine = sorted((c for c in m["candidates"]["cosine"] if c["size_deg"] >= min_size), key=lambda c: -c["S"])
+            n = len(mine)
+            s = float(max(m["max_s"][i] for i in big))
+            per_size = [sum(1 for c in m["candidates"]["cosine"] if c["size_deg"] == sz) for sz in sizes]
+            res["maps"][mname] = {"n_candidates": n, "p_n_candidates": float((1 + np.count_nonzero(counts >= n)) / (n_sims + 1)),
+                                  "largest_S": s, "p_largest_S": float((1 + np.count_nonzero(sim_max >= s)) / (n_sims + 1)),
+                                  "candidates": [{k: c[k] for k in ("size_deg", "lon", "lat", "S", "z0_mK")} for c in mine],
+                                  "candidates_per_size": per_size}
+            print("   %-10s %d candidates (p = %.3f), largest S %.2f (p = %.3f): %s" % (
+                mname, n, res["maps"][mname]["p_n_candidates"], s, res["maps"][mname]["p_largest_S"],
+                "; ".join("%g deg (%.1f, %+.1f) S %.2f z0 %+.3f mK" % (c["size_deg"], c["lon"], c["lat"], c["S"], c["z0_mK"]) for c in mine)))
+        out[Path(run).name] = res
     return out
 
 
@@ -119,8 +166,17 @@ def main():
     b.add_argument("--dataset", default="planck")
     b.add_argument("--data-dir", default="data")
     b.add_argument("--out", required=True)
+    c = sub.add_parser("large-sizes")
+    c.add_argument("--runs", nargs="+", required=True)
+    c.add_argument("--min-size", type=float, default=45.0)
+    c.add_argument("--out", required=True)
     args = ap.parse_args()
-    report = masked_positions(args.runs, args.map) if args.command == "masked-positions" else edge_response(args.dataset, args.data_dir)
+    if args.command == "masked-positions":
+        report = masked_positions(args.runs, args.map)
+    elif args.command == "large-sizes":
+        report = large_sizes(args.runs, args.min_size)
+    else:
+        report = edge_response(args.dataset, args.data_dir)
     with open(args.out, "w") as fh:
         json.dump(report, fh, indent=1)
     print("wrote", args.out)

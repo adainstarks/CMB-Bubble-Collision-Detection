@@ -2101,3 +2101,192 @@ For this project: no result changes. The cosine template of the Planck search is
 transfer template is the physical one, and neither has a free edge. A repeat of their search on Planck with
 their actual template would be one more run (`--cosine-edge 0.2 --cosine-step 1.0,1.1,schwartz`); it has
 not been run and waits for William's word, like the other open steps.
+
+## (al) 2026-11-22 17:26 CST. The Planck search with the template of their code: what is run and how it is read (written before the run)
+
+William, 22 Nov: "run the planck search with their real template".
+
+Run: `fullsky_filter_search.py --dataset planck --cosine-edge 0.2 --cosine-step 1.0,1.1,schwartz`, all
+stages, run `planck_v3`; the same on `planck767` (l up to 767), run `planck767_v3`; then `--stage inject` on
+`planck_v3`. Everything else as in the runs v2 of (ai): PR3 SMICA, NILC, SEVEM and Commander at Nside 256,
+common mask (77% of the sky), 5 arcmin beam, thresholds of Feeney et al. (2013), step 4 in z0, 3,000
+simulated skies for the sigma maps and 1,000 for the null statistics. The seeds are the same, so the
+simulated skies are the same realisations as before and only the cosine filters differ.
+
+Why: a like-for-like repeat of the published search on Planck. Not because the template is believed. A
+temperature of 0.2 z0 at the edge is not supported by theory after 2011 (entry (b)).
+
+Built-in check: the transfer template is not touched, so its half of the run must reproduce `planck_v2`
+exactly: 40, 39, 34, 38 candidates (SMICA, NILC, SEVEM, Commander) and the same lists. If it does not, the
+run is not used until that is understood.
+
+Read-out, fixed here. For each of the four maps, cosine template:
+
+1. the number of candidates and its p among the 1,000 simulated skies (share of simulated skies with at
+   least as many);
+2. the largest S over all sizes and its p (against the largest S of each simulated sky);
+3. the number of candidates of 45 deg or more and its p (counted the same way in the simulated skies, from
+   their stored candidate lists), and the largest S among those sizes with its p. With z_crit = 0 no map
+   had a candidate of 45 deg or more;
+4. the 16 WMAP candidates of McEwen et al. on Planck: S and z0 at their positions and sizes, masked pixels
+   included as in (ak), and how many are candidates of this run (with z_crit = 0: 8 of 16);
+5. the candidates common to the four maps, and the candidates gained and lost against `planck_v2`.
+
+Verdict rule: "no excess" if on every map the p of (1), (2) and both parts of (3) are 0.05 or more. A p
+below 0.05 on any of them is reported as "not ordinary, to be understood", not as a detection. These are
+sixteen looks at four maps of the same sky; they are far from independent, and for independent looks one
+below 0.05 would be expected by chance about half the time.
+
+Expectations, before the run:
+
+- The edge puts weight on the rim of the disc, so more regions pass the thresholds everywhere. On WMAP the
+  simulated skies went from 51 to 82 candidates per sky with this template. Expected here: simulated skies
+  from 52.5 to about 80 to 90 per sky, the real maps from 31 to 34 to about 40 to 60, p of the count
+  between 0.5 and 0.95.
+- Largest S near 4.8 to 5.0, most likely the 9 to 10 deg feature at (l, b) about (213, -59) that led the
+  WMAP run with this template (S 4.84) and is the 10 deg candidate of the z_crit = 0 Planck run. p between
+  0.3 and 0.8.
+- Candidates of 45 deg or more now appear on the real maps: their no. 14 (85 deg) has S 3.6 on WMAP with
+  this template and the threshold there is 3.0. Expected: one to four per map, and the same order in the
+  simulated skies. If a small p turns up anywhere it is most likely here, because the thresholds are
+  lowest for the largest sizes (3.0 to 3.25); it is judged against the simulated skies only.
+- Of their 16 WMAP candidates about 10 or 11 are candidates here (WMAP run v6: 10 on the
+  foreground-reduced map), with S within about 0.3 of the WMAP values of (ak): the same sky with less noise
+  and a smaller mask.
+- Sensitivity (the cosine / cosine pair of the inject stage now means their template in their filters): in
+  z0 the 95% "stands out" level stays within 10% of the z_crit = 0 numbers of (ag) at every size, because
+  the smoothed edge adds only 6% to the best possible S at 2 deg and nothing at 90 deg ((ak)).
+- With l up to 767 the picture is the same as with 256, with more candidates on small sizes, as for
+  z_crit = 0.
+
+Cannot change: the transfer-template results, and the z_crit = 0 results of (x), which stay the search as
+their text describes it. Whatever comes out, the README sentence "has not been run with the template of
+their code" is replaced by the result.
+
+## (am) 2026-11-22 18:14 CST. The Planck search with the template of their code: no excess, and their candidates are on Planck too
+
+The runs of (al): jobs 82944 (`planck_v3`, l up to 256), 82945 (`planck767_v3`), 82946 (inject on
+`planck_v3`). Reports in `work/results_2026-11-22/`: `fullsky_search_summary_planck_v3.json`,
+`fullsky_search_summary_planck767_v3.json`, `fullsky_planck_code_template_comparison.json`
+(`fullsky_compare_runs.py`, v2 against v3), `fullsky_large_sizes_report.json`
+(`mcewen_template_diagnostics.py large-sizes`), `mcewen_template_masked_positions_planck_*.json`,
+`fullsky_inject_report_planck_v3.json`, `fullsky_inject_summary_planck_v3.md` and `.json`.
+
+Built-in check, passed: the transfer half of both runs is the same as in the v2 runs, entry for entry (40,
+39, 34, 38 candidates at l up to 256 and 72, 69, 70, 71 at l up to 767; p and largest S to every digit;
+simulated skies 98.975 and 265.036 per sky in both). The transfer / transfer levels of the inject stage are
+identical as well.
+
+### Read-out of (al), cosine template = the template of their code (0.2 z0 at the edge)
+
+l up to 256, with the z_crit = 0 run (v2) below it:
+
+| | SMICA | NILC | SEVEM | Commander | 1,000 simulated skies |
+|---|---:|---:|---:|---:|---|
+| 1. candidates (p) | 54 (0.750) | 52 (0.773) | 50 (0.798) | 52 (0.773) | mean 84.7, median 73, 5 to 95%: 33 to 171 |
+| 2. largest S (p) | 4.72 (0.853) | 4.70 (0.871) | 4.74 (0.823) | 4.72 (0.849) | |
+| 3. candidates of 45 deg or more (p) | 5 (0.931) | 5 (0.931) | 4 (0.943) | 4 (0.943) | mean 34.0, median 22, 5 to 95%: 3 to 102, none in 0.5% |
+| 3. largest S at 45 deg or more (p) | 3.61 (0.810) | 3.62 (0.793) | 3.59 (0.821) | 3.60 (0.815) | 5, 50, 95%: 3.38, 3.94, 4.66 |
+| z_crit = 0: candidates (p) | 33 (0.769) | 34 (0.755) | 32 (0.794) | 31 (0.814) | mean 52.5, 5 to 95%: 23 to 106 |
+| z_crit = 0: largest S (p) | 4.80 (0.73) | 4.78 (0.76) | 4.79 (0.75) | 4.78 (0.76) | |
+| z_crit = 0: 45 deg or more | 0 | 0 | 0 | 0 | mean 16.4, median 8, none in 12% |
+
+l up to 767: 100, 94, 96, 94 candidates (p 0.810, 0.853, 0.836, 0.853; simulated skies mean 144.0, median
+133, 5 to 95%: 76 to 240); largest S 5.11, 5.16, 5.12, 5.12 at 1.5 deg (p 0.467, 0.398, 0.451, 0.463); 5, 5,
+4, 4 candidates of 45 deg or more (p 0.933, 0.933, 0.946, 0.946), largest S there 3.60 to 3.63 (p 0.79 to
+0.82). For z_crit = 0 these were 94, 104, 96, 95 candidates (p 0.65 to 0.73) and largest S 5.21 to 5.23
+(p 0.23 to 0.26).
+
+Verdict by the rule of (al): no excess. The smallest of the thirty-two p values is 0.398; at l up to 256
+they lie between 0.75 and 0.94.
+
+4. Their 16 WMAP candidates on Planck. Candidates of this run: 13 of 16 at l up to 256 (not nos. 1, 3, 13),
+14 of 16 at l up to 767 (not 3, 13), all 11 eligible ones, on each of the four maps; with z_crit = 0 it was
+8 of 16. S at their positions within 0.5 of the published WMAP value for 13, 14, 13, 13 of 16 (masked
+pixels included; with z_crit = 0: 6). SMICA, S at the position (published) and z0 in mK (published):
+
+| no. | size | S | z0 | | no. | size | S | z0 |
+|---:|---:|---|---|---|---:|---:|---|---|
+| 0 | 1.5 | 4.38 (4.25) | +0.230 (+0.24) | | 8 | 5 | 4.36 (4.43) | +0.155 (+0.15) |
+| 1 | 2 | 3.62 (4.15) | +0.175 (+0.20) | | 9 | 7 | 4.27 (4.39) | +0.137 (+0.14) |
+| 2 | 2 | 2.60 (4.08) | +0.122 (+0.20) | | 10 | 20 | 4.07 (3.94) | +0.110 (+0.11) |
+| 3 | 2 | 3.98 (4.05) | -0.184 (-0.19) | | 11 | 26 | 3.05 (3.07) | -0.085 (-0.09) |
+| 4 | 3 | 4.34 (4.26) | -0.172 (-0.17) | | 12 | 35 | 3.51 (3.33) | +0.089 (+0.09) |
+| 5 | 3 | 4.06 (4.02) | +0.153 (+0.17) | | 13 | 40 | 2.69 (3.07) | +0.081 (+0.10) |
+| 6 | 4 | 4.72 (4.56) | -0.170 (-0.16) | | 14 | 85 | 3.57 (3.03) | +0.156 (+0.15) |
+| 7 | 5 | 4.55 (4.67) | -0.158 (-0.16) | | 15 | 90 | 3.25 (3.11) | -0.147 (-0.16) |
+
+Against the WMAP run v6 of (ak), same template: S within 0.25 for 14 of 16. The two exceptions are small
+discs: no. 2 (2 deg) has S 2.60 and z0 +0.122 mK on Planck against 3.50 and +0.195 on WMAP (published 4.08,
++0.20), so a good part of it was noise of the W-band map; no. 5 (3 deg) has 4.06 on Planck against 3.47 on
+WMAP (published 4.02).
+
+5. Common to the four maps: 48 of the 54 SMICA candidates (l up to 256), 94 of 100 (l up to 767). The
+strongest: 4 deg at (l, b) = (268.1, -77.2), z0 -0.170 mK, S 4.69 to 4.72; 9 deg at (213.7, -59.1), z0
+-0.144 mK, S 4.70 to 4.74; 5 deg at (207.0, -57.6) and at (264.6, -19.5), S 4.6. Gained against z_crit = 0
+on SMICA (33 to 54): 9 below 18 deg, 7 from 18 to 44 deg, and the 5 of 45 deg or more (z_crit = 0 had none
+above 40 deg).
+
+The candidates of 45 deg or more, the same on the four maps unless noted:
+
+- 85 deg at (61.7, +20.4), S 3.59 to 3.62, z0 +0.157 mK. Their no. 14 (62.6, +20.4; +0.15 mK).
+- 90 deg at (279.5, +4.6), S 3.35 to 3.38, z0 -0.152 mK. Their no. 15 (277.7, +1.5; -0.16 mK), 3.6 deg
+  away at the nearest unmasked maximum; the Planck mask leaves pixels free there that the WMAP mask covers.
+- 85 deg at (349.5, +81.4), S 3.45 to 3.54, z0 +0.064 mK.
+- 65 deg at (178.6, -72.8), S 3.25 to 3.28, z0 -0.098 mK (not on Commander).
+- 85 deg at (183.8, -79.0), S 3.0, z0 -0.094 mK (SMICA and NILC); 80 deg at (133.4, -79.9), S 3.0, z0
+  +0.049 mK (Commander).
+
+### What the read-out says
+
+- The like-for-like repeat of the published search on Planck gives nothing beyond what Gaussian skies give.
+  Their candidates are there, both large ones included, with the same amplitudes; they are features of the
+  sky and not of the WMAP map (except part of no. 2). They are not unusual: a simulated sky run through the
+  same search has 85 candidates on average where the real maps have 50 to 54, and 22 (median) of 45 deg
+  or more where the real maps have 4 or 5.
+- The real maps are on the low side at the largest sizes, with either template: 93 to 95% of simulated
+  skies have at least as many candidates of 45 deg or more as the real maps (their template); with
+  z_crit = 0 the real maps have none where 88% of simulated skies have at least one, and their largest S at
+  those sizes is below that of 96% of simulated skies. In direction this is the known low power of the real
+  sky at the largest angles; the simulated skies are drawn from the best-fit spectrum. The rule of (al) was
+  one-sided, so this is recorded and not tested.
+- Candidate counts are only comparable with simulated skies that went through the same search. McEwen et
+  al. list 16 candidates on WMAP; this search, with their template and the threshold table of Feeney et al.
+  (2013), gives 40 on WMAP and 50 to 54 on Planck. Their thresholds of 2012 are not in the paper as a table.
+
+### Sensitivity with their template (inject stage, 100 skies x 150 positions; their template in their filters)
+
+The level a signal-free sky exceeds in 5% of cases is S = 5.453 (z_crit = 0: 5.457); the real maps' largest
+S is 4.70 to 4.74. Amplitude at which 95% of collisions would be the strongest feature of a whole sky, as
+z0 in units of 1e-5:
+
+| size, deg | 2 | 3 | 5 | 7 | 10 | 14 | 20 | 30 | 40 | 50 | 60 | 75 | 90 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| their template | 14.4 | 11.3 | 9.5 | 8.9 | 8.2 | 8.2 | 8.4 | 8.9 | 8.9 | 9.3 | 10.1 | 12.9 | 16.3 |
+| z_crit = 0, (ag) | 15.1 | 13.2 | 9.8 | 9.3 | 8.8 | 8.3 | 8.4 | 8.9 | 9.5 | 9.5 | 10.1 | 12.0 | 15.5 |
+| half reach the threshold, their template | 6.6 | 5.3 | 4.3 | 3.9 | 3.6 | 3.4 | 3.1 | 2.8 | 2.8 | 2.9 | 3.1 | 3.2 | 3.7 |
+
+In z0 the search with their template sees what the z_crit = 0 search sees: 8e-5 to 10e-5 (220 to 280 uK)
+from 5 to 60 deg. Chance rate of reaching the threshold with no signal: under 1% up to 20 deg, 2 to 4% from
+30 to 60 deg, 8% at 75 deg and 12.5% at 90 deg (z_crit = 0: 4.4% at 90 deg), so at the largest sizes
+"reaches the threshold" means little with this template and only "stands out" (chance rate 0) is used.
+
+### Expectations of (al) against the outcome
+
+- Simulated skies 80 to 90 per sky, real maps 40 to 60, p 0.5 to 0.95: yes (84.7; 50 to 54; 0.75 to 0.80).
+- Largest S 4.8 to 5.0 with p 0.3 to 0.8, at the 9 to 10 deg feature: partly. It is 4.70 to 4.74 with p
+  0.82 to 0.87; the 9 deg feature leads on three maps, the 4 deg one at (268.1, -77.2) by 0.02 on SMICA.
+- One to four candidates of 45 deg or more per map, "the same order in the simulated skies": four or five
+  per map, and the second half was wrong. Simulated skies have a median of 22. I had not looked at that
+  number before writing (al); the WMAP run v6 already has it (2 on the real map, median 23 simulated).
+- Ten or eleven of their 16 as candidates, S within 0.3 of WMAP: 13, and within 0.25 for 14 of 16.
+- Sensitivity in z0 within 10% of (ag) at every size: at 12 of 13 sizes (0.94 to 1.07); at 3 deg it is 15%
+  lower, between two steps of the amplitude grid.
+- l up to 767 the same picture: yes.
+
+### Limits
+
+As for (x): Gaussian simulated skies without foreground residuals, masked pixels left out of the search,
+the Planck end-to-end simulations not used. The template of this run is the one of their code, which no
+theory paper after 2011 supports; the run is a repeat of the published search, not a search this project
+argues for. The z_crit = 0 and transfer results of (x) and (ag) stand unchanged.

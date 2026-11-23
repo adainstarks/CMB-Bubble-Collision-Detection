@@ -57,7 +57,7 @@ unmasked, thresholds from 300 simulated skies prepared with the same mask.
   network is 0.16 to 0.28 behind. With masked pixels zeroed or filled, both networks lose most of their
   sensitivity.
 
-Open as of 22 November 2026 (notebook entries (t) to (ak)):
+Open as of 22 November 2026 (notebook entries (t) to (am)):
 
 - The template (entries (u), (v), (y), (z)). It has been rebuilt by two routes that share nothing with the
   CAMB calculation: the Boltzmann code CLASS in real space, and a fluid model written from the textbook
@@ -82,7 +82,18 @@ Open as of 22 November 2026 (notebook entries (t) to (ak)):
   appear. The cause is the template, see the next item; with the template of their code the same check
   meets both criteria. One step of the algorithm was corrected on the way (detections on neighbouring
   sizes are now compared in z0, as in their text); the Planck candidate lists did not change. Open: the
-  Planck end-to-end simulations. The Planck search has not been run with the template of their code.
+  Planck end-to-end simulations.
+- The same search on Planck with the template of their code, entries (al), (am): a like-for-like repeat of
+  the published search (its template is described in the next item). No excess. Per map 50 to 54
+  candidates where simulated skies give 85 on average (33 to 171), p = 0.75 to 0.80; largest significance
+  4.7, p = 0.82 to 0.87; 4 or 5 candidates of 45 degrees or more where simulated skies have a median of 22,
+  p = 0.93 to 0.94. With multipoles up to 767 the same (94 to 100 candidates against 144, largest
+  significance 5.1 to 5.2 with p = 0.40 to 0.47). Thirteen of the 16 WMAP candidates of McEwen et al. are
+  candidates here (14 with multipoles up to 767), their two largest included, with amplitudes within
+  0.03 mK of the published ones except one 2 degree feature that is weaker on Planck. So their candidates
+  are features of the sky, and a Gaussian sky run through the same search has more of them, not fewer. In
+  the central amplitude z0 this search has the same reach as the z_crit = 0 one: 8e-5 to 10e-5 from 5 to
+  60 degrees for the 95% level.
 - The template behind the published filter search, entries (aj), (ak) (figure
   `plots/11_mcewen_template_edge.png`, `scripts/analysis/check_mcewen_template.py`). The text of McEwen et
   al. sets the temperature at the edge of the disc to z_crit ~ 0. The authors' public code (COMB,

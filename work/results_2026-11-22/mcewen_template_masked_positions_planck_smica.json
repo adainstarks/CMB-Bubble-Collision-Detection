@@ -1,0 +1,336 @@
+{
+ "planck_v2": {
+  "map": "smica",
+  "within_0p5_nearby_max": 10,
+  "within_0p5_at_position": 6,
+  "candidates": [
+   {
+    "label": 0,
+    "size_deg": 1.5,
+    "lon": 304.5,
+    "lat": -29.0,
+    "published_S": 4.25,
+    "published_z0_mK": 0.24,
+    "S_at_position": 3.968564627640371,
+    "S_nearby_max": 4.072972942699763
+   },
+   {
+    "label": 1,
+    "size_deg": 2.0,
+    "lon": 176.5,
+    "lat": 11.700000000000003,
+    "published_S": 4.15,
+    "published_z0_mK": 0.2,
+    "S_at_position": 3.423560682271348,
+    "S_nearby_max": 3.978257574984981
+   },
+   {
+    "label": 2,
+    "size_deg": 2.0,
+    "lon": 264.4,
+    "lat": -22.299999999999997,
+    "published_S": 4.08,
+    "published_z0_mK": 0.2,
+    "S_at_position": 2.4717501231434387,
+    "S_nearby_max": 2.8237357276331547
+   },
+   {
+    "label": 3,
+    "size_deg": 2.0,
+    "lon": 33.0,
+    "lat": -55.099999999999994,
+    "published_S": 4.05,
+    "published_z0_mK": -0.19,
+    "S_at_position": 3.8934697509215774,
+    "S_nearby_max": 3.8934697509215774
+   },
+   {
+    "label": 4,
+    "size_deg": 3.0,
+    "lon": 187.5,
+    "lat": -79.0,
+    "published_S": 4.26,
+    "published_z0_mK": -0.17,
+    "S_at_position": 4.218326869540318,
+    "S_nearby_max": 4.229906473642415
+   },
+   {
+    "label": 5,
+    "size_deg": 3.0,
+    "lon": 150.8,
+    "lat": 17.599999999999994,
+    "published_S": 4.02,
+    "published_z0_mK": 0.17,
+    "S_at_position": 3.566540827580501,
+    "S_nearby_max": 3.70369950645668
+   },
+   {
+    "label": 6,
+    "size_deg": 4.0,
+    "lon": 268.7,
+    "lat": -77.19999999999999,
+    "published_S": 4.56,
+    "published_z0_mK": -0.16,
+    "S_at_position": 4.720816850722734,
+    "S_nearby_max": 4.803658781455895
+   },
+   {
+    "label": 7,
+    "size_deg": 5.0,
+    "lon": 207.1,
+    "lat": -57.400000000000006,
+    "published_S": 4.67,
+    "published_z0_mK": -0.16,
+    "S_at_position": 3.798992982520576,
+    "S_nearby_max": 4.109923404146325
+   },
+   {
+    "label": 8,
+    "size_deg": 5.0,
+    "lon": 321.3,
+    "lat": -33.2,
+    "published_S": 4.43,
+    "published_z0_mK": 0.15,
+    "S_at_position": 3.989406763059478,
+    "S_nearby_max": 4.045140286178314
+   },
+   {
+    "label": 9,
+    "size_deg": 7.0,
+    "lon": 220.4,
+    "lat": 27.299999999999997,
+    "published_S": 4.39,
+    "published_z0_mK": 0.14,
+    "S_at_position": 3.7458153371271377,
+    "S_nearby_max": 3.799076979988484
+   },
+   {
+    "label": 10,
+    "size_deg": 20.0,
+    "lon": 172.6,
+    "lat": -46.599999999999994,
+    "published_S": 3.94,
+    "published_z0_mK": 0.11,
+    "S_at_position": 3.3938460126864816,
+    "S_nearby_max": 4.132606353424204
+   },
+   {
+    "label": 11,
+    "size_deg": 26.0,
+    "lon": 216.9,
+    "lat": -37.2,
+    "published_S": 3.07,
+    "published_z0_mK": -0.09,
+    "S_at_position": 2.4079900384975894,
+    "S_nearby_max": 3.457956420303884
+   },
+   {
+    "label": 12,
+    "size_deg": 35.0,
+    "lon": 31.6,
+    "lat": -26.299999999999997,
+    "published_S": 3.33,
+    "published_z0_mK": 0.09,
+    "S_at_position": 1.917831651268194,
+    "S_nearby_max": 2.9423768874312923
+   },
+   {
+    "label": 13,
+    "size_deg": 40.0,
+    "lon": 282.0,
+    "lat": -46.599999999999994,
+    "published_S": 3.07,
+    "published_z0_mK": 0.1,
+    "S_at_position": 1.2167523981866943,
+    "S_nearby_max": 2.4711501409307135
+   },
+   {
+    "label": 14,
+    "size_deg": 85.0,
+    "lon": 62.6,
+    "lat": 20.400000000000006,
+    "published_S": 3.03,
+    "published_z0_mK": 0.15,
+    "S_at_position": 0.13153480324212646,
+    "S_nearby_max": 1.867094979475018
+   },
+   {
+    "label": 15,
+    "size_deg": 90.0,
+    "lon": 277.7,
+    "lat": 1.5,
+    "published_S": 3.11,
+    "published_z0_mK": -0.16,
+    "S_at_position": 0.5234542911184396,
+    "S_nearby_max": 1.6835394951945188
+   }
+  ]
+ },
+ "planck_v3": {
+  "map": "smica",
+  "within_0p5_nearby_max": 13,
+  "within_0p5_at_position": 13,
+  "candidates": [
+   {
+    "label": 0,
+    "size_deg": 1.5,
+    "lon": 304.5,
+    "lat": -29.0,
+    "published_S": 4.25,
+    "published_z0_mK": 0.24,
+    "S_at_position": 4.383966461491189,
+    "S_nearby_max": 4.383966461491189
+   },
+   {
+    "label": 1,
+    "size_deg": 2.0,
+    "lon": 176.5,
+    "lat": 11.700000000000003,
+    "published_S": 4.15,
+    "published_z0_mK": 0.2,
+    "S_at_position": 3.6219251827087042,
+    "S_nearby_max": 3.9236922359842703
+   },
+   {
+    "label": 2,
+    "size_deg": 2.0,
+    "lon": 264.4,
+    "lat": -22.299999999999997,
+    "published_S": 4.08,
+    "published_z0_mK": 0.2,
+    "S_at_position": 2.597219918649152,
+    "S_nearby_max": 3.0542549496266678
+   },
+   {
+    "label": 3,
+    "size_deg": 2.0,
+    "lon": 33.0,
+    "lat": -55.099999999999994,
+    "published_S": 4.05,
+    "published_z0_mK": -0.19,
+    "S_at_position": 3.9777170047094286,
+    "S_nearby_max": 3.9777170047094286
+   },
+   {
+    "label": 4,
+    "size_deg": 3.0,
+    "lon": 187.5,
+    "lat": -79.0,
+    "published_S": 4.26,
+    "published_z0_mK": -0.17,
+    "S_at_position": 4.340623983941815,
+    "S_nearby_max": 4.407857097113559
+   },
+   {
+    "label": 5,
+    "size_deg": 3.0,
+    "lon": 150.8,
+    "lat": 17.599999999999994,
+    "published_S": 4.02,
+    "published_z0_mK": 0.17,
+    "S_at_position": 4.056488489376066,
+    "S_nearby_max": 4.071393662670956
+   },
+   {
+    "label": 6,
+    "size_deg": 4.0,
+    "lon": 268.7,
+    "lat": -77.19999999999999,
+    "published_S": 4.56,
+    "published_z0_mK": -0.16,
+    "S_at_position": 4.716582631986891,
+    "S_nearby_max": 4.716582631986891
+   },
+   {
+    "label": 7,
+    "size_deg": 5.0,
+    "lon": 207.1,
+    "lat": -57.400000000000006,
+    "published_S": 4.67,
+    "published_z0_mK": -0.16,
+    "S_at_position": 4.552761934415557,
+    "S_nearby_max": 4.600591407646708
+   },
+   {
+    "label": 8,
+    "size_deg": 5.0,
+    "lon": 321.3,
+    "lat": -33.2,
+    "published_S": 4.43,
+    "published_z0_mK": 0.15,
+    "S_at_position": 4.362879765708224,
+    "S_nearby_max": 4.487059879537967
+   },
+   {
+    "label": 9,
+    "size_deg": 7.0,
+    "lon": 220.4,
+    "lat": 27.299999999999997,
+    "published_S": 4.39,
+    "published_z0_mK": 0.14,
+    "S_at_position": 4.266672328165268,
+    "S_nearby_max": 4.282901361577511
+   },
+   {
+    "label": 10,
+    "size_deg": 20.0,
+    "lon": 172.6,
+    "lat": -46.599999999999994,
+    "published_S": 3.94,
+    "published_z0_mK": 0.11,
+    "S_at_position": 4.065066756090178,
+    "S_nearby_max": 4.065066756090178
+   },
+   {
+    "label": 11,
+    "size_deg": 26.0,
+    "lon": 216.9,
+    "lat": -37.2,
+    "published_S": 3.07,
+    "published_z0_mK": -0.09,
+    "S_at_position": 3.0491840407809936,
+    "S_nearby_max": 3.2348594354568054
+   },
+   {
+    "label": 12,
+    "size_deg": 35.0,
+    "lon": 31.6,
+    "lat": -26.299999999999997,
+    "published_S": 3.33,
+    "published_z0_mK": 0.09,
+    "S_at_position": 3.512781405903585,
+    "S_nearby_max": 3.5408204867155484
+   },
+   {
+    "label": 13,
+    "size_deg": 40.0,
+    "lon": 282.0,
+    "lat": -46.599999999999994,
+    "published_S": 3.07,
+    "published_z0_mK": 0.1,
+    "S_at_position": 2.686914012643107,
+    "S_nearby_max": 2.750487774639987
+   },
+   {
+    "label": 14,
+    "size_deg": 85.0,
+    "lon": 62.6,
+    "lat": 20.400000000000006,
+    "published_S": 3.03,
+    "published_z0_mK": 0.15,
+    "S_at_position": 3.573758680437257,
+    "S_nearby_max": 3.6113519148866104
+   },
+   {
+    "label": 15,
+    "size_deg": 90.0,
+    "lon": 277.7,
+    "lat": 1.5,
+    "published_S": 3.11,
+    "published_z0_mK": -0.16,
+    "S_at_position": 3.2464974045543147,
+    "S_nearby_max": 3.6964031086425657
+   }
+  ]
+ }
+}
