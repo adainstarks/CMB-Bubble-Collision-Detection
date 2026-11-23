@@ -1,0 +1,128 @@
+{
+ "lmax": 1000,
+ "noise_uk_arcmin": 0.0,
+ "beam_fwhm_arcmin": 0.0,
+ "alpha_limit_95_per_mpc": 4.7e-08,
+ "rows": [
+  {
+   "theta_c_deg": 5.0,
+   "snr_per_unit_slope_TF": 7743183.194274323,
+   "snr_per_unit_slope_SW": 802913.7502611664,
+   "TF_over_sin43": 200381761.3963001,
+   "SW_over_sin43": 20778182.23978101,
+   "published_limit_in_ideal_sigma_TF": 9.417942785626105,
+   "published_limit_in_ideal_sigma_SW": 0.9765745652697074
+  },
+  {
+   "theta_c_deg": 7.5,
+   "snr_per_unit_slope_TF": 9871623.61910057,
+   "snr_per_unit_slope_SW": 1971536.3886589392,
+   "TF_over_sin43": 149093381.02384722,
+   "SW_over_sin43": 29776563.343435988,
+   "published_limit_in_ideal_sigma_TF": 7.007388908120818,
+   "published_limit_in_ideal_sigma_SW": 1.3994984771414913
+  },
+  {
+   "theta_c_deg": 10.0,
+   "snr_per_unit_slope_TF": 12525180.121396966,
+   "snr_per_unit_slope_SW": 3647854.066041608,
+   "TF_over_sin43": 129287639.62539952,
+   "SW_over_sin43": 37653944.879463695,
+   "published_limit_in_ideal_sigma_TF": 6.076519062393777,
+   "published_limit_in_ideal_sigma_SW": 1.7697354093347935
+  },
+  {
+   "theta_c_deg": 15.0,
+   "snr_per_unit_slope_TF": 18665433.46792344,
+   "snr_per_unit_slope_SW": 8425034.609826373,
+   "TF_over_sin43": 113164386.30950218,
+   "SW_over_sin43": 51079117.60505107,
+   "published_limit_in_ideal_sigma_TF": 5.318726156546602,
+   "published_limit_in_ideal_sigma_SW": 2.4007185274374003
+  },
+  {
+   "theta_c_deg": 20.0,
+   "snr_per_unit_slope_TF": 25709997.497917637,
+   "snr_per_unit_slope_SW": 14939073.379289106,
+   "TF_over_sin43": 107489602.00410214,
+   "SW_over_sin43": 62458001.093929455,
+   "published_limit_in_ideal_sigma_TF": 5.0520112941928,
+   "published_limit_in_ideal_sigma_SW": 2.935526051414684
+  },
+  {
+   "theta_c_deg": 30.0,
+   "snr_per_unit_slope_TF": 42552107.66015541,
+   "snr_per_unit_slope_SW": 32372523.140993364,
+   "TF_over_sin43": 107224592.31684536,
+   "SW_over_sin43": 81573646.68709289,
+   "published_limit_in_ideal_sigma_TF": 5.039555838891732,
+   "published_limit_in_ideal_sigma_SW": 3.8339613942933655
+  },
+  {
+   "theta_c_deg": 40.0,
+   "snr_per_unit_slope_TF": 62501782.91120465,
+   "snr_per_unit_slope_SW": 54196045.51609548,
+   "TF_over_sin43": 112668473.54108888,
+   "SW_over_sin43": 97696184.58623523,
+   "published_limit_in_ideal_sigma_TF": 5.2954182564311765,
+   "published_limit_in_ideal_sigma_SW": 4.591720675553056
+  },
+  {
+   "theta_c_deg": 50.0,
+   "snr_per_unit_slope_TF": 83926522.5898387,
+   "snr_per_unit_slope_SW": 78158442.12767617,
+   "TF_over_sin43": 119736696.94442093,
+   "SW_over_sin43": 111507464.02809599,
+   "published_limit_in_ideal_sigma_TF": 5.6276247563877835,
+   "published_limit_in_ideal_sigma_SW": 5.240850809320511
+  },
+  {
+   "theta_c_deg": 60.0,
+   "snr_per_unit_slope_TF": 105781109.95840105,
+   "snr_per_unit_slope_SW": 101456222.68242234,
+   "TF_over_sin43": 128144688.82536766,
+   "SW_over_sin43": 122905461.00479525,
+   "published_limit_in_ideal_sigma_TF": 6.02280037479228,
+   "published_limit_in_ideal_sigma_SW": 5.7765566672253765
+  },
+  {
+   "theta_c_deg": 70.0,
+   "snr_per_unit_slope_TF": 123355116.74547419,
+   "snr_per_unit_slope_SW": 121032915.86248657,
+   "TF_over_sin43": 134021995.51463372,
+   "SW_over_sin43": 131498987.1098343,
+   "published_limit_in_ideal_sigma_TF": 6.299033789187784,
+   "published_limit_in_ideal_sigma_SW": 6.180452394162211
+  },
+  {
+   "theta_c_deg": 80.0,
+   "snr_per_unit_slope_TF": 130109817.56911036,
+   "snr_per_unit_slope_SW": 134096470.64201374,
+   "TF_over_sin43": 132792879.80440503,
+   "SW_over_sin43": 136861743.72430655,
+   "published_limit_in_ideal_sigma_TF": 6.241265350807036,
+   "published_limit_in_ideal_sigma_SW": 6.432501955042406
+  }
+ ],
+ "summary": {
+  "exponent_fits": {
+   "5_to_80_deg": {
+    "TF": 1.217062991365457,
+    "SW": 2.0913888130606826
+   },
+   "10_to_70_deg": {
+    "TF": 1.3666519365743983,
+    "SW": 2.065460156193467
+   },
+   "5_to_30_deg": {
+    "TF": 0.9788930428385902,
+    "SW": 2.11278253058389
+   }
+  },
+  "published_exponent": 1.3333333333333333,
+  "max_over_min_of_snr_over_sin43": {
+   "TF": 1.868804134075681,
+   "SW": 6.586800623120774
+  }
+ }
+}
