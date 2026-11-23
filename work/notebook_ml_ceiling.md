@@ -249,3 +249,55 @@ Small thing seen in passing: c11's clock reads about 1 min 40 s ahead of the sch
 
 No network score has been looked at. Next: when 93951 is done, `summarize` on `runs/ceiling_v1`, then the
 ten predictions of (B), one by one, then the control.
+
+## (J) 2026-11-22 18:10 CST. Hamilton is free: the float32 runs of (B) go there and are the primary set
+
+**Why now.** Hamilton OnDemand is reachable again (a stale sign-in cookie in the browser, nothing to do with
+this study). At 17:50 CST Hamilton had five idle nodes with one RTX 5000 Ada (32 GiB) each, and the A100
+idle. The float32 recipe of (B) fits there, so the reason for the change of recipe in (H) does not apply.
+
+**Set-up on Hamilton.** Same paths as on Babbage (`/projects/gmarcum/cmb`, environment
+`/projects/gmarcum/envs/cmb`), a standalone Python 3.11.18, and the same pinned versions: torch 2.6.0+cu124,
+torchvision 0.21.0, numpy 2.4.6, scipy 1.17.1, astropy 8.0.3, healpy 1.20.1, camb 2.0.5,
+segmentation-models-pytorch 0.5.0, timm 1.0.31. Branch at f2cbd64. The job files under `cluster/babbage/`
+are used as they are, with `--exclude=` and the partition given on the command line.
+Smoke job 82949: `SMOKE_OK`, float32, batch 64, 10.7 GiB in use on an RTX 5000 Ada.
+
+**A trap on Hamilton.** File locks on `/projects` hang there. A `uv python install` and a Hugging Face
+download both sat in uninterruptible sleep until killed; the same commands were fine on Babbage. Both now
+write to the login node's `/tmp` and are copied over. Jobs run with `HF_HUB_OFFLINE=1`, which reads the
+cache without taking a lock.
+
+**Test sets.** The two clusters have separate storage and no key between them, so T0, T35 and T100 are made
+again on Hamilton with the same code, seeds and package versions: job 82950_[0-2]. When they are done their
+`meta.npz` and `patches.npy` are compared with Babbage's (md5 of `meta.npz` there: T0 34a64af4..., T35
+dfc051bd..., T100 c8bfdf64...). Whether the two copies are bit-identical is recorded either way. If they
+are not, each set of runs is scored against the yardsticks computed on its own copy.
+
+**Training.** Job 82951_[0-12%4]: `train.sbatch` unchanged (float32), output in `runs/ceiling_v1_fp32`,
+held until 82950 ends successfully. Four at a time, which leaves two nodes and the A100 free.
+
+**Which set counts, stated before any float32 run exists.** The float32 runs on Hamilton are the primary
+set, because they are the recipe of (B) as written; the ten predictions are scored on them. The
+mixed-precision runs on c11 (job 93951) are reported next to them as a replicate. The control of (H)
+becomes a comparison of thirteen pairs instead of one, with the same criterion (0.04 on T0 at 3e-5).
+I had seen the first two mixed-precision runs when writing this; their numbers follow so that the order of
+events is on record.
+
+**Early look, not a scored result** (arm R, seeds 1 and 2, mixed precision, jobs 93951_0 and _1; 1 h 06 min
+and 5.8 GiB each; detection probability at 5% false positives):
+
+| T0 (ramp) | 1e-5 | 2e-5 | 3e-5 | 5e-5 |
+|---|---:|---:|---:|---:|
+| network, image head | 0.103 | 0.318 | 0.603 | 0.974 |
+| network, mask maximum | 0.100 | 0.303 | 0.595 | 0.974 |
+| ramp filter bank, maximum | 0.093 | 0.295 | 0.613 | 0.983 |
+| Bayes, with the prior | 0.108 | 0.334 | 0.623 | 0.979 |
+
+| T100 (step-rich), ideal SNR | 3 | 5 | 7 | 10 |
+|---|---:|---:|---:|---:|
+| network, image head | 0.180 | 0.410 | 0.589 | 0.716 |
+| ramp filter bank, maximum | 0.177 | 0.450 | 0.671 | 0.780 |
+| matched filter bank, maximum | 0.149 | 0.671 | 0.980 | 1.000 |
+
+The two seeds agree to 0.002 to 0.006. Nothing is concluded from two runs of one arm.
