@@ -774,3 +774,84 @@ differs from the response computed alone by 1.2e-3 (bank C) and 4.9e-3 (bank T) 
 a map shifts a little. As (P) says, the batches are rebuilt: the full run puts every injection position in
 its own map (`--batch-sep-deg 180`, now the default), so the injected responses are exact and the check
 compares a position with itself. Nothing else changes. No number from the smoke run is used.
+
+## (R) 2026-11-23 18:06 CST. The filter under the same rule: it catches the Cold Spot and McEwen 6, not McEwen 8; on weak injections the networks catch more
+
+Run of (P) as changed in (Q): job 82981, 17:41 to 17:57 on a CPU node. Outputs on Hamilton:
+`/projects/gmarcum/cmb/runs/realsky_v1/filter_scan/` (filter_scan_summary.json, filter_scan_arrays.npz). Read in
+the browser; nothing copied off the cluster. With every injection position in its own map, the check of
+prediction 7 compares a response with its own float32 copy: 4.5e-8 of the peak.
+
+### Published spots under one rule (p from the same 400 simulated skies; caught at p < 0.01)
+
+| spot | network C | filter C | network T | filter T |
+|---|---|---|---|---|
+| M7 = F2, Cold Spot | 0.0100, caught | 0.0075, caught | 0.0100, caught | 0.0050, caught |
+| M8 = F3 | 0.0025, caught | 0.0200 | 0.027 to 0.032 | 0.082 to 0.105 |
+| M4 = F7 | 0.0200 | 0.030 to 0.032 | 0.52 to 0.54 | 0.51 to 0.56 |
+| M6 = F10 | 0.095 to 0.097 | 0.0075 to 0.0100, caught | 0.73 | 0.73 to 0.74 |
+| F1 (SMICA) | 0.007, caught | 0.120 | 0.005, caught | 0.015 |
+
+Each cell holds for all four maps (a range where the maps differ). Caught on all four maps: filter C M2, M6,
+M7, F2, F10; filter T M7, F2. Random kept positions caught: 4 of 300 (C), 1 of 300 (T).
+
+### Whole sky (filters)
+
+| bank | largest z on the maps (p) | simulated 5/50/95% | tiles with own p < 0.01 (p, high side) | simulated 5/50/95% |
+|---|---|---|---|---|
+| C | 3.55 to 3.63 (0.63 to 0.69) | 3.05 / 3.89 / 5.15 | 35 to 37 (0.060 to 0.075) | 3 / 17 / 37 |
+| T | p 0.51 to 0.58 | 2.88 / 3.70 / 4.89 | 16 to 20 (0.38 to 0.47) | 1 / 14.5 / 47 |
+
+### Injections at ideal SNR 4 (four maps pooled, 400 per cell)
+
+| size, deg | network C | filter C | network T | filter T |
+|---:|---:|---:|---:|---:|
+| 3 | 0.280 | 0.378 | 0.553 | 0.425 |
+| 5 | 0.365 | 0.420 | 0.690 | 0.618 |
+| 10 | 0.530 | 0.320 | 0.578 | 0.535 |
+| 20 | 0.725 | 0.363 | 0.640 | 0.585 |
+
+Pooled over sizes, network C, filter C, network T, filter T: 0.475, 0.370, 0.615, 0.541 at SNR 4; 0.936,
+0.927, 0.980, 0.973 at SNR 6; 1.000, 0.998, 1.000, 1.000 at SNR 8. Filters on the real maps against
+simulated skies: within 0.10 in 11 of 12 cells for each bank; the exceptions are C at 10 degrees and SNR 4
+(0.32 against 0.44) and T at 3 degrees and SNR 4 (0.42 against 0.55), both lower on the real maps.
+
+### The predictions of (P)
+
+1. Holds. Filter C catches M6 on all four maps (p 0.0075 to 0.0100).
+2. Fails. Filter C catches two of the four top spots (M6, M7); M4 0.030 to 0.032, M8 0.020.
+3. Holds. Filter T catches the Cold Spot on all four maps (0.0050) and none of M4, M6 and M8.
+4. Holds. No excess for either bank; the closest is filter C's count, p 0.060 to 0.075.
+5. In part. T: within 0.10 of network T in 11 of 12 cells (the exception: 3 degrees at SNR 4, network 0.13
+   ahead). C: filter C is ahead of network C by 0.0975 at 3 degrees and 0.055 at 5 degrees, not by more than
+   0.10.
+6. Holds. 11 of 12 cells for each bank.
+7. Holds after (Q).
+
+### What this says
+
+- Under one rule, network and filter agree on the Cold Spot (all four catch it) and on M4 (none catches it
+  with the main score). They split on two spots near the line: network C catches M8 (filter C 0.020), filter
+  C catches M6 (network C 0.095). Both networks also catch Feeney's large feature 1, which neither filter
+  does.
+- So the miss of M6 in (O) belongs to the network, not to the rule: the filter of the same shape, scored
+  the same way, catches it. M8 is the network's catch and not the filter's.
+- On weak added collisions (SNR 4) on the real maps the networks catch more than the filters in 6 of the 8
+  (template, size) cells, by 0.04 to 0.36; the filter is ahead only for the cosine shape at 3 and 5 degrees.
+  Pooled: 0.475 against 0.370 (C) and 0.615 against 0.541 (T). At SNR 6 and 8 all four catch 0.93 to 1.00.
+  This is the direction of the ceiling study, where the network sat between the filter's maximum statistic
+  and the Bayes test at weak signals.
+- Neither method finds an excess on the real sky.
+
+### Limits
+
+One seed per network. Gaussian simulated skies, without foreground residuals or anisotropic noise. The
+filter's tile score is one choice: the maximum over 24 sizes and the kept pixels within 5 degrees, the
+ceiling study's `glrt`. A filter with fewer sizes or a smaller search region pays less for looking in many
+places and could do better at a strict threshold; this entry compares the two under the rule the networks
+were trained for, not every filter there could be.
+
+### Next, none of it started
+
+1. A second seed of each network: does the split on M6 and M8 hold?
+2. Why network C's main score is weak on small discs (more small discs in training).
